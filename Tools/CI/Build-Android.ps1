@@ -56,16 +56,6 @@ $javaVersionText=($javaVersionLines -join "`n")
 $javaMajor=0
 if($javaVersionText -match 'version\s+"(?<major>\d+)(?:\.(?<minor>\d+))?'){$javaMajor=[int]$matches['major'];if($javaMajor -eq 1 -and $matches['minor']){$javaMajor=[int]$matches['minor']}}
 Write-Host "JAVA_MAJOR=$javaMajor"
-if($javaMajor -ge 9){
-  $legacyExports=@(
-    '--add-exports=java.base/sun.security.x509=ALL-UNNAMED',
-    '--add-exports=java.base/sun.security.pkcs=ALL-UNNAMED'
-  )
-  $existing=[string]$env:JAVA_TOOL_OPTIONS
-  foreach($legacyExport in $legacyExports){if($existing -notlike "*$legacyExport*"){$existing=(($existing+' '+$legacyExport).Trim())}}
-  $env:JAVA_TOOL_OPTIONS=$existing
-  Write-Host "AIR_LEGACY_JAVA_PREPROBE_COMPAT=PASS java_major=$javaMajor exports=sun.security.x509,sun.security.pkcs"
-}
 $airRoots=New-Object System.Collections.Generic.List[string]
 function Add-AirRoot([string]$p){if($p -and (Test-Path -LiteralPath (Join-Path $p 'bin\adt.bat')) -and -not $airRoots.Contains($p)){$airRoots.Add($p)}}
 if($env:AIR_HOME){Add-AirRoot $env:AIR_HOME}
@@ -102,6 +92,19 @@ foreach($root in $airRoots){
 }
 if($airChoices.Count -eq 0){throw 'AIR_SDK=FAIL no usable adt.bat found'}
 $air=$airChoices|Sort-Object Score -Descending|Select-Object -First 1
+if($air.Major -lt 50 -and $javaMajor -ge 9){
+  $legacyExports=@(
+    '--add-exports=java.base/sun.security.x509=ALL-UNNAMED',
+    '--add-exports=java.base/sun.security.pkcs=ALL-UNNAMED'
+  )
+  $existing=[string]$env:JAVA_TOOL_OPTIONS
+  foreach($legacyExport in $legacyExports){if($existing -notlike "*$legacyExport*"){$existing=(($existing+' '+$legacyExport).Trim())}}
+  $env:JAVA_TOOL_OPTIONS=$existing
+  Write-Host "AIR_LEGACY_JAVA_COMPAT=PASS java_major=$javaMajor"
+}else{
+  Remove-Item Env:JAVA_TOOL_OPTIONS -ErrorAction SilentlyContinue
+  Write-Host "AIR_MODERN_JAVA_COMPAT=PASS java_major=$javaMajor legacy_exports=disabled"
+}
 $harmanAndroid=($air.Major -ge 50)
 $airNamespace=if($harmanAndroid){"$($air.Major).$($air.Minor)"}else{'32.0'}
 $targetApi=if($air.Major -eq 50){33}elseif($air.Major -ge 51){36}else{27}
@@ -120,6 +123,49 @@ if($harmanAndroid){
   if(-not (Test-Path -LiteralPath $platform)){throw "ANDROID_PLATFORM=FAIL api=$targetApi"}
   if(-not (Test-Path -LiteralPath $buildToolsPath)){throw "ANDROID_BUILD_TOOLS=FAIL version=$targetBuildTools"}
   Write-Host "ANDROID_SDK_COMPONENTS=PASS api=$targetApi build_tools=$targetBuildTools"
+}
+$packageAndroidSdk=$androidSdk
+if($air.Major -eq 50){
+  $packageAndroidSdk=Join-Path $AndroidBuildRoot "Tools\AndroidSDK-AIR50-api$targetApi"
+  $sourcePlatform=Join-Path $androidSdk "platforms\android-$targetApi"
+  $sourceBuildTools=Join-Path $androidSdk "build-tools\$targetBuildTools"
+  $sourcePlatformTools=Join-Path $androidSdk 'platform-tools'
+  $platformJar=Join-Path $sourcePlatform 'android.jar'
+  $aapt2Source=Join-Path $sourceBuildTools 'aapt2.exe'
+  if(-not (Test-Path -LiteralPath $platformJar)){throw "AIR50_PLATFORM_SDK=FAIL android_jar_missing=$platformJar"}
+  if(-not (Test-Path -LiteralPath $aapt2Source)){throw "AIR50_PLATFORM_SDK=FAIL aapt2_missing=$aapt2Source"}
+  $platformJarSha=(Get-FileHash -LiteralPath $platformJar -Algorithm SHA256).Hash.ToLowerInvariant()
+  $aapt2Sha=(Get-FileHash -LiteralPath $aapt2Source -Algorithm SHA256).Hash.ToLowerInvariant()
+  $markerPath=Join-Path $packageAndroidSdk 'AIR50-SDK-MANIFEST.json'
+  $rebuildSdk=$true
+  if(Test-Path -LiteralPath $markerPath){
+    try{
+      $marker=Get-Content -LiteralPath $markerPath -Raw|ConvertFrom-Json
+      if([string]$marker.platform_jar_sha256 -eq $platformJarSha -and [string]$marker.aapt2_sha256 -eq $aapt2Sha -and [int]$marker.api -eq $targetApi -and [string]$marker.build_tools -eq $targetBuildTools){$rebuildSdk=$false}
+    }catch{$rebuildSdk=$true}
+  }
+  if($rebuildSdk){
+    if(Test-Path -LiteralPath $packageAndroidSdk){Remove-Item -LiteralPath $packageAndroidSdk -Recurse -Force}
+    New-Item -ItemType Directory -Force -Path (Join-Path $packageAndroidSdk 'platforms'),(Join-Path $packageAndroidSdk 'build-tools')|Out-Null
+    Copy-Item -LiteralPath $sourcePlatform -Destination (Join-Path $packageAndroidSdk 'platforms') -Recurse -Force
+    Copy-Item -LiteralPath $sourceBuildTools -Destination (Join-Path $packageAndroidSdk 'build-tools') -Recurse -Force
+    if(Test-Path -LiteralPath $sourcePlatformTools){Copy-Item -LiteralPath $sourcePlatformTools -Destination $packageAndroidSdk -Recurse -Force}
+    $licenses=Join-Path $androidSdk 'licenses'
+    if(Test-Path -LiteralPath $licenses){Copy-Item -LiteralPath $licenses -Destination $packageAndroidSdk -Recurse -Force}
+    [ordered]@{
+      api=$targetApi
+      build_tools=$targetBuildTools
+      source_sdk=$androidSdk
+      platform_jar_sha256=$platformJarSha
+      aapt2_sha256=$aapt2Sha
+      purpose='HARMAN AIR 50.2 isolated packaging SDK'
+    }|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $markerPath -Encoding UTF8
+  }
+  $isolatedPlatforms=@(Get-ChildItem -LiteralPath (Join-Path $packageAndroidSdk 'platforms') -Directory -ErrorAction Stop)
+  if($isolatedPlatforms.Count -ne 1 -or $isolatedPlatforms[0].Name -ne "android-$targetApi"){
+    throw "AIR50_PLATFORM_SDK=FAIL expected_only=android-$targetApi actual=$($isolatedPlatforms.Name -join ',')"
+  }
+  Write-Host "AIR50_PLATFORM_SDK=PASS root=$packageAndroidSdk api=$targetApi build_tools=$targetBuildTools platform_jar_sha256=$platformJarSha"
 }
 $seedZip=Join-Path $AndroidBuildRoot 'Inputs\code-army-client\upstream\v23\AA23_release_windows.zip'
 $seedUrl='https://github.com/Michielvde1253/army-client/releases/download/v23/AA23_release_windows.zip'
@@ -214,6 +260,7 @@ $xml=@"
   <android>
     <manifestAdditions><![CDATA[
       <manifest>
+        <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="$targetApi"/>
         <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
         <application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"/>
       </manifest>
@@ -237,7 +284,7 @@ if(Test-Path $apkPath){Remove-Item $apkPath -Force}
 $packageArgs=@('-package','-target','apk-captive-runtime')
 if($harmanAndroid){$packageArgs+=@('-arch','armv8')}
 $packageArgs+=@('-storetype','pkcs12','-keystore',$cert,'-storepass',$certPass,$apkPath,$descriptor,'-C',$stage,'.')
-if($harmanAndroid){$packageArgs+=@('-platformsdk',$androidSdk)}
+if($harmanAndroid){$packageArgs+=@('-platformsdk',$packageAndroidSdk)}
 $stdout=Join-Path $buildRoot 'adt-android.out.log';$stderr=Join-Path $buildRoot 'adt-android.err.log'
 $p2=Start-Process -FilePath $air.Adt -ArgumentList $packageArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 if($p2.ExitCode -ne 0 -or -not (Test-Path $apkPath)){
@@ -257,6 +304,7 @@ $prov=[ordered]@{
   java_home=$env:JAVA_HOME
   java_major=$javaMajor
   android_sdk=$androidSdk
+  packaging_android_sdk=$packageAndroidSdk
   target_android_api=$targetApi
   target_abi=$targetAbi
   game_version='23.2'
@@ -294,6 +342,7 @@ $toolchain=[ordered]@{
   air_sdk_root=$air.Root
   air_namespace=$namespace
   android_sdk=$androidSdk
+  packaging_android_sdk=$packageAndroidSdk
   android_api=$targetApi
   android_build_tools=$targetBuildTools
   target_abi=$targetAbi
@@ -306,7 +355,10 @@ Write-Host "APK_GENERATED=PASS"
 Write-Host "APK_PATH=$apkPath"
 Write-Host "APK_SIZE=$($apk.Length)"
 Write-Host "APK_SHA256=$apkSha"
-Write-Host "SWF_SHA256=$swfSha"`nWrite-Host "SWF_SIZE=$swfSize"`nWrite-Host "PUBLISHED_SOURCE_SHA=$publishedActualSha"`nWrite-Host "GAME_VERSION=$publishedVersion"
+Write-Host "SWF_SHA256=$swfSha"
+Write-Host "SWF_SIZE=$swfSize"
+Write-Host "PUBLISHED_SOURCE_SHA=$publishedActualSha"
+Write-Host "GAME_VERSION=$publishedVersion"
 Write-Host "AIR_VERSION=$($air.Version)"
 $playReady=if($harmanAndroid){'CANDIDATE'}else{'NO_LEGACY_TOOLCHAIN'}
 Write-Host "PLAY_READY=$playReady"
