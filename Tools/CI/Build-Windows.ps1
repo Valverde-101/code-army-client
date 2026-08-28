@@ -384,20 +384,15 @@ $packageArgs = @(
   '-storetype', 'pkcs12',
   '-keystore', $certPath,
   '-storepass', $certPassword,
+  '-tsa', 'none',
   '-target', 'bundle',
   $bundleRoot,
   $descriptor,
   '-C', $stageRoot, '.'
 )
 
-Push-Location $stageRoot
-try {
-  & $adt @packageArgs 1> $packageLog 2> $packageErr
-  $packageExit = $LASTEXITCODE
-}
-finally {
-  Pop-Location
-}
+$p2 = Start-Process -FilePath $adt -ArgumentList $packageArgs -WorkingDirectory $stageRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $packageLog -RedirectStandardError $packageErr
+$packageExit = $p2.ExitCode
 if ($packageExit -ne 0 -or -not (Test-Path -LiteralPath $bundleRoot)) {
   Write-Host "WINDOWS_PACKAGE=FAIL exit=$packageExit log=$packageLog"
   if (Test-Path -LiteralPath $packageLog) { Get-Content -LiteralPath $packageLog -Tail 120 | ForEach-Object { Write-Host $_ } }
