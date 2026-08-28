@@ -44,7 +44,12 @@ if($javaCmd){$javaCandidates+=$javaCmd.Source}
 $java=$javaCandidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
 if(-not $java){throw 'JAVA=FAIL'}
 $env:JAVA_HOME=Split-Path -Parent (Split-Path -Parent $java)
+$javaBin=Join-Path $env:JAVA_HOME 'bin'
+$env:PATH=$javaBin+';'+$env:PATH
+$resolvedJava=(Get-Command java.exe -ErrorAction Stop).Source
+if(-not $resolvedJava.StartsWith($javaBin,[System.StringComparison]::OrdinalIgnoreCase)){throw "JAVA_PATH_PIN=FAIL expected_root=$javaBin actual=$resolvedJava"}
 Write-Host "JAVA=PASS path=$java"
+Write-Host "JAVA_PATH_PIN=PASS path=$resolvedJava"
 $javaVersionOut=Join-Path $env:TEMP "army-java-version-$PID.out.txt"
 $javaVersionErr=Join-Path $env:TEMP "army-java-version-$PID.err.txt"
 $pJava=Start-Process -FilePath $java -ArgumentList '-version' -NoNewWindow -PassThru -Wait -RedirectStandardOutput $javaVersionOut -RedirectStandardError $javaVersionErr
