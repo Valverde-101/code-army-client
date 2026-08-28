@@ -84,6 +84,21 @@ if (Test-Path -LiteralPath $target) {
 
   Push-Location $target
   try {
+    # Remove only OS-generated metadata; unknown project files still fail the dirty gate.
+    $osJunk = @(
+      @(Get-ChildItem -LiteralPath $target -Recurse -Force -File -Filter 'Thumbs.db' -ErrorAction SilentlyContinue)
+      @(Get-ChildItem -LiteralPath $target -Recurse -Force -File -Filter 'desktop.ini' -ErrorAction SilentlyContinue)
+      @(Get-ChildItem -LiteralPath $target -Recurse -Force -File -Filter '.DS_Store' -ErrorAction SilentlyContinue)
+    )
+    $removed = 0
+    foreach ($junk in $osJunk) {
+      if ($junk -and (Test-Path -LiteralPath $junk.FullName)) {
+        Remove-Item -LiteralPath $junk.FullName -Force -ErrorAction Stop
+        $removed++
+      }
+    }
+    Write-Host "OS_METADATA_CLEANUP=PASS removed=$removed"
+
     $dirty = & $git status --porcelain
     if ($dirty) {
       Write-Host "SOURCE_VALIDATION=FAIL physical clone is dirty"
