@@ -4,7 +4,7 @@ param(
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
   [Parameter(Mandatory=$true)][string]$RunId,
   [Parameter(Mandatory=$true)][string]$SourceBranch,
-  [string]$EvidenceBranch='evidence/army-attack-logs'
+  [string]$EvidenceBranch='ci-logs'
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -145,7 +145,7 @@ try{
   }
   if($LASTEXITCODE -ne 0){throw "LOG_PUBLISH=FAIL worktree_add exit=$LASTEXITCODE"}
 
-  $dest=Join-Path $worktree "Logs\android\$ExpectedSha\$RunId"
+  $dest=Join-Path $worktree "logs\android\$ExpectedSha\$RunId"
   New-Item -ItemType Directory -Force -Path $dest | Out-Null
   foreach($child in @(Get-ChildItem -LiteralPath $stage -Force)){
     Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force -ErrorAction Stop
@@ -153,12 +153,12 @@ try{
 
   & $git -C $worktree config user.name 'Army Attack CI'
   & $git -C $worktree config user.email 'actions@users.noreply.github.com'
-  & $git -C $worktree add -- "Logs/android/$ExpectedSha/$RunId"
+  & $git -C $worktree add -- "logs/android/$ExpectedSha/$RunId"
   if($LASTEXITCODE -ne 0){throw "LOG_PUBLISH=FAIL git_add exit=$LASTEXITCODE"}
 
   & $git -C $worktree diff --cached --quiet
   if($LASTEXITCODE -eq 0){
-    Write-Host "LOG_PUBLISH=PASS no_changes branch=$EvidenceBranch path=Logs/android/$ExpectedSha/$RunId"
+    Write-Host "LOG_PUBLISH=PASS no_changes branch=$EvidenceBranch path=logs/android/$ExpectedSha/$RunId"
     exit 0
   }
 
@@ -179,9 +179,9 @@ try{
   }
   if(-not $pushOk){throw 'LOG_PUBLISH=FAIL git_push retries_exhausted'}
 
-  Write-Host "LOG_PUBLISH=PASS branch=$EvidenceBranch commit=$evidenceCommit path=Logs/android/$ExpectedSha/$RunId files=$($published.Count) stale=$stale"
+  Write-Host "LOG_PUBLISH=PASS branch=$EvidenceBranch commit=$evidenceCommit path=logs/android/$ExpectedSha/$RunId files=$($published.Count) stale=$stale"
   Write-Host "EVIDENCE_COMMIT_SHA=$evidenceCommit"
-  Write-Host "EVIDENCE_PATH=Logs/android/$ExpectedSha/$RunId"
+  Write-Host "EVIDENCE_PATH=logs/android/$ExpectedSha/$RunId"
 } finally {
   try{& $git -C $RepoCheckoutRoot worktree remove --force $worktree | Out-Null}catch{}
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
