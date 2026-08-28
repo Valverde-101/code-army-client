@@ -127,21 +127,29 @@ foreach($file in @(Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Obje
 }
 
 try{
-  New-Item -ItemType Directory -Force -Path $worktree | Out-Null
-  Remove-Item -LiteralPath $worktree -Force
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $worktree) | Out-Null
 
-  & $git -C $RepoCheckoutRoot fetch origin $EvidenceBranch 2>$null
-  $hasRemote=($LASTEXITCODE -eq 0)
+  $previousEap=$ErrorActionPreference
+  try{
+    $ErrorActionPreference='Continue'
+    & $git -C $RepoCheckoutRoot fetch origin $EvidenceBranch *> $null
+    $fetchExit=$LASTEXITCODE
+  } finally {
+    $ErrorActionPreference=$previousEap
+  }
+  $hasRemote=($fetchExit -eq 0)
   if($hasRemote){
     & $git -C $RepoCheckoutRoot worktree add -B $EvidenceBranch $worktree "origin/$EvidenceBranch"
   } else {
-    & $git -C $RepoCheckoutRoot worktree add -b $EvidenceBranch $worktree $ExpectedSha
+    & $git -C $RepoCheckoutRoot worktree add -B $EvidenceBranch $worktree $ExpectedSha
   }
   if($LASTEXITCODE -ne 0){throw "LOG_PUBLISH=FAIL worktree_add exit=$LASTEXITCODE"}
 
   $dest=Join-Path $worktree "Logs\android\$ExpectedSha\$RunId"
   New-Item -ItemType Directory -Force -Path $dest | Out-Null
-  Copy-Item -LiteralPath (Join-Path $stage '*') -Destination $dest -Recurse -Force -ErrorAction Stop
+  foreach($child in @(Get-ChildItem -LiteralPath $stage -Force)){
+    Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force -ErrorAction Stop
+  }
 
   & $git -C $worktree config user.name 'Army Attack CI'
   & $git -C $worktree config user.email 'actions@users.noreply.github.com'
