@@ -78,7 +78,9 @@ if(-not $probe){
     $sourceHome=Split-Path -Parent (Split-Path -Parent $javaExe.FullName)
     if(Test-Path -LiteralPath $installRoot){Remove-Item -LiteralPath $installRoot -Recurse -Force}
     New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
-    Copy-Item -LiteralPath (Join-Path $sourceHome '*') -Destination $installRoot -Recurse -Force
+    Get-ChildItem -LiteralPath $sourceHome -Force | ForEach-Object {
+      Copy-Item -LiteralPath $_.FullName -Destination $installRoot -Recurse -Force
+    }
   }finally{
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
   }
