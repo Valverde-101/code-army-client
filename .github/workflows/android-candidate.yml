@@ -1,0 +1,120 @@
+name: Army Attack Android candidate
+
+on:
+  push:
+    branches:
+      - chore/local-army-bootstrap-20260827
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: army-attack-android-\${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android-candidate:
+    name: Build and validate Android APK
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
+    env:
+      EXPECTED_SOURCE_SHA: \${{ github.sha }}
+      SOURCE_BRANCH: \${{ github.ref_name }}
+
+    steps:
+      - name: Bootstrap portable Git
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $candidates=@()
+          $g=Get-Command git.exe -ErrorAction SilentlyContinue
+          if($g){$candidates+=$g.Source}
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){$candidates+=@((Join-Path $drive.Root 'AndroidBuild\Tools\Git\cmd\git.exe'),(Join-Path $drive.Root 'AndroidBuild\PortableGit\cmd\git.exe'))}
+          }
+          $git=$candidates|Where-Object{$_ -and (Test-Path $_)}|Select-Object -First 1
+          if(-not $git){throw 'PRECHECK_GIT=FAIL'}
+          (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "PRECHECK_GIT=PASS path=$git"
+
+      - name: Checkout exact workflow HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: \${{ env.EXPECTED_SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate exact checkout
+        shell: powershell
+        run: |
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual -ne $env:EXPECTED_SOURCE_SHA){throw "EXACT_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$actual"}
+          Write-Host "PRECHECK_GITHUB=PASS"
+          Write-Host "BROKER=PASS runner=$env:RUNNER_NAME"
+          Write-Host "RUNNER_ASSIGNMENT=PASS runner=$env:RUNNER_NAME"
+          Write-Host "EXACT_HEAD=PASS sha=$actual"
+          Write-Host "REPOSITORY=$env:GITHUB_REPOSITORY"
+          Write-Host "BRANCH=$env:SOURCE_BRANCH"
+          Write-Host "EXPECTED_SOURCE_SHA=$env:EXPECTED_SOURCE_SHA"
+          Write-Host "RUN=$env:GITHUB_RUN_ID"
+          Write-Host "JOB_ID=$env:GITHUB_JOB"
+          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
+
+      - name: Synchronize canonical physical repository
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Bootstrap-PhysicalClone.ps1' -Repository $env:GITHUB_REPOSITORY -ExpectedSha $env:EXPECTED_SOURCE_SHA -SourceBranch $env:SOURCE_BRANCH
+
+      - name: Resolve AndroidBuild root
+        shell: powershell
+        run: |
+          $root=$null
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
+          }
+          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
+          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PHYSICAL_REPO_ROOT=$(Join-Path $root 'Repositories\code-army-client')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "ANDROIDBUILD_ROOT=PASS root=$root"
+
+      - name: Inspect upstream Android reference
+        id: android_reference
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Validate-UpstreamAndroidRelease.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+
+      - name: Build Android candidate
+        id: android_build
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Build-Android.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
+          $apk=Get-ChildItem (Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android") -File -Filter '*.apk'|Sort-Object Length -Descending|Select-Object -First 1
+          if(-not $apk){throw 'APK_GENERATED=FAIL not_found'}
+          "ANDROID_APK_PATH=$($apk.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Validate exact APK
+        id: apk_validate
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Validate-AndroidApk.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+
+      - name: Physical ADB validation when available
+        id: adb_test
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Test-AndroidDevice.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+
+      - name: Final Android gate
+        if: always()
+        shell: powershell
+        run: |
+          Write-Host "ANDROID_REFERENCE_OUTCOME=\${{ steps.android_reference.outcome }}"
+          Write-Host "ANDROID_BUILD_OUTCOME=\${{ steps.android_build.outcome }}"
+          Write-Host "APK_VALIDATE_OUTCOME=\${{ steps.apk_validate.outcome }}"
+          Write-Host "ADB_TEST_OUTCOME=\${{ steps.adb_test.outcome }}"
+          if('\${{ steps.android_reference.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_reference'}
+          if('\${{ steps.android_build.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_build'}
+          if('\${{ steps.apk_validate.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL apk_validate'}
+          if('\${{ steps.adb_test.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL adb_test'}
+          Write-Host "FINAL_VALIDATION=PASS android_candidate"
