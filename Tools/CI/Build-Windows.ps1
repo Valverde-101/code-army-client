@@ -64,6 +64,70 @@ function Find-Animate {
   return Find-FirstExisting $candidates
 }
 
+
+function Ensure-AirSdk32 {
+  $sdkRoot = Join-Path $AndroidBuildRoot 'Tools\AIRSDK-32'
+  $compiler = Join-Path $sdkRoot 'bin\amxmlc.bat'
+  $adtTool = Join-Path $sdkRoot 'bin\adt.bat'
+  if ((Test-Path -LiteralPath $compiler) -and (Test-Path -LiteralPath $adtTool)) {
+    Write-Host "AIRSDK_BOOTSTRAP=PASS existing=$sdkRoot"
+    return $sdkRoot
+  }
+
+  $toolsRoot = Join-Path $AndroidBuildRoot 'Tools'
+  New-Item -ItemType Directory -Force -Path $toolsRoot | Out-Null
+  $zipPath = Join-Path $toolsRoot 'AIRSDK_Compiler_32.0.zip'
+  $extractRoot = Join-Path $toolsRoot 'AIRSDK-32.extract'
+  $url = 'https://airdownload.adobe.com/air/win/download/32.0/AIRSDK_Compiler.zip'
+
+  if (-not (Test-Path -LiteralPath $zipPath) -or (Get-Item -LiteralPath $zipPath).Length -lt 100MB) {
+    Write-Host "AIRSDK_DOWNLOAD=START url=$url path=$zipPath"
+    $curl = Find-CommandPath 'curl.exe'
+    if ($curl) {
+      & $curl -L --fail --retry 3 --retry-delay 2 -o $zipPath $url
+      if ($LASTEXITCODE -ne 0) { throw "AIRSDK_DOWNLOAD=FAIL curl_exit=$LASTEXITCODE" }
+    }
+    else {
+      Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+    }
+  }
+
+  $zipInfo = Get-Item -LiteralPath $zipPath
+  if ($zipInfo.Length -lt 100MB) {
+    throw "AIRSDK_DOWNLOAD=FAIL unexpected_size=$($zipInfo.Length)"
+  }
+  $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  Write-Host "AIRSDK_ZIP_SIZE=$($zipInfo.Length)"
+  Write-Host "AIRSDK_ZIP_SHA256=$zipHash"
+
+  if (Test-Path -LiteralPath $extractRoot) { Remove-Item -LiteralPath $extractRoot -Recurse -Force }
+  if (Test-Path -LiteralPath $sdkRoot) { Remove-Item -LiteralPath $sdkRoot -Recurse -Force }
+  New-Item -ItemType Directory -Force -Path $extractRoot, $sdkRoot | Out-Null
+  Expand-Archive -LiteralPath $zipPath -DestinationPath $extractRoot -Force
+
+  $rootCompiler = Join-Path $extractRoot 'bin\amxmlc.bat'
+  if (Test-Path -LiteralPath $rootCompiler) {
+    Get-ChildItem -LiteralPath $extractRoot -Force | Copy-Item -Destination $sdkRoot -Recurse -Force
+  }
+  else {
+    $nested = Get-ChildItem -LiteralPath $extractRoot -Directory -ErrorAction SilentlyContinue |
+      Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'bin\amxmlc.bat') } |
+      Select-Object -First 1
+    if (-not $nested) {
+      throw "AIRSDK_BOOTSTRAP=FAIL compiler_not_found_after_extract root=$extractRoot"
+    }
+    Get-ChildItem -LiteralPath $nested.FullName -Force | Copy-Item -Destination $sdkRoot -Recurse -Force
+  }
+
+  if (-not (Test-Path -LiteralPath $compiler) -or -not (Test-Path -LiteralPath $adtTool)) {
+    throw "AIRSDK_BOOTSTRAP=FAIL tools_missing sdk=$sdkRoot"
+  }
+
+  Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+  Write-Host "AIRSDK_BOOTSTRAP=PASS installed=$sdkRoot"
+  return $sdkRoot
+}
+
 $git = Find-CommandPath 'git.exe'
 if (-not $git) {
   $git = Find-FirstExisting @(
@@ -110,6 +174,17 @@ $adl = Find-AirTool 'adl.exe'
 if (-not $adl) { $adl = Find-AirTool 'adl' }
 $animate = Find-Animate
 
+if (-not $amxmlc -or -not $adt) {
+  $airHome = Ensure-AirSdk32
+  $env:AIR_HOME = $airHome
+  $amxmlc = Find-AirTool 'amxmlc.bat'
+  if (-not $amxmlc) { $amxmlc = Find-AirTool 'amxmlc' }
+  $adt = Find-AirTool 'adt.bat'
+  if (-not $adt) { $adt = Find-AirTool 'adt' }
+  $adl = Find-AirTool 'adl.exe'
+  if (-not $adl) { $adl = Find-AirTool 'adl' }
+}
+
 Write-Host "JAVA=$java"
 Write-Host "AMXMLC=$amxmlc"
 Write-Host "ADT=$adt"
@@ -117,10 +192,18 @@ Write-Host "ADL=$adl"
 Write-Host "ANIMATE=$animate"
 
 if ($java) {
-  & $java -version 2>&1 | Select-Object -First 4 | ForEach-Object { Write-Host "JAVA_VERSION=$_" }
+  $savedPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  $javaVersion = & $java -version 2>&1
+  $ErrorActionPreference = $savedPreference
+  $javaVersion | Select-Object -First 4 | ForEach-Object { Write-Host "JAVA_VERSION=$_" }
 }
 if ($adt) {
-  & $adt -version 2>&1 | Select-Object -First 5 | ForEach-Object { Write-Host "AIR_VERSION=$_" }
+  $savedPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  $airVersion = & $adt -version 2>&1
+  $ErrorActionPreference = $savedPreference
+  $airVersion | Select-Object -First 5 | ForEach-Object { Write-Host "AIR_VERSION=$_" }
 }
 
 $src = Join-Path $RepoRoot 'src'
@@ -244,6 +327,7 @@ if (Test-Path -LiteralPath (Join-Path $src 'AppIconsForPublish')) {
 
 $descriptor = Join-Path $stageRoot 'ArmyAttack-app.xml'
 $descriptorText = Get-Content -LiteralPath $sourceDescriptor -Raw
+$descriptorText = $descriptorText -replace 'http://ns.adobe.com/air/application/51\.2', 'http://ns.adobe.com/air/application/32.0'
 $descriptorText = [regex]::Replace($descriptorText, '(?s)<android>.*?</android>', '')
 $descriptorText = [regex]::Replace($descriptorText, '(?s)<iPhone>.*?</iPhone>', '')
 $descriptorText = [regex]::Replace($descriptorText, '(?s)<extensions>.*?</extensions>', '')
