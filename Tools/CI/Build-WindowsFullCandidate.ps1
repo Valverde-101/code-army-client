@@ -127,7 +127,7 @@ Write-Host "OVERLAY_COVERAGE_REPORT=$coveragePath"
 
 $contentAuditReport = Join-Path $buildRoot 'content-integrity.json'
 $contentAudit = Join-Path $RepoRoot 'Tools\CI\Audit-ContentIntegrity.ps1'
-& $contentAudit -CandidateRoot $candidateRoot -ReportPath $contentAuditReport
+& $contentAudit -CandidateRoot $candidateRoot -BaselineRoot $upstreamAppRoot -ReportPath $contentAuditReport
 Write-Host "CONTENT_INTEGRITY_GATE=PASS report=$contentAuditReport"
 
 $candidateExe = Join-Path $candidateRoot 'Army Attack.exe'

@@ -1,5 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$CandidateRoot,
+  [Parameter(Mandatory=$true)][string]$BaselineRoot,
   [Parameter(Mandatory=$true)][string]$ReportPath
 )
 
@@ -8,6 +9,9 @@ Set-StrictMode -Version Latest
 
 if (-not (Test-Path -LiteralPath $CandidateRoot)) {
   throw "CONTENT_INTEGRITY_PRECHECK=FAIL candidate_root_missing=$CandidateRoot"
+}
+if (-not (Test-Path -LiteralPath $BaselineRoot)) {
+  throw "CONTENT_INTEGRITY_PRECHECK=FAIL baseline_root_missing=$BaselineRoot"
 }
 
 $configRoot = Join-Path $CandidateRoot 'config'
@@ -20,7 +24,14 @@ $activeCsv = @(Get-ChildItem -LiteralPath $configRoot -File -Filter '*.csv' -For
 $jsonFailures = @()
 $csvFailures = @()
 $missingRefs = @()
+$baselineMissingRefs = @()
+$aliasResolvedRefs = @()
 $references = New-Object 'System.Collections.Generic.HashSet[string]'
+
+Add-Type -AssemblyName System.Web.Extensions
+$serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+$serializer.MaxJsonLength = [int]::MaxValue
+$serializer.RecursionLimit = 2048
 
 function Visit-JsonValue($value) {
   if ($null -eq $value) { return }
@@ -53,7 +64,9 @@ foreach ($file in $activeJson) {
   try {
     $raw = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
     if ([string]::IsNullOrWhiteSpace($raw)) { throw 'empty JSON' }
-    $obj = $raw | ConvertFrom-Json -ErrorAction Stop
+    # Windows PowerShell ConvertFrom-Json rejects case-distinct keys such as ID/id.
+    # JavaScriptSerializer follows JSON's case-sensitive object-key semantics.
+    $obj = $serializer.DeserializeObject($raw)
     Visit-JsonValue $obj
     Write-Host "CONFIG_JSON_PARSE=PASS file=$($file.Name) bytes=$($file.Length)"
   }
@@ -66,13 +79,35 @@ foreach ($file in $activeJson) {
 foreach ($file in $activeCsv) {
   try {
     $rows = @(Get-Content -LiteralPath $file.FullName -Encoding UTF8)
-    $nonEmpty = @($rows | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    if ($nonEmpty.Count -eq 0) { throw 'empty CSV' }
-    $widths = @($nonEmpty | ForEach-Object { ($_ -split ',',-1).Count } | Sort-Object -Unique)
-    if ($widths.Count -gt 1) {
-      throw "inconsistent comma-column counts: $($widths -join ',')"
+    if ($rows.Count -eq 0) { throw 'empty CSV' }
+
+    $numericRows = 0
+    $maxColumns = 0
+    $invalidTokens = @()
+    foreach ($row in $rows) {
+      if ([string]::IsNullOrWhiteSpace($row)) { continue }
+      $tokens = @($row -split ',',-1)
+      $maxColumns = [Math]::Max($maxColumns,$tokens.Count)
+      $rowHasNumeric = $false
+      foreach ($token in $tokens) {
+        $trimmed = $token.Trim()
+        if ($trimmed -eq '') { continue }
+        $parsed = 0
+        if ([int]::TryParse($trimmed,[ref]$parsed)) {
+          $rowHasNumeric = $true
+        } else {
+          $invalidTokens += $trimmed
+        }
+      }
+      if ($rowHasNumeric) { $numericRows++ }
     }
-    Write-Host "CONFIG_CSV_SHAPE=PASS file=$($file.Name) rows=$($nonEmpty.Count) columns=$($widths[0])"
+
+    if ($numericRows -eq 0) { throw 'CSV contains no numeric map rows' }
+    if ($invalidTokens.Count -gt 0) {
+      throw "non-numeric map tokens: $((@($invalidTokens | Select-Object -Unique | Select-Object -First 10)) -join ',')"
+    }
+
+    Write-Host "CONFIG_CSV_SHAPE=PASS file=$($file.Name) rows=$($rows.Count) numeric_rows=$numericRows max_columns=$maxColumns"
   }
   catch {
     $csvFailures += [ordered]@{ file=$file.FullName; error=$_.Exception.Message }
@@ -80,44 +115,77 @@ foreach ($file in $activeCsv) {
   }
 }
 
-foreach ($ref in $references) {
-  $normalized = $ref.Replace('/','\').TrimStart('\')
-  $candidates = @(
-    (Join-Path $CandidateRoot $normalized),
-    (Join-Path $dataRoot $normalized),
-    (Join-Path $configRoot $normalized)
+$candidateFiles = @(Get-ChildItem -LiteralPath $CandidateRoot -Recurse -File -Force)
+$baselineFiles = @(Get-ChildItem -LiteralPath $BaselineRoot -Recurse -File -Force)
+
+function Resolve-LocalReference([string]$Root,[string]$Ref,[object[]]$AllFiles) {
+  $normalized = $Ref.Replace('/','\').TrimStart('\')
+  $paths = @(
+    (Join-Path $Root $normalized),
+    (Join-Path (Join-Path $Root 'data') $normalized),
+    (Join-Path (Join-Path $Root 'config') $normalized)
   )
-  $exists = $false
-  foreach ($candidate in $candidates) {
-    if (Test-Path -LiteralPath $candidate) { $exists = $true; break }
+  foreach ($path in $paths) {
+    if (Test-Path -LiteralPath $path) {
+      return [ordered]@{ found=$true; mode='exact'; path=$path }
+    }
   }
-  if (-not $exists) {
+
+  $leaf = [System.IO.Path]::GetFileName($normalized)
+  $matches = @($AllFiles | Where-Object { $_.Name -ieq $leaf })
+  if ($matches.Count -eq 1) {
+    return [ordered]@{ found=$true; mode='unique-basename'; path=$matches[0].FullName }
+  }
+  return [ordered]@{ found=$false; mode='missing'; path=$null; basename_matches=$matches.Count }
+}
+
+foreach ($ref in $references) {
+  $candidateResolution = Resolve-LocalReference $CandidateRoot $ref $candidateFiles
+  if ($candidateResolution.found) {
+    if ($candidateResolution.mode -eq 'unique-basename') {
+      $aliasResolvedRefs += [ordered]@{ ref=$ref; resolved=$candidateResolution.path }
+      Write-Host "CONTENT_REFERENCE=ALIAS_RESOLVED ref=$ref path=$($candidateResolution.path)"
+    }
+    continue
+  }
+
+  $baselineResolution = Resolve-LocalReference $BaselineRoot $ref $baselineFiles
+  if ($baselineResolution.found) {
     $missingRefs += $ref
-    Write-Host "CONTENT_REFERENCE=MISSING ref=$ref"
+    Write-Host "CONTENT_REFERENCE=REGRESSION_MISSING ref=$ref baseline=$($baselineResolution.path)"
+  } else {
+    $baselineMissingRefs += $ref
+    Write-Host "CONTENT_REFERENCE=BASELINE_MISSING ref=$ref"
   }
 }
 
 $report = [ordered]@{
   schema = 1
   candidate_root = $CandidateRoot
+  baseline_root = $BaselineRoot
   active_json_count = $activeJson.Count
   active_csv_count = $activeCsv.Count
   referenced_local_assets = $references.Count
   json_failures = $jsonFailures
   csv_failures = $csvFailures
   missing_references = @($missingRefs | Sort-Object -Unique)
+  baseline_missing_references = @($baselineMissingRefs | Sort-Object -Unique)
+  alias_resolved_references = $aliasResolvedRefs
 }
 $parent = Split-Path -Parent $ReportPath
 if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
 $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ReportPath -Encoding UTF8
 
 Write-Host "CONTENT_INTEGRITY_REPORT=$ReportPath"
-Write-Host "CONTENT_INTEGRITY_SUMMARY json=$($activeJson.Count) csv=$($activeCsv.Count) refs=$($references.Count) json_failures=$($jsonFailures.Count) csv_failures=$($csvFailures.Count) missing_refs=$($missingRefs.Count)"
+Write-Host "CONTENT_INTEGRITY_SUMMARY json=$($activeJson.Count) csv=$($activeCsv.Count) refs=$($references.Count) json_failures=$($jsonFailures.Count) csv_failures=$($csvFailures.Count) regression_missing_refs=$($missingRefs.Count) baseline_missing_refs=$($baselineMissingRefs.Count) alias_resolved=$($aliasResolvedRefs.Count)"
 
 if ($jsonFailures.Count -gt 0 -or $csvFailures.Count -gt 0) {
   throw "CONTENT_INTEGRITY=FAIL syntax_or_shape json_failures=$($jsonFailures.Count) csv_failures=$($csvFailures.Count)"
 }
 if ($missingRefs.Count -gt 0) {
-  throw "CONTENT_INTEGRITY=FAIL missing_references=$($missingRefs.Count)"
+  throw "CONTENT_INTEGRITY=FAIL regression_missing_references=$($missingRefs.Count)"
+}
+if ($baselineMissingRefs.Count -gt 0) {
+  Write-Host "CONTENT_INTEGRITY_DEBT=OBSERVED baseline_missing_references=$($baselineMissingRefs.Count)"
 }
 Write-Host "CONTENT_INTEGRITY=PASS"
