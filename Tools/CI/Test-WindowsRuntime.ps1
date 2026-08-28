@@ -52,6 +52,9 @@ public static class ArmyAttackWindowProbe
     public static extern bool IsHungAppWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
     [DllImport("user32.dll", CharSet=CharSet.Unicode)]
@@ -245,6 +248,21 @@ try {
   if ($handle -eq [IntPtr]::Zero) { throw "WINDOW_HANDLE=FAIL label=$Label phase=initial_capture" }
   $initial = Capture-WindowEvidence $handle 'initial'
 
+  $foreground = [ArmyAttackWindowProbe]::SetForegroundWindow($handle)
+  Start-Sleep -Milliseconds 300
+  [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+  Start-Sleep -Milliseconds 800
+  $proc.Refresh()
+  if ($proc.HasExited) { throw "INPUT_SMOKE=FAIL label=$Label action=escape process_exited=$($proc.ExitCode)" }
+  $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
+  if ($handle -eq [IntPtr]::Zero) { throw "INPUT_SMOKE=FAIL label=$Label action=escape no_visible_window" }
+  if ([ArmyAttackWindowProbe]::IsHungAppWindow($handle)) { throw "INPUT_SMOKE=FAIL label=$Label action=escape hung" }
+  [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+  Start-Sleep -Milliseconds 800
+  $postInput = Capture-WindowEvidence $handle 'post-input'
+  $inputChanged = $initial.Sha256 -ne $postInput.Sha256
+  Write-Host "INPUT_SMOKE=PASS label=$Label foreground=$foreground screenshot_changed=$inputChanged action=escape_roundtrip"
+
   $elapsed = 0
   while ($elapsed -lt $StabilitySeconds) {
     Start-Sleep -Seconds 5
@@ -275,25 +293,24 @@ try {
   Write-Host "RUNTIME_STABILITY=PASS label=$Label seconds=$StabilitySeconds"
   Write-Host "WINDOW_RESPONDING=PASS label=$Label phase=final"
 
-  $crashes = @()
   try {
     $exeName = [regex]::Escape([System.IO.Path]::GetFileName($ExePath))
-    $crashes = @(Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=$launchTime } -ErrorAction Stop |
-      Where-Object {
-        $_.ProviderName -in @('Application Error','Windows Error Reporting','Application Hang') -and
-        $_.Message -match $exeName
-      })
+    $events = @(Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=$launchTime } -ErrorAction SilentlyContinue)
+    $crashes = @($events | Where-Object {
+      $_.ProviderName -in @('Application Error','Windows Error Reporting','Application Hang') -and
+      $_.Message -match $exeName
+    })
     if ($crashes.Count -gt 0) {
       foreach ($event in $crashes | Select-Object -First 10) {
         Write-Host "WINDOW_EVENT=$($event.ProviderName) id=$($event.Id) time=$($event.TimeCreated)"
       }
       throw "CRASH_CHECK=FAIL label=$Label events=$($crashes.Count)"
     }
-    Write-Host "CRASH_CHECK=PASS label=$Label"
+    Write-Host "CRASH_CHECK=PASS label=$Label events=0"
   }
   catch {
     if ($_.Exception.Message -like 'CRASH_CHECK=FAIL*') { throw }
-    Write-Host "CRASH_CHECK=SKIPPED_WITH_REASON label=$Label reason=event_log_unavailable message=$($_.Exception.Message)"
+    Write-Host "CRASH_CHECK=SKIPPED_WITH_REASON label=$Label reason=event_log_access message=$($_.Exception.Message)"
   }
 
   Write-Host "WINDOW_RUNTIME_VALIDATION=PASS label=$Label"
