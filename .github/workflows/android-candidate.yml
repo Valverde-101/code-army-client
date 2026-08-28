@@ -100,6 +100,12 @@ jobs:
         run: |
           & '.\Tools\CI\Ensure-HarmanAir502.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
 
+      - name: Pin AIR50 Android SDK view
+        id: pinned_android_sdk
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -TargetApi '33' -BuildTools '33.0.2'
+
       - name: Inspect upstream Android reference
         id: android_reference
         shell: powershell
@@ -110,7 +116,8 @@ jobs:
         id: android_build
         shell: powershell
         run: |
-          & '.\Tools\CI\Build-Android.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
+          if(-not $env:PINNED_ANDROID_BUILD_ROOT){throw 'PINNED_ANDROID_BUILD_ROOT=FAIL missing_env'}
+          & '.\Tools\CI\Build-Android.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:PINNED_ANDROID_BUILD_ROOT
           $apk=Get-ChildItem (Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android") -File -Filter '*.apk'|Sort-Object Length -Descending|Select-Object -First 1
           if(-not $apk){throw 'APK_GENERATED=FAIL not_found'}
           "ANDROID_APK_PATH=$($apk.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
@@ -143,6 +150,7 @@ jobs:
             "RUNNER_NAME=$env:RUNNER_NAME"
             "PUBLISHED_CONTENT_OUTCOME=${{ steps.published_content.outcome }}"
             "HARMAN_AIR_OUTCOME=${{ steps.harman_air.outcome }}"
+            "PINNED_ANDROID_SDK_OUTCOME=${{ steps.pinned_android_sdk.outcome }}"
             "ANDROID_REFERENCE_OUTCOME=${{ steps.android_reference.outcome }}"
             "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
             "APK_VALIDATE_OUTCOME=${{ steps.apk_validate.outcome }}"
@@ -198,12 +206,14 @@ jobs:
         run: |
           Write-Host "PUBLISHED_CONTENT_OUTCOME=${{ steps.published_content.outcome }}"
           Write-Host "HARMAN_AIR_OUTCOME=${{ steps.harman_air.outcome }}"
+          Write-Host "PINNED_ANDROID_SDK_OUTCOME=${{ steps.pinned_android_sdk.outcome }}"
           Write-Host "ANDROID_REFERENCE_OUTCOME=${{ steps.android_reference.outcome }}"
           Write-Host "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
           Write-Host "APK_VALIDATE_OUTCOME=${{ steps.apk_validate.outcome }}"
           Write-Host "ADB_TEST_OUTCOME=${{ steps.adb_test.outcome }}"
           if('${{ steps.published_content.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL published_content'}
           if('${{ steps.harman_air.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL harman_air'}
+          if('${{ steps.pinned_android_sdk.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL pinned_android_sdk'}
           if('${{ steps.android_reference.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_reference'}
           if('${{ steps.android_build.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_build'}
           if('${{ steps.apk_validate.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL apk_validate'}
