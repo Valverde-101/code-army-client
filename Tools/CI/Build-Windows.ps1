@@ -351,9 +351,40 @@ if (-not $adt) {
 Write-Host "PACKAGE_METHOD=AIR_BUNDLE"
 $packageLog = Join-Path $logRoot 'adt-package.log'
 $packageErr = Join-Path $logRoot 'adt-package.err.log'
+
+# AIR desktop bundles still require a signing identity. Create an ephemeral,
+# build-local certificate; never persist or print its password.
+$certPath = Join-Path $buildRoot 'local-ci-signing.p12'
+$certPassword = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
+if (Test-Path -LiteralPath $certPath) {
+  Remove-Item -LiteralPath $certPath -Force
+}
+$certLog = Join-Path $logRoot 'adt-certificate.log'
+$certErr = Join-Path $logRoot 'adt-certificate.err.log'
+$certArgs = @(
+  '-certificate',
+  '-cn', 'Army Attack Local CI',
+  '-o', 'Valverde Local Build',
+  '-c', 'PE',
+  '2048-RSA',
+  $certPath,
+  $certPassword
+)
+$certProc = Start-Process -FilePath $adt -ArgumentList $certArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $certLog -RedirectStandardError $certErr
+if ($certProc.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $certPath)) {
+  Write-Host "SIGNING_CERTIFICATE=FAIL exit=$($certProc.ExitCode)"
+  if (Test-Path -LiteralPath $certLog) { Get-Content -LiteralPath $certLog -Tail 80 | ForEach-Object { Write-Host $_ } }
+  if (Test-Path -LiteralPath $certErr) { Get-Content -LiteralPath $certErr -Tail 80 | ForEach-Object { Write-Host $_ } }
+  throw 'TOOLCHAIN=FAIL unable to create local AIR signing certificate'
+}
+Write-Host "SIGNING_CERTIFICATE=PASS path=$certPath"
+
 $packageArgs = @(
   '-package',
   '-target', 'bundle',
+  '-storetype', 'pkcs12',
+  '-keystore', $certPath,
+  '-storepass', $certPassword,
   $bundleRoot,
   $descriptor,
   '-C', $stageRoot, '.'
@@ -390,4 +421,11 @@ if ($launch.HasExited) {
 Write-Host "START=PASS pid=$($launch.Id)"
 try { Stop-Process -Id $launch.Id -Force -ErrorAction SilentlyContinue } catch {}
 Write-Host "SMOKE=PASS criterion=process_alive_12s"
+
+# Remove the ephemeral signing identity after the build is complete.
+$certPassword = $null
+if (Test-Path -LiteralPath $certPath) {
+  Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
+}
+Write-Host "SIGNING_CLEANUP=PASS"
 Write-Host "FINAL_VALIDATION=PASS scope=windows_build_and_process_smoke"
