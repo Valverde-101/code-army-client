@@ -125,6 +125,11 @@ $coveragePath = Join-Path $buildRoot 'overlay-coverage.json'
 $coverage | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $coveragePath -Encoding UTF8
 Write-Host "OVERLAY_COVERAGE_REPORT=$coveragePath"
 
+$contentAuditReport = Join-Path $buildRoot 'content-integrity.json'
+$contentAudit = Join-Path $RepoRoot 'Tools\CI\Audit-ContentIntegrity.ps1'
+& $contentAudit -CandidateRoot $candidateRoot -ReportPath $contentAuditReport
+Write-Host "CONTENT_INTEGRITY_GATE=PASS report=$contentAuditReport"
+
 $candidateExe = Join-Path $candidateRoot 'Army Attack.exe'
 $candidateSwf = Join-Path $candidateRoot 'iArmyAirOfflineSavingv21_2.swf'
 if (-not (Test-Path -LiteralPath $candidateExe) -or -not (Test-Path -LiteralPath $candidateSwf)) {
@@ -194,6 +199,7 @@ $report = @"
 - Binary seed release: upstream v23
 - HEAD overlays: src/data, src/config (non-destructive overlay; upstream-only files preserved)
 - Overlay coverage: $coveragePath
+- Content integrity: $contentAuditReport
 - Runtime validation: PASS
 - Window/UI: PASS
 - Input smoke: PASS
@@ -228,12 +234,13 @@ $summary = [ordered]@{
   evidence_root=$evidenceRoot
   provenance_manifest=$manifestPath
   overlay_coverage=$coveragePath
+  content_integrity=$contentAuditReport
   report=$reportPath
 }
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
 
 $manifestEntries = @()
-foreach ($file in @(Get-ChildItem -LiteralPath $evidenceRoot -Recurse -File) + @(Get-Item -LiteralPath $manifestPath,$coveragePath,$reportPath,$summaryPath)) {
+foreach ($file in @(Get-ChildItem -LiteralPath $evidenceRoot -Recurse -File) + @(Get-Item -LiteralPath $manifestPath,$coveragePath,$contentAuditReport,$reportPath,$summaryPath)) {
   $manifestEntries += [ordered]@{
     path=$file.FullName
     size=$file.Length
