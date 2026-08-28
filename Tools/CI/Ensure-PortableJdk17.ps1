@@ -49,8 +49,15 @@ if(-not (Test-Path -LiteralPath $javaExe)){
   }
 }
 
-$out=& $javaExe -version 2>&1 | ForEach-Object {$_.ToString()}
-if($LASTEXITCODE -ne 0 -or (($out -join "`n") -notmatch 'version "17\.')){throw 'JDK17_PROBE=FAIL'}
+$probeRoot=Join-Path $AndroidBuildRoot 'Builds\code-army-client\toolchain-probes'
+New-Item -ItemType Directory -Force -Path $probeRoot | Out-Null
+$probeOut=Join-Path $probeRoot 'jdk17-version.out.log'
+$probeErr=Join-Path $probeRoot 'jdk17-version.err.log'
+$p=Start-Process -FilePath $javaExe -ArgumentList '-version' -NoNewWindow -PassThru -Wait -RedirectStandardOutput $probeOut -RedirectStandardError $probeErr
+$probeLines=@()
+foreach($probeFile in @($probeOut,$probeErr)){if(Test-Path -LiteralPath $probeFile){$probeLines+=@(Get-Content -LiteralPath $probeFile)}}
+$probeText=($probeLines -join [Environment]::NewLine)
+if($p.ExitCode -ne 0 -or $probeText -notmatch 'version "17\.'){throw "JDK17_PROBE=FAIL exit=$($p.ExitCode)"}
 $env:JAVA_HOME=$installRoot
 $env:PATH="$(Join-Path $installRoot 'bin');$env:PATH"
 if($env:GITHUB_ENV){"JAVA_HOME=$installRoot"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
