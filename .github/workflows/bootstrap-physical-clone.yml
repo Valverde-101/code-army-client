@@ -104,16 +104,28 @@ jobs:
           Write-Host "ANDROIDBUILD_ROOT=PASS root=$root"
 
       - name: Validate exact-source upstream Windows reference
+        id: upstream_reference
         shell: powershell
         run: |
           & '.\Tools\CI\Validate-UpstreamWindowsRelease.ps1' `
             -AndroidBuildRoot $env:ANDROIDBUILD_ROOT `
             -ExpectedSha $env:EXPECTED_SOURCE_SHA
 
-      - name: Build and smoke-test Windows executable from source
+      - name: Diagnostic source-only recompilation
+        id: source_rebuild
+        continue-on-error: true
         shell: powershell
         run: |
           & '.\Tools\CI\Build-Windows.ps1' `
+            -RepoRoot $env:PHYSICAL_REPO_ROOT `
+            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
+            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
+
+      - name: Assemble and validate full Windows candidate
+        id: full_candidate
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Build-WindowsFullCandidate.ps1' `
             -RepoRoot $env:PHYSICAL_REPO_ROOT `
             -ExpectedSha $env:EXPECTED_SOURCE_SHA `
             -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
@@ -122,5 +134,11 @@ jobs:
         if: always()
         shell: powershell
         run: |
+          Write-Host "SOURCE_REBUILD_OUTCOME=${{ steps.source_rebuild.outcome }}"
+          Write-Host "UPSTREAM_REFERENCE_OUTCOME=${{ steps.upstream_reference.outcome }}"
+          Write-Host "FULL_CANDIDATE_OUTCOME=${{ steps.full_candidate.outcome }}"
           Write-Host "APK_GENERATED=NOT_RUN"
           Write-Host "PHYSICAL_ANDROID_VALIDATION=NOT_RUN"
+          if ('${{ steps.upstream_reference.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL upstream_reference' }
+          if ('${{ steps.full_candidate.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL full_candidate' }
+          Write-Host "FINAL_VALIDATION=PASS windows_full_candidate"
