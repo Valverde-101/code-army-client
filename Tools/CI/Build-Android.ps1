@@ -104,14 +104,16 @@ foreach($name in @('data','config')){
   Write-Host "ANDROID_CONTENT_OVERLAY=PASS component=$name"
 }
 Copy-Item -LiteralPath (Join-Path $RepoRoot 'src\AppIconsForPublish') -Destination (Join-Path $stage 'AppIconsForPublish') -Recurse -Force
-$invalidSeedAsset=Join-Path $stage 'data\icons\mission_icons\objective_icons\Snímek obrazovky (397).png'
-if(Test-Path -LiteralPath $invalidSeedAsset){
-  $needle=[IO.Path]::GetFileName($invalidSeedAsset)
+$objectiveIcons=Join-Path $stage 'data\icons\mission_icons\objective_icons'
+$invalidSeedAssets=@(Get-ChildItem -LiteralPath $objectiveIcons -File -Filter '*obrazovky (397).png' -ErrorAction SilentlyContinue)
+if($invalidSeedAssets.Count -gt 1){throw "ANDROID_STAGE_SANITIZE=FAIL ambiguous_invalid_asset count=$($invalidSeedAssets.Count)"}
+if($invalidSeedAssets.Count -eq 1){
+  $asset=$invalidSeedAssets[0]
+  $needle=$asset.Name
   $refs=Get-ChildItem -LiteralPath $stage -Recurse -File -Include '*.json','*.xml','*.csv','*.txt','*.as' -ErrorAction SilentlyContinue | Select-String -SimpleMatch $needle -List -ErrorAction SilentlyContinue
   if($refs){throw "ANDROID_STAGE_SANITIZE=FAIL referenced_invalid_asset name=$needle refs=$($refs.Path -join ',')"}
-  $asset=Get-Item -LiteralPath $invalidSeedAsset
   Write-Host "ANDROID_STAGE_SANITIZE=PASS removed_unreferenced_invalid_asset path=$($asset.FullName) size=$($asset.Length)"
-  Remove-Item -LiteralPath $invalidSeedAsset -Force
+  Remove-Item -LiteralPath $asset.FullName -Force
 }
 $namespace=if($modern){'51.3'}else{'32.0'}
 $descriptor=Join-Path $buildRoot 'ArmyAttack-android-app.xml'
