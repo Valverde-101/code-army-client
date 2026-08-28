@@ -20,7 +20,7 @@ env:
 jobs:
   source-sync:
     name: 1. Sync exact HEAD
-    runs-on: [self-hosted, Windows, X64, android-parallel]
+    runs-on: [windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 10
     steps:
       - name: Bootstrap portable Git
@@ -63,7 +63,7 @@ jobs:
   published-audit:
     name: 2A. Audit v23.2 and mods
     needs: source-sync
-    runs-on: [self-hosted, Windows, X64, android-parallel]
+    runs-on: [windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -90,7 +90,7 @@ jobs:
   toolchain-preflight:
     name: 2B. Provision HARMAN/JDK/SDK
     needs: source-sync
-    runs-on: [self-hosted, Windows, X64, android-parallel]
+    runs-on: [windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +120,7 @@ jobs:
   reference-apk:
     name: 2C. Inspect upstream Android APK
     needs: source-sync
-    runs-on: [self-hosted, Windows, X64, android-parallel]
+    runs-on: [windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -146,7 +146,7 @@ jobs:
   windows-regression:
     name: 2D. Windows regression
     needs: source-sync
-    runs-on: [self-hosted, Windows, X64, android-parallel]
+    runs-on: [windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -201,7 +201,7 @@ jobs:
   android-candidate:
     name: 3. Build and validate Android APK
     needs: [published-audit, toolchain-preflight, reference-apk]
-    runs-on: [self-hosted, Windows, X64, android-parallel]
+    runs-on: [windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -281,7 +281,7 @@ jobs:
     name: 4. Publish logs and final gate
     if: always()
     needs: [source-sync, published-audit, toolchain-preflight, reference-apk, windows-regression, android-candidate]
-    runs-on: [self-hosted, Windows, X64, android-parallel]
+    runs-on: [windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
