@@ -35,7 +35,7 @@ function Select-ModernJava {
     if(-not $candidate -or -not (Test-Path -LiteralPath $candidate)){continue}
     $out=Join-Path $probeRoot ("harman-java-"+[Guid]::NewGuid().ToString('N')+".out.log")
     $err=Join-Path $probeRoot ("harman-java-"+[Guid]::NewGuid().ToString('N')+".err.log")
-    $p=Start-Process -FilePath $candidate -ArgumentList '-version' -NoNewWindow -PassThru -Wait -RedirectStandardOutput $out -RedirectStandardError $err
+    $p=Start-Process -FilePath $candidate -ArgumentList @('-XshowSettings:properties','-version') -NoNewWindow -PassThru -Wait -RedirectStandardOutput $out -RedirectStandardError $err
     $lines=@()
     foreach($file in @($out,$err)){if(Test-Path -LiteralPath $file){$lines+=@(Get-Content -LiteralPath $file)}}
     $text=($lines -join [Environment]::NewLine)
@@ -45,11 +45,17 @@ function Select-ModernJava {
       $major=[int]$matches['major']
       if($major -eq 1 -and $matches['minor']){$major=[int]$matches['minor']}
     }
-    if($major -ge 11){
-      return [pscustomobject]@{Exe=$candidate;Home=(Split-Path -Parent (Split-Path -Parent $candidate));Major=$major;VersionText=$text}
+    $javaHome=$null
+    if($text -match '(?m)^\s*java\.home\s*=\s*(?<home>.+?)\s*$'){$javaHome=$matches['home'].Trim()}
+    if(-not $javaHome){
+      $derived=Split-Path -Parent (Split-Path -Parent $candidate)
+      if(Test-Path -LiteralPath (Join-Path $derived 'bin\java.exe')){$javaHome=$derived}
+    }
+    if($major -ge 11 -and $javaHome -and (Test-Path -LiteralPath (Join-Path $javaHome 'bin\java.exe'))){
+      return [pscustomobject]@{Exe=(Join-Path $javaHome 'bin\java.exe');Home=$javaHome;Major=$major;VersionText=$text}
     }
   }
-  throw 'HARMAN_AIR_JAVA=FAIL requires_jdk_11_or_newer'
+  throw 'HARMAN_AIR_JAVA=FAIL requires_jdk_11_or_newer_with_valid_home'
 }
 
 function Probe-Air([string]$Root,[string]$ExpectedVersion,[pscustomobject]$JavaInfo){
@@ -77,7 +83,7 @@ function Probe-Air([string]$Root,[string]$ExpectedVersion,[pscustomobject]$JavaI
 }
 
 $java=Select-ModernJava
-Write-Host "HARMAN_AIR_JAVA=PASS path=$($java.Exe) major=$($java.Major)"
+Write-Host "HARMAN_AIR_JAVA=PASS path=$($java.Exe) home=$($java.Home) major=$($java.Major)"
 $probe=Probe-Air $installRoot $version $java
 
 if(-not $probe){
