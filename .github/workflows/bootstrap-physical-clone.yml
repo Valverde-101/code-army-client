@@ -1,0 +1,93 @@
+name: Bootstrap Army Attack physical clone
+
+on:
+  push:
+    branches:
+      - chore/local-army-bootstrap-20260827
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: army-attack-physical-clone-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bootstrap-physical-clone:
+    name: Sync exact HEAD into AndroidBuild Repositories
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.sha }}
+      SOURCE_BRANCH: ${{ github.ref_name }}
+
+    steps:
+      - name: Bootstrap portable Git
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $candidates=New-Object System.Collections.Generic.List[string]
+          function Add-Candidate([string]$p){if($p -and -not $candidates.Contains($p)){$candidates.Add($p)}}
+          $existing=Get-Command git.exe -ErrorAction SilentlyContinue
+          if($existing){Add-Candidate $existing.Source}
+          if($env:ProgramFiles){Add-Candidate (Join-Path $env:ProgramFiles 'Git\cmd\git.exe')}
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){
+              foreach($relative in @(
+                'AndroidBuild\Tools\Git\cmd\git.exe',
+                'AndroidBuild\PortableGit\cmd\git.exe',
+                'Git\cmd\git.exe'
+              )){
+                Add-Candidate (Join-Path $drive.Root $relative)
+              }
+            }
+          }
+          $git=$candidates|Where-Object{Test-Path -LiteralPath $_}|Select-Object -First 1
+          if(-not $git){throw ('PRECHECK_GIT=FAIL git.exe not found. Probed: '+($candidates -join '; '))}
+          $gitDir=Split-Path -Parent $git
+          $gitDir|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH="$gitDir;$env:PATH"
+          & $git config --global core.longPaths true
+          Write-Host "PRECHECK_GIT=PASS path=$git"
+
+      - name: Checkout exact workflow HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate exact Actions checkout
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual -ne $env:EXPECTED_SOURCE_SHA){
+            throw "EXACT_ACTIONS_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$actual"
+          }
+          Write-Host "PRECHECK_GITHUB=PASS"
+          Write-Host "BROKER=PASS runner=$env:RUNNER_NAME"
+          Write-Host "RUNNER_ASSIGNMENT=PASS runner=$env:RUNNER_NAME"
+          Write-Host "EXACT_ACTIONS_HEAD=PASS sha=$actual"
+          Write-Host "REPOSITORY=$env:GITHUB_REPOSITORY"
+          Write-Host "BRANCH=$env:SOURCE_BRANCH"
+          Write-Host "EXPECTED_SOURCE_SHA=$env:EXPECTED_SOURCE_SHA"
+          Write-Host "RUN=$env:GITHUB_RUN_ID"
+          Write-Host "JOB_ID=$env:GITHUB_JOB"
+          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
+
+      - name: Synchronize canonical physical repository
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Bootstrap-PhysicalClone.ps1' `
+            -Repository $env:GITHUB_REPOSITORY `
+            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
+            -SourceBranch $env:SOURCE_BRANCH
+
+      - name: Final bootstrap gate
+        shell: powershell
+        run: |
+          Write-Host "BUILD=NOT_RUN"
+          Write-Host "APK_GENERATED=NOT_RUN"
+          Write-Host "FINAL_VALIDATION=PASS scope=local_source_bootstrap_only"
