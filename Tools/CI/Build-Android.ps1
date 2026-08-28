@@ -89,6 +89,7 @@ $harmanAndroid=($air.Major -ge 50)
 $airNamespace=if($harmanAndroid){"$($air.Major).$($air.Minor)"}else{'32.0'}
 $targetApi=if($air.Major -eq 50){33}elseif($air.Major -ge 51){36}else{27}
 $targetBuildTools=if($air.Major -eq 50){'33.0.2'}elseif($air.Major -ge 51){'36.0.0'}else{$null}
+$targetAbi=if($harmanAndroid){'arm64-v8a'}else{'armeabi-v7a'}
 Write-Host "AIR_SDK=PASS root=$($air.Root) version=$($air.Version) harman_android=$harmanAndroid namespace=$airNamespace target_api=$targetApi"
 if($harmanAndroid){
   $sdkmanager=Get-ChildItem -LiteralPath $androidSdk -Recurse -File -Filter 'sdkmanager.bat' -ErrorAction SilentlyContinue|Sort-Object FullName|Select-Object -First 1
@@ -211,7 +212,7 @@ if($p2.ExitCode -ne 0 -or -not (Test-Path $apkPath)){
   throw 'BUILD=FAIL android_package'
 }
 $apk=Get-Item $apkPath;$apkSha=(Get-FileHash $apkPath -Algorithm SHA256).Hash.ToLowerInvariant()
-$prov=[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;build_tier=$tier;air_sdk=$air.Version;air_sdk_root=$air.Root;air_namespace=$namespace;java_home=$env:JAVA_HOME;java_major=$javaMajor;android_sdk=$androidSdk;target_android_api=$targetApi;target_abi=if($harmanAndroid){'arm64-v8a'}else{'armeabi-v7a'};binary_seed_release='v23';binary_seed_source_sha='324c29b6c9e0e32f61183bf52725662a2bd8aab9';swf_sha256=$swfSha;overlays=@('src/data','src/config');descriptor=$descriptor;removed_permissions=@('WRITE_EXTERNAL_STORAGE','MANAGE_EXTERNAL_STORAGE');excluded_extensions=@('fi.joniaromaa.adobeair.discordrpc');apk_path=$apkPath;apk_size=$apk.Length;apk_sha256=$apkSha}
+$prov=[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;build_tier=$tier;air_sdk=$air.Version;air_sdk_root=$air.Root;air_namespace=$namespace;java_home=$env:JAVA_HOME;java_major=$javaMajor;android_sdk=$androidSdk;target_android_api=$targetApi;target_abi=$targetAbi;binary_seed_release='v23';binary_seed_source_sha='324c29b6c9e0e32f61183bf52725662a2bd8aab9';swf_sha256=$swfSha;overlays=@('src/data','src/config');descriptor=$descriptor;removed_permissions=@('WRITE_EXTERNAL_STORAGE','MANAGE_EXTERNAL_STORAGE');excluded_extensions=@('fi.joniaromaa.adobeair.discordrpc');apk_path=$apkPath;apk_size=$apk.Length;apk_sha256=$apkSha}
 $provPath=Join-Path $buildRoot 'BUILD-PROVENANCE.json'
 $prov|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $provPath -Encoding UTF8
 $toolchain=[ordered]@{
@@ -224,7 +225,7 @@ $toolchain=[ordered]@{
   android_sdk=$androidSdk
   android_api=$targetApi
   android_build_tools=$targetBuildTools
-  target_abi=if($harmanAndroid){'arm64-v8a'}else{'armeabi-v7a'}
+  target_abi=$targetAbi
 }
 $toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
 $toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
@@ -238,4 +239,5 @@ Write-Host "SWF_SHA256=$swfSha"
 Write-Host "AIR_VERSION=$($air.Version)"
 $playReady=if($harmanAndroid){'CANDIDATE'}else{'NO_LEGACY_TOOLCHAIN'}
 Write-Host "PLAY_READY=$playReady"
-Write-Host "PROVENANCE_MANIFEST=$provPath"`nWrite-Host "TOOLCHAIN_MANIFEST=$toolchainPath"
+Write-Host "PROVENANCE_MANIFEST=$provPath"
+Write-Host "TOOLCHAIN_MANIFEST=$toolchainPath"

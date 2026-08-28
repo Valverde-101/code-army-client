@@ -6,7 +6,7 @@ Set-StrictMode -Version Latest
 
 $version='50.2.3.6'
 $asset='AIRSDK_Windows.zip'
-$downloadUrl="https://airsdk.harman.com/api/versions/$version/sdks/$asset?license=accepted"
+$downloadUrl="https://airsdk.harman.com/api/versions/$version/sdks/${asset}?license=accepted"
 $downloadRoot=Join-Path $AndroidBuildRoot 'Downloads\AIR'
 $archivePath=Join-Path $downloadRoot "AIRSDK_Windows_$version.zip"
 $archiveHashPath="$archivePath.sha256.local"

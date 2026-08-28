@@ -181,7 +181,7 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          Write-Host "AIR_HARMAN_AIR_OUTCOME=${{ steps.harman_air.outcome }}"
+          Write-Host "HARMAN_AIR_OUTCOME=${{ steps.harman_air.outcome }}"
           Write-Host "ANDROID_REFERENCE_OUTCOME=${{ steps.android_reference.outcome }}"
           Write-Host "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
           Write-Host "APK_VALIDATE_OUTCOME=${{ steps.apk_validate.outcome }}"
