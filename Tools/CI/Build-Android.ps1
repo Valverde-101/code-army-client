@@ -132,7 +132,7 @@ $xml=@"
   </icon>
   <android>
     <manifestAdditions><![CDATA[
-      <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+      <manifest>
         <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
         <application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"/>
       </manifest>
