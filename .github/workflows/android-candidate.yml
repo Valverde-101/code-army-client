@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: army-attack-android-${{ github.ref }}
@@ -43,7 +43,8 @@ jobs:
         with:
           ref: ${{ env.EXPECTED_SOURCE_SHA }}
           fetch-depth: 1
-          persist-credentials: false
+          persist-credentials: true
+          fetch-depth: 0
 
       - name: Validate exact checkout
         shell: powershell
@@ -196,6 +197,20 @@ jobs:
               ForEach-Object { Write-Host ("LOCAL_FILE="+$_.FullName+" size="+$_.Length) }
           }
 
+      - name: Publish sanitized logs to repository
+        id: publish_logs
+        if: always()
+        continue-on-error: true
+        shell: powershell
+        run: |
+          if(-not $env:ANDROIDBUILD_ROOT){Write-Host 'LOG_PUBLISH=SKIPPED_WITH_REASON root_unresolved';exit 0}
+          & '.\Tools\CI\Publish-AndroidEvidence.ps1' `
+            -RepoCheckoutRoot $env:GITHUB_WORKSPACE `
+            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT `
+            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
+            -RunId $env:GITHUB_RUN_ID `
+            -SourceBranch $env:SOURCE_BRANCH
+
       - name: Final Android gate
         if: always()
         shell: powershell
@@ -207,6 +222,7 @@ jobs:
           Write-Host "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
           Write-Host "APK_VALIDATE_OUTCOME=${{ steps.apk_validate.outcome }}"
           Write-Host "ADB_TEST_OUTCOME=${{ steps.adb_test.outcome }}"
+          Write-Host "LOG_PUBLISH_OUTCOME=${{ steps.publish_logs.outcome }}"
           if('${{ steps.published_content.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL published_content'}
           if('${{ steps.harman_air.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL harman_air'}
           if('${{ steps.pinned_android_sdk.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL pinned_android_sdk'}
