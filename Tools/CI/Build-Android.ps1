@@ -28,7 +28,11 @@ $java=$javaCandidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-O
 if(-not $java){throw 'JAVA=FAIL'}
 $env:JAVA_HOME=Split-Path -Parent (Split-Path -Parent $java)
 Write-Host "JAVA=PASS path=$java"
-& $java -version 2>&1|ForEach-Object{Write-Host "JAVA_VERSION=$_"}
+$javaVersionOut=Join-Path $env:TEMP "army-java-version-$PID.out.txt"
+$javaVersionErr=Join-Path $env:TEMP "army-java-version-$PID.err.txt"
+$pJava=Start-Process -FilePath $java -ArgumentList '-version' -NoNewWindow -PassThru -Wait -RedirectStandardOutput $javaVersionOut -RedirectStandardError $javaVersionErr
+if($pJava.ExitCode -ne 0){throw "JAVA_VERSION=FAIL exit=$($pJava.ExitCode)"}
+foreach($vf in @($javaVersionOut,$javaVersionErr)){if(Test-Path $vf){Get-Content $vf|ForEach-Object{Write-Host "JAVA_VERSION=$_"};Remove-Item $vf -Force -ErrorAction SilentlyContinue}}
 $airRoots=New-Object System.Collections.Generic.List[string]
 function Add-AirRoot([string]$p){if($p -and (Test-Path -LiteralPath (Join-Path $p 'bin\adt.bat')) -and -not $airRoots.Contains($p)){$airRoots.Add($p)}}
 if($env:AIR_HOME){Add-AirRoot $env:AIR_HOME}
