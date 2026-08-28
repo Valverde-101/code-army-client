@@ -78,7 +78,17 @@ jobs:
           "PHYSICAL_REPO_ROOT=$(Join-Path $root 'Repositories\code-army-client')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "ANDROIDBUILD_ROOT=PASS root=$root"
 
-      - name: Prepare AIR32-compatible Java
+      - name: Initialize Android diagnostics
+        if: always()
+        shell: powershell
+        run: |
+          if(-not $env:ANDROIDBUILD_ROOT){Write-Host 'ANDROID_DIAGNOSTICS_INIT=SKIPPED_WITH_REASON root_unresolved';exit 0}
+          $dir=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\diagnostics"
+          New-Item -ItemType Directory -Force -Path $dir|Out-Null
+          "ANDROID_DIAGNOSTICS_DIR=$dir"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "ANDROID_DIAGNOSTICS_INIT=PASS path=$dir"
+
+      - name: Prepare AIR32 fallback Java
         id: legacy_java
         shell: powershell
         run: |
@@ -99,39 +109,6 @@ jobs:
           if(-not $apk){throw 'APK_GENERATED=FAIL not_found'}
           "ANDROID_APK_PATH=$($apk.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Collect Android build diagnostics
-        if: always()
-        shell: powershell
-        run: |
-          $dir=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android"
-          if(-not (Test-Path -LiteralPath $dir)){Write-Host "ANDROID_DIAGNOSTICS=SKIPPED_WITH_REASON build_dir_missing=$dir";exit 0}
-          $diag=Join-Path $dir 'ci-diagnostics.txt'
-          @(
-            "REPOSITORY=$env:GITHUB_REPOSITORY"
-            "EXPECTED_SOURCE_SHA=$env:EXPECTED_SOURCE_SHA"
-            "RUN=$env:GITHUB_RUN_ID"
-            "RUNNER_NAME=$env:RUNNER_NAME"
-            "LEGACY_JAVA_OUTCOME=${{ steps.legacy_java.outcome }}"
-            "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
-          ) | Set-Content -LiteralPath $diag -Encoding UTF8
-          Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue | Sort-Object FullName | ForEach-Object {
-            "FILE=$($_.FullName) SIZE=$($_.Length)" | Add-Content -LiteralPath $diag -Encoding UTF8
-          }
-          foreach($log in Get-ChildItem -LiteralPath $dir -Recurse -File -Include '*.log','*.txt' -ErrorAction SilentlyContinue){
-            "--- LOG $($log.FullName) ---" | Add-Content -LiteralPath $diag -Encoding UTF8
-            Get-Content -LiteralPath $log.FullName -ErrorAction SilentlyContinue | Select-Object -Last 200 | Add-Content -LiteralPath $diag -Encoding UTF8
-          }
-          Write-Host "ANDROID_DIAGNOSTICS=PASS path=$diag"
-
-      - name: Upload Android diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-diagnostics-${{ github.sha }}
-          path: ${{ env.ANDROIDBUILD_ROOT }}\Builds\code-army-client\${{ github.sha }}\android\
-          if-no-files-found: warn
-          retention-days: 7
-
       - name: Validate exact APK
         id: apk_validate
         shell: powershell
@@ -143,6 +120,62 @@ jobs:
         shell: powershell
         run: |
           & '.\Tools\CI\Test-AndroidDevice.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+
+      - name: Collect Android diagnostics
+        if: always()
+        shell: powershell
+        run: |
+          if(-not $env:ANDROIDBUILD_ROOT){Write-Host 'ANDROID_DIAGNOSTICS=SKIPPED_WITH_REASON root_unresolved';exit 0}
+          $build=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android"
+          $diag=Join-Path $build 'diagnostics'
+          New-Item -ItemType Directory -Force -Path $diag|Out-Null
+          Get-ChildItem -LiteralPath $build -File -Filter '*.p12' -ErrorAction SilentlyContinue|Remove-Item -Force -ErrorAction SilentlyContinue
+          @(
+            "REPOSITORY=$env:GITHUB_REPOSITORY"
+            "EXPECTED_SOURCE_SHA=$env:EXPECTED_SOURCE_SHA"
+            "RUN=$env:GITHUB_RUN_ID"
+            "RUNNER_NAME=$env:RUNNER_NAME"
+            "LEGACY_JAVA_OUTCOME=${{ steps.legacy_java.outcome }}"
+            "ANDROID_REFERENCE_OUTCOME=${{ steps.android_reference.outcome }}"
+            "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
+            "APK_VALIDATE_OUTCOME=${{ steps.apk_validate.outcome }}"
+            "ADB_TEST_OUTCOME=${{ steps.adb_test.outcome }}"
+          )|Set-Content -LiteralPath (Join-Path $diag 'ci-diagnostics.txt') -Encoding UTF8
+          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','apk-badging.txt','apk-permissions.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md')){
+            $src=Join-Path $build $name
+            if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination (Join-Path $diag $name) -Force}
+          }
+          $refRoot=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android-upstream-v21.1"
+          if(Test-Path -LiteralPath $refRoot){
+            $refDiag=Join-Path $diag 'upstream-v21.1';New-Item -ItemType Directory -Force -Path $refDiag|Out-Null
+            foreach($name in @('reference.json','aapt-badging.txt')){
+              $src=Join-Path $refRoot $name
+              if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination (Join-Path $refDiag $name) -Force}
+            }
+          }
+          $physical=Join-Path $build 'physical'
+          if(Test-Path -LiteralPath $physical){Copy-Item -LiteralPath $physical -Destination (Join-Path $diag 'physical') -Recurse -Force}
+          $total=(Get-ChildItem -LiteralPath $diag -Recurse -File -ErrorAction SilentlyContinue|Measure-Object Length -Sum).Sum
+          Write-Host "ANDROID_DIAGNOSTICS=PASS path=$diag bytes=$total"
+
+      - name: Upload Android diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-diagnostics-${{ github.sha }}
+          path: ${{ env.ANDROIDBUILD_ROOT }}\Builds\code-army-client\${{ github.sha }}\android\diagnostics\
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload validated APK
+        if: steps.apk_validate.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: army-attack-apk-${{ github.sha }}
+          path: ${{ env.ANDROID_APK_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 
       - name: Final Android gate
         if: always()
