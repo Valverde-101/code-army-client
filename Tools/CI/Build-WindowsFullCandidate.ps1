@@ -64,18 +64,66 @@ New-Item -ItemType Directory -Force -Path $candidateRoot,$evidenceRoot | Out-Nul
 
 Get-ChildItem -LiteralPath $upstreamAppRoot -Force | Copy-Item -Destination $candidateRoot -Recurse -Force
 
+$coverage = [ordered]@{
+  strategy = 'preserve_upstream_then_overlay_head'
+  components = @()
+}
 foreach ($name in @('data','config')) {
   $source = Join-Path (Join-Path $RepoRoot 'src') $name
   $dest = Join-Path $candidateRoot $name
   if (-not (Test-Path -LiteralPath $source)) {
     throw "FULL_CANDIDATE_SOURCE=FAIL missing=$source"
   }
-  if (Test-Path -LiteralPath $dest) {
-    Remove-Item -LiteralPath $dest -Recurse -Force
+  if (-not (Test-Path -LiteralPath $dest)) {
+    New-Item -ItemType Directory -Force -Path $dest | Out-Null
   }
-  Copy-Item -LiteralPath $source -Destination $dest -Recurse -Force
-  Write-Host "HEAD_OVERLAY=PASS component=$name source=$source destination=$dest"
+
+  $sourceFiles = @(Get-ChildItem -LiteralPath $source -Recurse -File -Force)
+  $destFilesBefore = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force)
+  $sourceRelative = @{}
+  foreach ($file in $sourceFiles) {
+    $rel = $file.FullName.Substring($source.Length).TrimStart('\').Replace('\','/')
+    $sourceRelative[$rel.ToLowerInvariant()] = $rel
+  }
+
+  $upstreamOnly = @()
+  foreach ($file in $destFilesBefore) {
+    $rel = $file.FullName.Substring($dest.Length).TrimStart('\').Replace('\','/')
+    if (-not $sourceRelative.ContainsKey($rel.ToLowerInvariant())) {
+      $upstreamOnly += $rel
+    }
+  }
+
+  # Overlay current HEAD files in place. Do NOT remove upstream-only files:
+  # the verified v23 SWF may reference them even when current source recovery omitted them.
+  foreach ($child in Get-ChildItem -LiteralPath $source -Force) {
+    Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force
+  }
+
+  $destFilesAfter = @(Get-ChildItem -LiteralPath $dest -Recurse -File -Force)
+  foreach ($rel in $upstreamOnly) {
+    $preserved = Join-Path $dest ($rel.Replace('/','\'))
+    if (-not (Test-Path -LiteralPath $preserved)) {
+      throw "OVERLAY_COVERAGE=FAIL component=$name upstream_only_not_preserved=$rel"
+    }
+  }
+
+  $coverage.components += [ordered]@{
+    name = $name
+    head_file_count = $sourceFiles.Count
+    upstream_file_count_before = $destFilesBefore.Count
+    upstream_only_preserved_count = $upstreamOnly.Count
+    upstream_only_preserved = $upstreamOnly
+    candidate_file_count_after = $destFilesAfter.Count
+  }
+
+  Write-Host "HEAD_OVERLAY=PASS component=$name source=$source destination=$dest strategy=preserve_upstream_then_overlay_head"
+  Write-Host "OVERLAY_COVERAGE=PASS component=$name head_files=$($sourceFiles.Count) upstream_before=$($destFilesBefore.Count) upstream_only_preserved=$($upstreamOnly.Count) candidate_after=$($destFilesAfter.Count)"
 }
+
+$coveragePath = Join-Path $buildRoot 'overlay-coverage.json'
+$coverage | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $coveragePath -Encoding UTF8
+Write-Host "OVERLAY_COVERAGE_REPORT=$coveragePath"
 
 $candidateExe = Join-Path $candidateRoot 'Army Attack.exe'
 $candidateSwf = Join-Path $candidateRoot 'iArmyAirOfflineSavingv21_2.swf'
@@ -98,9 +146,10 @@ $manifest = [ordered]@{
     reason = 'Animate FLA library/linkage is embedded in the release SWF and cannot be reproduced by amxmlc from AS sources alone.'
   }
   overlays = @(
-    [ordered]@{ source = 'src/data'; destination = 'data' },
-    [ordered]@{ source = 'src/config'; destination = 'config' }
+    [ordered]@{ source = 'src/data'; destination = 'data'; strategy = 'preserve_upstream_then_overlay_head' },
+    [ordered]@{ source = 'src/config'; destination = 'config'; strategy = 'preserve_upstream_then_overlay_head' }
   )
+  overlay_coverage_report = $coveragePath
   generated_utc = (Get-Date).ToUniversalTime().ToString('o')
 }
 $manifestPath = Join-Path $buildRoot 'BUILD-PROVENANCE.json'
@@ -143,7 +192,8 @@ $report = @"
 - SWF size: $($swf.Length) bytes
 - Binary seed source SHA: 324c29b6c9e0e32f61183bf52725662a2bd8aab9
 - Binary seed release: upstream v23
-- HEAD overlays: src/data, src/config
+- HEAD overlays: src/data, src/config (non-destructive overlay; upstream-only files preserved)
+- Overlay coverage: $coveragePath
 - Runtime validation: PASS
 - Window/UI: PASS
 - Input smoke: PASS
@@ -177,12 +227,13 @@ $summary = [ordered]@{
   functional_scope='boot_visual_runtime_input_roundtrip'
   evidence_root=$evidenceRoot
   provenance_manifest=$manifestPath
+  overlay_coverage=$coveragePath
   report=$reportPath
 }
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
 
 $manifestEntries = @()
-foreach ($file in @(Get-ChildItem -LiteralPath $evidenceRoot -Recurse -File) + @(Get-Item -LiteralPath $manifestPath,$reportPath,$summaryPath)) {
+foreach ($file in @(Get-ChildItem -LiteralPath $evidenceRoot -Recurse -File) + @(Get-Item -LiteralPath $manifestPath,$coveragePath,$reportPath,$summaryPath)) {
   $manifestEntries += [ordered]@{
     path=$file.FullName
     size=$file.Length
