@@ -107,6 +107,41 @@ jobs:
               if(Test-Path -LiteralPath $candidate){$rootCandidates+=$candidate}
             }
           }
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if(-not $drive.Root){continue}
+            $autoRepo=Join-Path $drive.Root 'AndroidBuild\PC-LAUNCHER\Launcher\Core\AndroidBuild.AutoRepo.psm1'
+            if(Test-Path -LiteralPath $autoRepo){
+              Write-Host "AUTOREPO_MODULE=$autoRepo"
+              $moduleLines=@(Get-Content -LiteralPath $autoRepo)
+              Write-Host "AUTOREPO_LINES=$($moduleLines.Count)"
+              $patterns=@('AutoRepos','slot-1','slot','Max','capacity','registration-token','Register','runner','queued','parallel','concurrent')
+              $indexes=New-Object System.Collections.Generic.HashSet[int]
+              for($i=0;$i -lt $moduleLines.Count;$i++){
+                foreach($pattern in $patterns){
+                  if($moduleLines[$i] -match [regex]::Escape($pattern)){
+                    for($j=[Math]::Max(0,$i-3);$j -le [Math]::Min($moduleLines.Count-1,$i+5);$j++){[void]$indexes.Add($j)}
+                    break
+                  }
+                }
+              }
+              foreach($i in @($indexes|Sort-Object)){
+                Write-Host ("AUTOREPO_SRC[{0}]={1}" -f ($i+1),$moduleLines[$i])
+              }
+            }
+            $start=Join-Path $drive.Root 'AndroidBuild\PC-LAUNCHER\Launcher\AndroidBuild-START.ps1'
+            if(Test-Path -LiteralPath $start){
+              Write-Host "START_MODULE=$start"
+              $startLines=@(Get-Content -LiteralPath $start)
+              for($i=0;$i -lt $startLines.Count;$i++){
+                if($startLines[$i] -match 'Auto-Repo|AutoRepo|capacity|Capacidad base|Windows general'){
+                  for($j=[Math]::Max(0,$i-2);$j -le [Math]::Min($startLines.Count-1,$i+4);$j++){
+                    Write-Host ("START_SRC[{0}]={1}" -f ($j+1),$startLines[$j])
+                  }
+                }
+              }
+            }
+          }
+
           foreach($profile in $rootCandidates){
             Write-Host "PROFILE_PATH=$profile"
             try{
