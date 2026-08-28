@@ -1,9 +1,6 @@
 name: Bootstrap Army Attack physical clone
 
 on:
-  push:
-    branches:
-      - chore/local-army-bootstrap-20260827
   workflow_dispatch:
 
 permissions:
