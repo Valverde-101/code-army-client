@@ -87,6 +87,8 @@ jobs:
       - name: Build Android candidate
         id: android_build
         shell: powershell
+        env:
+          JAVA_TOOL_OPTIONS: --add-exports=java.base/sun.security.pkcs=ALL-UNNAMED
         run: |
           & '.\Tools\CI\Build-Android.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
           $apk=Get-ChildItem (Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android") -File -Filter '*.apk'|Sort-Object Length -Descending|Select-Object -First 1
