@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: army-attack-candidate-v2-${{ github.ref }}
+  group: army-attack-candidate-v3-${{ github.ref }}
   cancel-in-progress: false
 
 env:
