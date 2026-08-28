@@ -273,25 +273,30 @@ Write-Host "ANDROID_DESCRIPTOR=PASS namespace=$namespace permissions=none discor
 $cert=Join-Path $buildRoot 'android-ci-signing.p12'
 $certPass='ArmyAttackLocalCI'
 if(Test-Path $cert){Remove-Item $cert -Force}
-$certArgs=@('-certificate','-cn','ArmyAttackAndroidCI','-ou','Dev','-o','ValverdeLocalBuild','-c','PE','2048-RSA',$cert,$certPass)
-$p=Start-Process -FilePath $air.Adt -ArgumentList $certArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait
-if($p.ExitCode -ne 0 -or -not (Test-Path $cert)){throw "ANDROID_CERT=FAIL exit=$($p.ExitCode)"}
-Write-Host "ANDROID_CERT=PASS"
 $tier=if($air.Major -eq 50){'HARMAN_AIR50_ARM64'}elseif($air.Major -ge 51){'MODERN_ARM64'}else{'LEGACY_AIR32_TEST'}
 $apkName=if($harmanAndroid){'ArmyAttack-android-arm64.apk'}else{'ArmyAttack-android-legacy.apk'}
 $apkPath=Join-Path $buildRoot $apkName
-if(Test-Path $apkPath){Remove-Item $apkPath -Force}
-$packageArgs=@('-package','-target','apk-captive-runtime')
-if($harmanAndroid){$packageArgs+=@('-arch','armv8')}
-$packageArgs+=@('-storetype','pkcs12','-keystore',$cert,'-storepass',$certPass,$apkPath,$descriptor,'-C',$stage,'.')
-if($harmanAndroid){$packageArgs+=@('-platformsdk',$packageAndroidSdk)}
 $stdout=Join-Path $buildRoot 'adt-android.out.log';$stderr=Join-Path $buildRoot 'adt-android.err.log'
-$p2=Start-Process -FilePath $air.Adt -ArgumentList $packageArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-if($p2.ExitCode -ne 0 -or -not (Test-Path $apkPath)){
-  Write-Host "ANDROID_PACKAGE=FAIL exit=$($p2.ExitCode) tier=$tier stdout=$stdout stderr=$stderr"
-  if(Test-Path $stdout){Get-Content $stdout|Select-Object -Last 80|ForEach-Object{Write-Host $_}}
-  if(Test-Path $stderr){Get-Content $stderr|Select-Object -Last 80|ForEach-Object{Write-Host $_}}
-  throw 'BUILD=FAIL android_package'
+try{
+  $certArgs=@('-certificate','-cn','ArmyAttackAndroidCI','-ou','Dev','-o','ValverdeLocalBuild','-c','PE','2048-RSA',$cert,$certPass)
+  $p=Start-Process -FilePath $air.Adt -ArgumentList $certArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait
+  if($p.ExitCode -ne 0 -or -not (Test-Path $cert)){throw "ANDROID_CERT=FAIL exit=$($p.ExitCode)"}
+  Write-Host "ANDROID_CERT=PASS"
+  if(Test-Path $apkPath){Remove-Item $apkPath -Force}
+  $packageArgs=@('-package','-target','apk-captive-runtime')
+  if($harmanAndroid){$packageArgs+=@('-arch','armv8')}
+  $packageArgs+=@('-storetype','pkcs12','-keystore',$cert,'-storepass',$certPass,$apkPath,$descriptor,'-C',$stage,'.')
+  if($harmanAndroid){$packageArgs+=@('-platformsdk',$packageAndroidSdk)}
+  $p2=Start-Process -FilePath $air.Adt -ArgumentList $packageArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  if($p2.ExitCode -ne 0 -or -not (Test-Path $apkPath)){
+    Write-Host "ANDROID_PACKAGE=FAIL exit=$($p2.ExitCode) tier=$tier stdout=$stdout stderr=$stderr"
+    if(Test-Path $stdout){Get-Content $stdout|Select-Object -Last 80|ForEach-Object{Write-Host $_}}
+    if(Test-Path $stderr){Get-Content $stderr|Select-Object -Last 80|ForEach-Object{Write-Host $_}}
+    throw 'BUILD=FAIL android_package'
+  }
+}finally{
+  Remove-Item -LiteralPath $cert -Force -ErrorAction SilentlyContinue
+  Write-Host "ANDROID_CERT_CLEANUP=PASS"
 }
 $apk=Get-Item $apkPath;$apkSha=(Get-FileHash $apkPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $prov=[ordered]@{
@@ -349,7 +354,6 @@ $toolchain=[ordered]@{
 }
 $toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
 $toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
-Remove-Item -LiteralPath $cert -Force -ErrorAction SilentlyContinue
 Write-Host "BUILD=PASS platform=android tier=$tier"
 Write-Host "APK_GENERATED=PASS"
 Write-Host "APK_PATH=$apkPath"

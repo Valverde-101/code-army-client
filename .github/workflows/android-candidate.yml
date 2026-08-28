@@ -198,6 +198,43 @@ jobs:
           if('${{ steps.performance.outcome }}' -ne 'success'){throw 'WINDOWS_REGRESSION=FAIL performance'}
           Write-Host "WINDOWS_REGRESSION=PASS"
 
+  mod-variants:
+    name: 3M. Android mod ${{ matrix.variant }}
+    needs: [source-sync, published-audit, toolchain-preflight]
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        variant: [colossal, crimson, hardmode, none, swapped, swapped2, truecrimson]
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Resolve physical and pinned roots
+        shell: powershell
+        run: |
+          $root=$null
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
+          }
+          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
+          $pinned=Join-Path $root 'Toolchains\AIR50-API33-BT33.0.2'
+          foreach($p in @((Join-Path $root 'Tools\AIRSDK-50.2.3.6\bin\adt.bat'),(Join-Path $root 'Tools\Java\jdk-17\bin\java.exe'),(Join-Path $pinned 'AndroidSDK\build-tools\33.0.2\aapt.exe'))){if(-not (Test-Path -LiteralPath $p)){throw "MOD_TOOLCHAIN_PRECHECK=FAIL missing=$p"}}
+          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PINNED_ANDROID_BUILD_ROOT=$pinned"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PHYSICAL_REPO_ROOT=$(Join-Path $root 'Repositories\code-army-client')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
+          Write-Host "MOD_VARIANT=${{ matrix.variant }}"
+      - name: Build and validate mod APK
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Build-AndroidModVariant.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -PhysicalAndroidBuildRoot $env:ANDROIDBUILD_ROOT -PinnedAndroidBuildRoot $env:PINNED_ANDROID_BUILD_ROOT -Variant '${{ matrix.variant }}'
+          Write-Host "GITHUB_ARTIFACT_UPLOAD=DISABLED"
+
   android-candidate:
     name: 3. Build and validate Android APK
     needs: [published-audit, toolchain-preflight, reference-apk]
@@ -280,7 +317,7 @@ jobs:
   final-report:
     name: 4. Publish logs and final gate
     if: always()
-    needs: [source-sync, published-audit, toolchain-preflight, reference-apk, windows-regression, android-candidate]
+    needs: [source-sync, published-audit, toolchain-preflight, reference-apk, windows-regression, android-candidate, mod-variants]
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 10
     steps:
@@ -315,6 +352,7 @@ jobs:
           Write-Host "REFERENCE_APK=${{ needs.reference-apk.result }}"
           Write-Host "WINDOWS_REGRESSION=${{ needs.windows-regression.result }}"
           Write-Host "ANDROID_CANDIDATE=${{ needs.android-candidate.result }}"
+          Write-Host "MOD_VARIANTS=${{ needs.mod-variants.result }}"
           Write-Host "LOG_PUBLISH_OUTCOME=${{ steps.publish_logs.outcome }}"
           if('${{ needs.source-sync.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL source_sync'}
           if('${{ needs.published-audit.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL published_audit'}
@@ -322,4 +360,5 @@ jobs:
           if('${{ needs.reference-apk.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL reference_apk'}
           if('${{ needs.windows-regression.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL windows_regression'}
           if('${{ needs.android-candidate.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_candidate'}
+          if('${{ needs.mod-variants.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL mod_variants'}
           Write-Host "FINAL_VALIDATION=PASS candidate"
