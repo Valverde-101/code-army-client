@@ -69,3 +69,59 @@ jobs:
           $workers=@(Get-Process -Name 'Runner.Worker' -ErrorAction SilentlyContinue)
           Write-Host "RUNNER_LISTENER_PROCESSES=$($listeners.Count)"
           Write-Host "RUNNER_WORKER_PROCESSES=$($workers.Count)"
+
+          foreach($p in $listeners | Sort-Object Id){
+            Write-Host "LISTENER_BEGIN"
+            Write-Host "LISTENER_PID=$($p.Id)"
+            $exe=$null
+            try{$exe=$p.Path}catch{}
+            Write-Host "LISTENER_EXE=$exe"
+            if($exe -and (Test-Path -LiteralPath $exe)){
+              $root=Split-Path -Parent (Split-Path -Parent $exe)
+              Write-Host "LISTENER_ROOT=$root"
+              $runnerFile=Join-Path $root '.runner'
+              if(Test-Path -LiteralPath $runnerFile){
+                try{
+                  $r=Get-Content -LiteralPath $runnerFile -Raw | ConvertFrom-Json
+                  Write-Host "LISTENER_AGENT_NAME=$($r.agentName)"
+                  Write-Host "LISTENER_POOL_ID=$($r.poolId)"
+                  Write-Host "LISTENER_POOL_NAME=$($r.poolName)"
+                  Write-Host "LISTENER_SERVER_URL=$($r.serverUrl)"
+                  Write-Host "LISTENER_GITHUB_URL=$($r.gitHubUrl)"
+                  Write-Host "LISTENER_WORK_FOLDER=$($r.workFolder)"
+                  Write-Host "LISTENER_USE_V2_FLOW=$($r.useV2Flow)"
+                }catch{
+                  Write-Host "LISTENER_METADATA=UNREADABLE"
+                }
+              } else {
+                Write-Host "LISTENER_METADATA=MISSING"
+              }
+            }
+            Write-Host "LISTENER_END"
+          }
+
+          $rootCandidates=@()
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){
+              $candidate=Join-Path $drive.Root 'AndroidBuild\PC-PROFILES\PC-WILLTHOM-services.json'
+              if(Test-Path -LiteralPath $candidate){$rootCandidates+=$candidate}
+            }
+          }
+          foreach($profile in $rootCandidates){
+            Write-Host "PROFILE_PATH=$profile"
+            try{
+              $json=Get-Content -LiteralPath $profile -Raw | ConvertFrom-Json
+              foreach($prop in $json.PSObject.Properties){
+                $name=[string]$prop.Name
+                if($name -match '(?i)token|secret|key|password|credential'){continue}
+                $value=$prop.Value
+                if($value -is [System.Collections.IDictionary] -or $value -is [pscustomobject] -or $value -is [System.Array]){
+                  Write-Host "PROFILE_FIELD=$name TYPE=$($value.GetType().Name)"
+                } else {
+                  Write-Host "PROFILE_FIELD=$name VALUE=$value"
+                }
+              }
+            }catch{
+              Write-Host "PROFILE_READ=UNREADABLE"
+            }
+          }
