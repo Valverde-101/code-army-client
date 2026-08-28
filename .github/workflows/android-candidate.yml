@@ -93,6 +93,38 @@ jobs:
           if(-not $apk){throw 'APK_GENERATED=FAIL not_found'}
           "ANDROID_APK_PATH=$($apk.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Collect Android build diagnostics
+        if: always()
+        shell: powershell
+        run: |
+          $dir=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android"
+          if(-not (Test-Path -LiteralPath $dir)){Write-Host "ANDROID_DIAGNOSTICS=SKIPPED_WITH_REASON build_dir_missing=$dir";exit 0}
+          $diag=Join-Path $dir 'ci-diagnostics.txt'
+          @(
+            "REPOSITORY=$env:GITHUB_REPOSITORY"
+            "EXPECTED_SOURCE_SHA=$env:EXPECTED_SOURCE_SHA"
+            "RUN=$env:GITHUB_RUN_ID"
+            "RUNNER_NAME=$env:RUNNER_NAME"
+            "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
+          ) | Set-Content -LiteralPath $diag -Encoding UTF8
+          Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue | Sort-Object FullName | ForEach-Object {
+            "FILE=$($_.FullName) SIZE=$($_.Length)" | Add-Content -LiteralPath $diag -Encoding UTF8
+          }
+          foreach($log in Get-ChildItem -LiteralPath $dir -Recurse -File -Include '*.log','*.txt' -ErrorAction SilentlyContinue){
+            "--- LOG $($log.FullName) ---" | Add-Content -LiteralPath $diag -Encoding UTF8
+            Get-Content -LiteralPath $log.FullName -ErrorAction SilentlyContinue | Select-Object -Last 200 | Add-Content -LiteralPath $diag -Encoding UTF8
+          }
+          Write-Host "ANDROID_DIAGNOSTICS=PASS path=$diag"
+
+      - name: Upload Android diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-diagnostics-${{ github.sha }}
+          path: ${{ env.ANDROIDBUILD_ROOT }}\Builds\code-army-client\${{ github.sha }}\android\
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Validate exact APK
         id: apk_validate
         shell: powershell
