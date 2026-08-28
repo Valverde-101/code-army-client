@@ -181,24 +181,20 @@ jobs:
           $total=(Get-ChildItem -LiteralPath $diag -Recurse -File -ErrorAction SilentlyContinue|Measure-Object Length -Sum).Sum
           Write-Host "ANDROID_DIAGNOSTICS=PASS path=$diag bytes=$total"
 
-      - name: Upload Android diagnostics
+      - name: Report local Android outputs
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-diagnostics-${{ github.sha }}
-          path: ${{ env.ANDROIDBUILD_ROOT }}\Builds\code-army-client\${{ github.sha }}\android\diagnostics\
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Upload validated APK
-        if: steps.apk_validate.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: army-attack-apk-${{ github.sha }}
-          path: ${{ env.ANDROID_APK_PATH }}
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
+        shell: powershell
+        run: |
+          if(-not $env:ANDROIDBUILD_ROOT){Write-Host 'LOCAL_OUTPUTS=SKIPPED_WITH_REASON root_unresolved';exit 0}
+          $build=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android"
+          Write-Host "GITHUB_ARTIFACT_UPLOAD=DISABLED"
+          Write-Host "LOCAL_BUILD_ROOT=$build"
+          if(Test-Path -LiteralPath $build){
+            Get-ChildItem -LiteralPath $build -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object {$_.Extension -in @('.apk','.json','.md','.log','.txt','.png')} |
+              Sort-Object FullName |
+              ForEach-Object { Write-Host ("LOCAL_FILE="+$_.FullName+" size="+$_.Length) }
+          }
 
       - name: Final Android gate
         if: always()
