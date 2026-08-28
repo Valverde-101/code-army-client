@@ -189,4 +189,5 @@ $meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sh
 if($env:GITHUB_ENV){"PROMOTED_CANDIDATE_PATH=$promoted"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
 Write-Host "APK_VALIDATE=PASS"
 Write-Host "APK_PROMOTION=PASS path=$promoted sha256=$promotedSha"
+& (Join-Path $PSScriptRoot 'Publish-ApkFinal.ps1') -SourceApk $promoted -AndroidBuildRoot $AndroidBuildRoot -ExpectedSha $ExpectedSha -RelativePath 'ArmyAttack-23.2.apk' -Kind 'base-23.2'
 Write-Host "LISTA_PARA_PRUEBA_MANUAL=PASS"

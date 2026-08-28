@@ -229,6 +229,8 @@ $provPath=Join-Path $buildRoot 'MOD-PROVENANCE.json'
 $prov|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $provPath -Encoding UTF8
 $badging|Set-Content -LiteralPath (Join-Path $buildRoot 'apk-badging.txt') -Encoding UTF8
 
+& (Join-Path $PSScriptRoot 'Publish-ApkFinal.ps1') -SourceApk $apkPath -AndroidBuildRoot $PhysicalAndroidBuildRoot -ExpectedSha $ExpectedSha -RelativePath (Join-Path 'mods' ("ArmyAttack-"+$Variant+".apk")) -Kind ("mod-"+$Variant)
+
 Write-Host "MOD_BUILD=PASS variant=$Variant"
 Write-Host "MOD_APK_VALIDATE=PASS variant=$Variant package=$pkg target_sdk=$target min_sdk=$min abi=arm64-v8a"
 Write-Host "MOD_APK_PATH=$apkPath"
