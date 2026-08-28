@@ -91,10 +91,16 @@ if(-not $probe){
 $archiveSha=(Get-FileHash -LiteralPath $archivePath -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash
 $env:JAVA_HOME=$installRoot
 $env:JAVA_TOOL_OPTIONS=''
+$javaBin=Join-Path $installRoot 'bin'
+$env:PATH="$javaBin;$env:PATH"
 if($env:GITHUB_ENV){
   "JAVA_HOME=$installRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
   'JAVA_TOOL_OPTIONS=' | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 }
+if($env:GITHUB_PATH){
+  $javaBin | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+}
 Write-Host "AIR_LEGACY_JAVA=PASS path=$installRoot version=1.8.0_292"
+Write-Host "AIR_LEGACY_JAVA_PATH_PREPEND=PASS path=$javaBin"
 if($archiveSha){Write-Host "AIR_LEGACY_JAVA_ARCHIVE_SHA256=$($archiveSha.ToLowerInvariant())"}
 Write-Host "AIR_LEGACY_JAVA_SOURCE=$archiveUrl"
