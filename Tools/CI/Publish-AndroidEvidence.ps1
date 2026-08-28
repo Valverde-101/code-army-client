@@ -113,11 +113,18 @@ $manifest=[ordered]@{
   apk_uploaded=$false
   github_artifacts_used=$false
   evidence_branch=$EvidenceBranch
-  published_files=@($published)
-  skipped_files=@($skipped)
+  published_files=@($published.ToArray())
+  skipped_files=@($skipped.ToArray())
 }
 $manifestPath=Join-Path $stage 'manifest.json'
-$manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+try{
+  $manifestJson=$manifest|ConvertTo-Json -Depth 8
+  [void]($manifestJson|ConvertFrom-Json)
+  $manifestJson|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+  Write-Host "LOG_MANIFEST=PASS published=$($published.Count) skipped=$($skipped.Count)"
+}catch{
+  throw "LOG_PUBLISH=FAIL manifest_serialization $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+}
 
 # Final secret/forbidden scan of staged text.
 foreach($file in @(Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object {$allowedText -contains $_.Extension.ToLowerInvariant()})){

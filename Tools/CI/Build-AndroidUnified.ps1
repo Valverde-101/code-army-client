@@ -38,7 +38,14 @@ function Clone-JsonValue($Value){
   return ($Value|ConvertTo-Json -Depth 100|ConvertFrom-Json)
 }
 function Set-Prop($Obj,[string]$Name,$Value){
-  if(Has-Prop $Obj $Name){$Obj.$Name=$Value}else{$Obj|Add-Member -NotePropertyName $Name -NotePropertyValue $Value}
+  if($null -eq $Obj){throw "UNIFIED_JSON_MERGE=FAIL null_target name=$Name"}
+  $existing=$Obj.PSObject.Properties[$Name]
+  if($null -ne $existing){
+    $existing.Value=$Value
+    return
+  }
+  $note=New-Object System.Management.Automation.PSNoteProperty($Name,$Value)
+  $Obj.PSObject.Properties.Add($note)
 }
 function Apply-JsonDelta($Base,$Overlay,$Target){
   $names=New-Object System.Collections.Generic.HashSet[string]
@@ -67,6 +74,19 @@ function Apply-JsonDelta($Base,$Overlay,$Target){
     }
   }
 }
+
+function Test-JsonMergePrimitives {
+  $base='{"Method":{"x":"1"},"Property":{"y":"2"}}'|ConvertFrom-Json
+  $overlay='{"Method":{"x":"9"},"Property":{"y":"2"},"NoteProperty":{"z":"3"}}'|ConvertFrom-Json
+  $target=Clone-JsonValue $base
+  Apply-JsonDelta $base $overlay $target
+  if($target.Method.x -ne '9'){throw 'UNIFIED_JSON_MERGE=FAIL reserved_method_key'}
+  if($target.Property.y -ne '2'){throw 'UNIFIED_JSON_MERGE=FAIL reserved_property_key'}
+  if($target.NoteProperty.z -ne '3'){throw 'UNIFIED_JSON_MERGE=FAIL reserved_noteproperty_key'}
+  Write-Host 'UNIFIED_JSON_MERGE_SELFTEST=PASS'
+}
+
+Test-JsonMergePrimitives
 
 function Get-StreamSha256([System.IO.Stream]$Stream){
   $sha=[Security.Cryptography.SHA256]::Create()
