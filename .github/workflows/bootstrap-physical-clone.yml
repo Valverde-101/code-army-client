@@ -130,6 +130,16 @@ jobs:
             -ExpectedSha $env:EXPECTED_SOURCE_SHA `
             -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
 
+      - name: Measure full candidate performance
+        id: performance
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Measure-WindowsPerformance.ps1' `
+            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT `
+            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
+            -DurationSeconds 20 `
+            -SampleSeconds 2
+
       - name: Final gate
         if: always()
         shell: powershell
@@ -137,8 +147,10 @@ jobs:
           Write-Host "SOURCE_REBUILD_OUTCOME=${{ steps.source_rebuild.outcome }}"
           Write-Host "UPSTREAM_REFERENCE_OUTCOME=${{ steps.upstream_reference.outcome }}"
           Write-Host "FULL_CANDIDATE_OUTCOME=${{ steps.full_candidate.outcome }}"
+          Write-Host "PERFORMANCE_OUTCOME=${{ steps.performance.outcome }}"
           Write-Host "APK_GENERATED=NOT_RUN"
           Write-Host "PHYSICAL_ANDROID_VALIDATION=NOT_RUN"
           if ('${{ steps.upstream_reference.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL upstream_reference' }
           if ('${{ steps.full_candidate.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL full_candidate' }
+          if ('${{ steps.performance.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL performance' }
           Write-Host "FINAL_VALIDATION=PASS windows_full_candidate"
