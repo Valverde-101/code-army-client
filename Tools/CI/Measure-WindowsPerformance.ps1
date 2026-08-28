@@ -25,9 +25,8 @@ foreach ($required in @($candidateRoot,$exePath,$reportPath,$summaryPath)) {
 }
 
 $logicalProcessors = [Math]::Max(1, [Environment]::ProcessorCount)
-$samples = New-Object System.Collections.Generic.List[object]
+$samples = @()
 $proc = $null
-$started = Get-Date
 try {
   $proc = Start-Process -FilePath $exePath -WorkingDirectory $candidateRoot -PassThru
   Write-Host "PERFORMANCE_LAUNCH=PASS pid=$($proc.Id) exe=$exePath"
@@ -70,7 +69,7 @@ try {
       working_set_bytes = $workingSetBytes
       private_bytes = $privateBytes
     }
-    $samples.Add($sample)
+    $samples += $sample
     Write-Host "PERFORMANCE_SAMPLE=PASS elapsed=$elapsed cpu_percent=$cpuPercent working_set=$workingSetBytes private_bytes=$privateBytes"
 
     $previousCpuMs = $cpuMs
@@ -79,12 +78,12 @@ try {
 
   if ($samples.Count -lt 3) { throw "PERFORMANCE=FAIL insufficient_samples=$($samples.Count)" }
 
-  $avgCpu = [Math]::Round(($samples | Measure-Object cpu_percent -Average).Average, 2)
-  $peakCpu = [Math]::Round(($samples | Measure-Object cpu_percent -Maximum).Maximum, 2)
-  $avgWorkingSet = [int64][Math]::Round(($samples | Measure-Object working_set_bytes -Average).Average)
-  $peakWorkingSet = [int64]($samples | Measure-Object working_set_bytes -Maximum).Maximum
-  $avgPrivate = [int64][Math]::Round(($samples | Measure-Object private_bytes -Average).Average)
-  $peakPrivate = [int64]($samples | Measure-Object private_bytes -Maximum).Maximum
+  $avgCpu = [Math]::Round((($samples | Measure-Object cpu_percent -Average).Average), 2)
+  $peakCpu = [Math]::Round((($samples | Measure-Object cpu_percent -Maximum).Maximum), 2)
+  $avgWorkingSet = [int64][Math]::Round((($samples | Measure-Object working_set_bytes -Average).Average))
+  $peakWorkingSet = [int64](($samples | Measure-Object working_set_bytes -Maximum).Maximum)
+  $avgPrivate = [int64][Math]::Round((($samples | Measure-Object private_bytes -Average).Average))
+  $peakPrivate = [int64](($samples | Measure-Object private_bytes -Maximum).Maximum)
 
   $performance = [ordered]@{
     schema = 1
@@ -99,7 +98,7 @@ try {
     peak_working_set_bytes = $peakWorkingSet
     avg_private_bytes = $avgPrivate
     peak_private_bytes = $peakPrivate
-    samples = @($samples)
+    samples = $samples
     generated_utc = (Get-Date).ToUniversalTime().ToString('o')
   }
   $performance | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $performancePath -Encoding UTF8
