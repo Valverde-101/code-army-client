@@ -31,8 +31,8 @@ function Invoke-Download([string]$Uri,[string]$Destination){
   }
 }
 
-function Get-Java8Probe([string]$Home){
-  $exe=Join-Path $Home 'bin\java.exe'
+function Get-Java8Probe([string]$JavaHome){
+  $exe=Join-Path $JavaHome 'bin\java.exe'
   if(-not (Test-Path -LiteralPath $exe)){return $null}
   $stamp=[Guid]::NewGuid().ToString('N')
   $out=Join-Path $probeRoot "java8-$stamp.out.log"
