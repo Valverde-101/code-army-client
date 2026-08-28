@@ -20,8 +20,13 @@ New-Item -ItemType Directory -Force -Path $downloadRoot,$probeRoot,(Split-Path -
 $javaHome=Join-Path $AndroidBuildRoot 'Tools\Java\jdk-17'
 $javaExe=Join-Path $javaHome 'bin\java.exe'
 if(-not (Test-Path -LiteralPath $javaExe)){throw 'HARMAN_AIR_JAVA=FAIL portable_jdk17_missing'}
-$javaText=(& $javaExe -XshowSettings:properties -version 2>&1 | ForEach-Object {$_.ToString()}) -join [Environment]::NewLine
-if($LASTEXITCODE -ne 0 -or $javaText -notmatch 'version "17\.'){throw 'HARMAN_AIR_JAVA=FAIL expected_java17'}
+$javaProbeOut=Join-Path $probeRoot 'java17-properties.out.log'
+$javaProbeErr=Join-Path $probeRoot 'java17-properties.err.log'
+$pJava=Start-Process -FilePath $javaExe -ArgumentList @('-XshowSettings:properties','-version') -NoNewWindow -PassThru -Wait -RedirectStandardOutput $javaProbeOut -RedirectStandardError $javaProbeErr
+$javaLines=@()
+foreach($probeFile in @($javaProbeOut,$javaProbeErr)){if(Test-Path -LiteralPath $probeFile){$javaLines+=@(Get-Content -LiteralPath $probeFile)}}
+$javaText=($javaLines -join [Environment]::NewLine)
+if($pJava.ExitCode -ne 0 -or $javaText -notmatch 'version "17\.'){throw "HARMAN_AIR_JAVA=FAIL expected_java17 exit=$($pJava.ExitCode)"}
 $env:JAVA_HOME=$javaHome
 $env:PATH="$(Join-Path $javaHome 'bin');$env:PATH"
 if($env:GITHUB_ENV){"JAVA_HOME=$javaHome"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
