@@ -85,20 +85,23 @@ foreach($root in $airRoots){
 }
 if($airChoices.Count -eq 0){throw 'AIR_SDK=FAIL no usable adt.bat found'}
 $air=$airChoices|Sort-Object Score -Descending|Select-Object -First 1
-$modern=($air.Major -ge 51)
-Write-Host "AIR_SDK=PASS root=$($air.Root) version=$($air.Version) modern=$modern"
-if($modern){
+$harmanAndroid=($air.Major -ge 50)
+$airNamespace=if($harmanAndroid){"$($air.Major).$($air.Minor)"}else{'32.0'}
+$targetApi=if($air.Major -eq 50){33}elseif($air.Major -ge 51){36}else{27}
+$targetBuildTools=if($air.Major -eq 50){'33.0.2'}elseif($air.Major -ge 51){'36.0.0'}else{$null}
+Write-Host "AIR_SDK=PASS root=$($air.Root) version=$($air.Version) harman_android=$harmanAndroid namespace=$airNamespace target_api=$targetApi"
+if($harmanAndroid){
   $sdkmanager=Get-ChildItem -LiteralPath $androidSdk -Recurse -File -Filter 'sdkmanager.bat' -ErrorAction SilentlyContinue|Sort-Object FullName|Select-Object -First 1
-  $platform36=Join-Path $androidSdk 'platforms\android-36'
-  $build36=Join-Path $androidSdk 'build-tools\36.0.0'
-  if((-not (Test-Path -LiteralPath $platform36) -or -not (Test-Path -LiteralPath $build36)) -and $sdkmanager){
-    Write-Host "ANDROID_SDK_COMPONENTS=INSTALLING api=36"
-    1..30|ForEach-Object{'y'}|& $sdkmanager.FullName --sdk_root=$androidSdk 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+  $platform=Join-Path $androidSdk "platforms\android-$targetApi"
+  $buildToolsPath=Join-Path $androidSdk "build-tools\$targetBuildTools"
+  if((-not (Test-Path -LiteralPath $platform) -or -not (Test-Path -LiteralPath $buildToolsPath)) -and $sdkmanager){
+    Write-Host "ANDROID_SDK_COMPONENTS=INSTALLING api=$targetApi build_tools=$targetBuildTools"
+    1..30|ForEach-Object{'y'}|& $sdkmanager.FullName --sdk_root=$androidSdk 'platform-tools' "platforms;android-$targetApi" "build-tools;$targetBuildTools"
     if($LASTEXITCODE -ne 0){throw "ANDROID_SDK_COMPONENTS=FAIL exit=$LASTEXITCODE"}
   }
-  if(-not (Test-Path -LiteralPath $platform36)){throw 'ANDROID_PLATFORM_36=FAIL'}
-  if(-not (Test-Path -LiteralPath $build36)){throw 'ANDROID_BUILD_TOOLS_36=FAIL'}
-  Write-Host "ANDROID_SDK_COMPONENTS=PASS api=36 build_tools=36.0.0"
+  if(-not (Test-Path -LiteralPath $platform)){throw "ANDROID_PLATFORM=FAIL api=$targetApi"}
+  if(-not (Test-Path -LiteralPath $buildToolsPath)){throw "ANDROID_BUILD_TOOLS=FAIL version=$targetBuildTools"}
+  Write-Host "ANDROID_SDK_COMPONENTS=PASS api=$targetApi build_tools=$targetBuildTools"
 }
 $seedZip=Join-Path $AndroidBuildRoot 'Inputs\code-army-client\upstream\v23\AA23_release_windows.zip'
 $seedUrl='https://github.com/Michielvde1253/army-client/releases/download/v23/AA23_release_windows.zip'
@@ -146,7 +149,7 @@ if($invalidSeedAssets.Count -eq 1){
   Write-Host "ANDROID_STAGE_SANITIZE=PASS removed_unreferenced_invalid_asset path=$($asset.FullName) size=$($asset.Length)"
   Remove-Item -LiteralPath $asset.FullName -Force
 }
-$namespace=if($modern){'51.3'}else{'32.0'}
+$namespace=$airNamespace
 $descriptor=Join-Path $buildRoot 'ArmyAttack-android-app.xml'
 $xml=@"
 <?xml version="1.0" encoding="utf-8"?>
@@ -191,14 +194,14 @@ $certArgs=@('-certificate','-cn','ArmyAttackAndroidCI','-ou','Dev','-o','Valverd
 $p=Start-Process -FilePath $air.Adt -ArgumentList $certArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait
 if($p.ExitCode -ne 0 -or -not (Test-Path $cert)){throw "ANDROID_CERT=FAIL exit=$($p.ExitCode)"}
 Write-Host "ANDROID_CERT=PASS"
-$tier=if($modern){'MODERN_ARM64'}else{'LEGACY_AIR32_TEST'}
-$apkName=if($modern){'ArmyAttack-android-arm64.apk'}else{'ArmyAttack-android-legacy.apk'}
+$tier=if($air.Major -eq 50){'HARMAN_AIR50_ARM64'}elseif($air.Major -ge 51){'MODERN_ARM64'}else{'LEGACY_AIR32_TEST'}
+$apkName=if($harmanAndroid){'ArmyAttack-android-arm64.apk'}else{'ArmyAttack-android-legacy.apk'}
 $apkPath=Join-Path $buildRoot $apkName
 if(Test-Path $apkPath){Remove-Item $apkPath -Force}
 $packageArgs=@('-package','-target','apk-captive-runtime')
-if($modern){$packageArgs+=@('-arch','armv8')}
+if($harmanAndroid){$packageArgs+=@('-arch','armv8')}
 $packageArgs+=@('-storetype','pkcs12','-keystore',$cert,'-storepass',$certPass,$apkPath,$descriptor,'-C',$stage,'.')
-if($modern){$packageArgs+=@('-platformsdk',$androidSdk)}
+if($harmanAndroid){$packageArgs+=@('-platformsdk',$androidSdk)}
 $stdout=Join-Path $buildRoot 'adt-android.out.log';$stderr=Join-Path $buildRoot 'adt-android.err.log'
 $p2=Start-Process -FilePath $air.Adt -ArgumentList $packageArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 if($p2.ExitCode -ne 0 -or -not (Test-Path $apkPath)){
@@ -208,9 +211,23 @@ if($p2.ExitCode -ne 0 -or -not (Test-Path $apkPath)){
   throw 'BUILD=FAIL android_package'
 }
 $apk=Get-Item $apkPath;$apkSha=(Get-FileHash $apkPath -Algorithm SHA256).Hash.ToLowerInvariant()
-$prov=[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;build_tier=$tier;air_sdk=$air.Version;air_sdk_root=$air.Root;android_sdk=$androidSdk;binary_seed_release='v23';binary_seed_source_sha='324c29b6c9e0e32f61183bf52725662a2bd8aab9';swf_sha256=$swfSha;overlays=@('src/data','src/config');descriptor=$descriptor;removed_permissions=@('WRITE_EXTERNAL_STORAGE','MANAGE_EXTERNAL_STORAGE');excluded_extensions=@('fi.joniaromaa.adobeair.discordrpc');apk_path=$apkPath;apk_size=$apk.Length;apk_sha256=$apkSha}
+$prov=[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;build_tier=$tier;air_sdk=$air.Version;air_sdk_root=$air.Root;air_namespace=$namespace;java_home=$env:JAVA_HOME;java_major=$javaMajor;android_sdk=$androidSdk;target_android_api=$targetApi;target_abi=if($harmanAndroid){'arm64-v8a'}else{'armeabi-v7a'};binary_seed_release='v23';binary_seed_source_sha='324c29b6c9e0e32f61183bf52725662a2bd8aab9';swf_sha256=$swfSha;overlays=@('src/data','src/config');descriptor=$descriptor;removed_permissions=@('WRITE_EXTERNAL_STORAGE','MANAGE_EXTERNAL_STORAGE');excluded_extensions=@('fi.joniaromaa.adobeair.discordrpc');apk_path=$apkPath;apk_size=$apk.Length;apk_sha256=$apkSha}
 $provPath=Join-Path $buildRoot 'BUILD-PROVENANCE.json'
 $prov|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $provPath -Encoding UTF8
+$toolchain=[ordered]@{
+  tested_sha=$ExpectedSha
+  java_home=$env:JAVA_HOME
+  java_major=$javaMajor
+  air_sdk=$air.Version
+  air_sdk_root=$air.Root
+  air_namespace=$namespace
+  android_sdk=$androidSdk
+  android_api=$targetApi
+  android_build_tools=$targetBuildTools
+  target_abi=if($harmanAndroid){'arm64-v8a'}else{'armeabi-v7a'}
+}
+$toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
+$toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
 Remove-Item -LiteralPath $cert -Force -ErrorAction SilentlyContinue
 Write-Host "BUILD=PASS platform=android tier=$tier"
 Write-Host "APK_GENERATED=PASS"
@@ -219,6 +236,6 @@ Write-Host "APK_SIZE=$($apk.Length)"
 Write-Host "APK_SHA256=$apkSha"
 Write-Host "SWF_SHA256=$swfSha"
 Write-Host "AIR_VERSION=$($air.Version)"
-$playReady=if($modern){'CANDIDATE'}else{'NO_LEGACY_TOOLCHAIN'}
+$playReady=if($harmanAndroid){'CANDIDATE'}else{'NO_LEGACY_TOOLCHAIN'}
 Write-Host "PLAY_READY=$playReady"
-Write-Host "PROVENANCE_MANIFEST=$provPath"
+Write-Host "PROVENANCE_MANIFEST=$provPath"`nWrite-Host "TOOLCHAIN_MANIFEST=$toolchainPath"
