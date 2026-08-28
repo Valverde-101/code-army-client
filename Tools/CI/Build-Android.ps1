@@ -58,16 +58,29 @@ foreach($base in @((Join-Path $AndroidBuildRoot 'Tools'),(Join-Path $AndroidBuil
 Add-AirRoot (Join-Path $AndroidBuildRoot 'Tools\AIRSDK-32')
 $airChoices=@()
 foreach($root in $airRoots){
-  $adt=Join-Path $root 'bin\adt.bat'
+  $adt=Join-Path $root 'bin\\adt.bat'
+  $previousErrorActionPreference=$ErrorActionPreference
   try{
-    $ver=((& $adt -version 2>&1|Out-String).Trim())
-    if($ver -match '(\d+)\.(\d+)'){
-      $major=[int]$matches[1];$minor=[int]$matches[2]
-      $airChoices+=[pscustomobject]@{Root=$root;Adt=$adt;Version=$ver;Major=$major;Minor=$minor;Score=($major*1000+$minor)}
-      Write-Host "AIR_DISCOVERED root=$root version=$ver"
-    }
-  }catch{
-    Write-Host "AIR_DISCOVERY_WARNING root=$root error=$($_.Exception.Message)"
+    # JVM notices such as "Picked up JAVA_TOOL_OPTIONS" are written to stderr.
+    # Windows PowerShell turns redirected native stderr into ErrorRecord objects;
+    # with ErrorActionPreference=Stop that can falsely mark a healthy ADT as unusable.
+    $ErrorActionPreference='Continue'
+    $probeLines=@(& $adt -version 2>&1 | ForEach-Object { $_.ToString() })
+    $probeExit=$LASTEXITCODE
+  }finally{
+    $ErrorActionPreference=$previousErrorActionPreference
+  }
+  $ver=($probeLines -join "`n").Trim()
+  if($probeExit -ne 0){
+    Write-Host "AIR_DISCOVERY_WARNING root=$root exit=$probeExit output=$ver"
+    continue
+  }
+  if($ver -match '(\\d+)\\.(\\d+)'){
+    $major=[int]$matches[1];$minor=[int]$matches[2]
+    $airChoices+=[pscustomobject]@{Root=$root;Adt=$adt;Version=$ver;Major=$major;Minor=$minor;Score=($major*1000+$minor)}
+    Write-Host "AIR_DISCOVERED root=$root version=$ver"
+  }else{
+    Write-Host "AIR_DISCOVERY_WARNING root=$root exit=0 reason=version_unparseable output=$ver"
   }
 }
 if($airChoices.Count -eq 0){throw 'AIR_SDK=FAIL no usable adt.bat found'}
