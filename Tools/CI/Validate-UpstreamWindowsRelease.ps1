@@ -130,13 +130,15 @@ Write-Host "UPSTREAM_EXE_VALIDATE=PASS"
 
 $runtimeValidator = Join-Path $PSScriptRoot 'Test-WindowsRuntime.ps1'
 $runtimeEvidence = Join-Path $logRoot 'runtime-upstream'
+$baselineStabilitySeconds = 45
 & $runtimeValidator `
   -ExePath $appExe.FullName `
   -WorkingDirectory $appExe.DirectoryName `
   -EvidenceRoot $runtimeEvidence `
   -Label 'UPSTREAM_V23' `
-  -StabilitySeconds 30
+  -StabilitySeconds $baselineStabilitySeconds
 Write-Host "UPSTREAM_START=PASS criterion=validated_by_runtime_probe"
-Write-Host "UPSTREAM_SMOKE=PASS criterion=visible_window_visual_stability_30s"
+Write-Host "UPSTREAM_SMOKE=PASS criterion=visible_window_visual_stability_${baselineStabilitySeconds}s"
+Write-Host "UPSTREAM_STABILITY_PARITY=PASS seconds=$baselineStabilitySeconds"
 Write-Host "UPSTREAM_REFERENCE_VALIDATION=PASS"
 Write-Host "UPSTREAM_REFERENCE_PATH=$extractRoot"
