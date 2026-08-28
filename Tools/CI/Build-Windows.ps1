@@ -243,6 +243,9 @@ if ($amxmlc) {
     '-warnings=false',
     '-source-path', $src,
     '-define=CONFIG::USE_DISCORD_RPC,false',
+    '-define=CONFIG::BUILD_FOR_AIR,true',
+    '-define=CONFIG::BUILD_FOR_MOBILE_AIR,false',
+    '-define=CONFIG::NOT_BUILD_FOR_AIR,false',
     "-output=$swfOut",
     '--',
     $mainAs

@@ -68,7 +68,7 @@
       
       public function getClassByName(param1:String) : Class
       {
-         var _loc2_:String = describeType(this).@name.toXMLString();
+         var _loc2_:String = String(describeType(this).@name);
          var _loc3_:String = _loc2_ + "_" + param1;
          return getDefinitionByName(_loc3_) as Class;
       }

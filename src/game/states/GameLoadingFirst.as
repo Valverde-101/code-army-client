@@ -5,6 +5,7 @@
 	import flash.display.Stage;
 	import flash.events.*;
 	import flash.text.TextField;
+	import flash.utils.getDefinitionByName;
 	import game.gui.CursorManager;
 	import game.net.GameFeedPublisher;
 	import game.net.MyServer;
@@ -15,7 +16,19 @@
 
 	public class GameLoadingFirst extends LoadingFirst {
 
-		public static var LoadingScreen: Class = background;
+		private static function resolveLoadingScreen(): Class {
+			try {
+				var linked: Class = getDefinitionByName("background") as Class;
+				if (linked != null) {
+					return linked;
+				}
+			} catch (e: Error) {
+				// Headless AIR builds do not include Animate library linkage classes.
+			}
+			return LoadingScreenFallback;
+		}
+
+		public static var LoadingScreen: Class = resolveLoadingScreen();
 
 
 		private var mGameState: GameState;
