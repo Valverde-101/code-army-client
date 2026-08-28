@@ -73,9 +73,18 @@ $env:PATH=$javaBin+';'+$env:PATH
 Remove-Item Env:JAVA_TOOL_OPTIONS -ErrorAction SilentlyContinue
 $resolvedJava=(Get-Command java.exe -ErrorAction Stop).Source
 if(-not $resolvedJava.StartsWith($javaBin,[System.StringComparison]::OrdinalIgnoreCase)){throw "MOD_JAVA_PATH_PIN=FAIL variant=$Variant expected_root=$javaBin actual=$resolvedJava"}
-$javaVersionLines=@(& $resolvedJava -version 2>&1|ForEach-Object{$_.ToString()})
-$javaVersionText=$javaVersionLines -join ' '
-if($LASTEXITCODE -ne 0 -or $javaVersionText -notmatch 'version "17\.'){throw "MOD_JAVA_VERSION=FAIL variant=$Variant actual=$javaVersionText"}
+$javaVersionErr=Join-Path $env:TEMP ("army-java-version-"+[guid]::NewGuid().ToString('N')+".err.txt")
+$javaVersionOut=Join-Path $env:TEMP ("army-java-version-"+[guid]::NewGuid().ToString('N')+".out.txt")
+try{
+  $javaProbe=Start-Process -FilePath $resolvedJava -ArgumentList @('-version') -NoNewWindow -PassThru -Wait -RedirectStandardOutput $javaVersionOut -RedirectStandardError $javaVersionErr
+  $javaVersionLines=@()
+  if(Test-Path -LiteralPath $javaVersionOut){$javaVersionLines+=@(Get-Content -LiteralPath $javaVersionOut -ErrorAction SilentlyContinue)}
+  if(Test-Path -LiteralPath $javaVersionErr){$javaVersionLines+=@(Get-Content -LiteralPath $javaVersionErr -ErrorAction SilentlyContinue)}
+  $javaVersionText=(@($javaVersionLines|ForEach-Object{$_.ToString()}) -join ' ')
+  if($javaProbe.ExitCode -ne 0 -or $javaVersionText -notmatch 'version "17\.'){throw "MOD_JAVA_VERSION=FAIL variant=$Variant exit=$($javaProbe.ExitCode) actual=$javaVersionText"}
+}finally{
+  Remove-Item -LiteralPath $javaVersionOut,$javaVersionErr -Force -ErrorAction SilentlyContinue
+}
 Write-Host "MOD_JAVA_PATH_PIN=PASS variant=$Variant path=$resolvedJava version=$javaVersionText"
 $adtVersion=(& $adt -version 2>&1|ForEach-Object{$_.ToString()}) -join ' '
 if($LASTEXITCODE -ne 0 -or $adtVersion -notmatch '^50\.2\.3\.6'){throw "MOD_TOOLCHAIN=FAIL air=$adtVersion"}
