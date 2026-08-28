@@ -88,6 +88,12 @@ jobs:
           "ANDROID_DIAGNOSTICS_DIR=$dir"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "ANDROID_DIAGNOSTICS_INIT=PASS path=$dir"
 
+      - name: Audit published v23.2 and mods
+        id: published_content
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Audit-PublishedContent.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+
       - name: Prepare HARMAN AIR 50.2.3.6
         id: harman_air
         shell: powershell
@@ -135,6 +141,7 @@ jobs:
             "EXPECTED_SOURCE_SHA=$env:EXPECTED_SOURCE_SHA"
             "RUN=$env:GITHUB_RUN_ID"
             "RUNNER_NAME=$env:RUNNER_NAME"
+            "PUBLISHED_CONTENT_OUTCOME=${{ steps.published_content.outcome }}"
             "HARMAN_AIR_OUTCOME=${{ steps.harman_air.outcome }}"
             "ANDROID_REFERENCE_OUTCOME=${{ steps.android_reference.outcome }}"
             "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
@@ -144,6 +151,14 @@ jobs:
           foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md')){
             $src=Join-Path $build $name
             if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination (Join-Path $diag $name) -Force}
+          }
+          $publishedRoot=Join-Path $build 'published'
+          if(Test-Path -LiteralPath $publishedRoot){
+            $publishedDiag=Join-Path $diag 'published';New-Item -ItemType Directory -Force -Path $publishedDiag|Out-Null
+            foreach($name in @('PUBLISHED-CONTENT.json','MODS-CATALOG.json')){
+              $src=Join-Path $publishedRoot $name
+              if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination (Join-Path $publishedDiag $name) -Force}
+            }
           }
           $refRoot=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android-upstream-v21.1"
           if(Test-Path -LiteralPath $refRoot){
@@ -181,11 +196,13 @@ jobs:
         if: always()
         shell: powershell
         run: |
+          Write-Host "PUBLISHED_CONTENT_OUTCOME=${{ steps.published_content.outcome }}"
           Write-Host "HARMAN_AIR_OUTCOME=${{ steps.harman_air.outcome }}"
           Write-Host "ANDROID_REFERENCE_OUTCOME=${{ steps.android_reference.outcome }}"
           Write-Host "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
           Write-Host "APK_VALIDATE_OUTCOME=${{ steps.apk_validate.outcome }}"
           Write-Host "ADB_TEST_OUTCOME=${{ steps.adb_test.outcome }}"
+          if('${{ steps.published_content.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL published_content'}
           if('${{ steps.harman_air.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL harman_air'}
           if('${{ steps.android_reference.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_reference'}
           if('${{ steps.android_build.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_build'}

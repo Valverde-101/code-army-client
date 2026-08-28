@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "principal_repository": "Valverde-101/code-army-client",
+  "editable_source": {
+    "upstream": "Michielvde1253/army-client",
+    "role": "ActionScript/FLA source and project code",
+    "base_sha": "324c29b6c9e0e32f61183bf52725662a2bd8aab9"
+  },
+  "published_content": {
+    "repository": "Valverde-101/Test_army_attack",
+    "upstream": "Michielvde1253/michielvde1253.github.io",
+    "pinned_sha": "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "version": "23.2",
+    "path": "vendor/Test_army_attack",
+    "roles": [
+      "latest published game content",
+      "published SWF",
+      "data",
+      "config",
+      "assets",
+      "mods",
+      "launcher metadata"
+    ]
+  },
+  "integration_policy": {
+    "android_content_order": [
+      "verified v23 release base",
+      "published v23.2 data/config",
+      "principal repo src/data and src/config overrides"
+    ],
+    "android_binary_seed": "published v23.2 SWF pinned by submodule commit",
+    "fallback_binary_seed": "verified v23 release SWF",
+    "mods_path": "vendor/Test_army_attack/mods",
+    "mods_packaged_by_default": false,
+    "rationale": "mods remain available to the principal repository without inflating every Android APK"
+  }
+}

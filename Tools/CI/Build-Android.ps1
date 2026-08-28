@@ -13,6 +13,23 @@ if(-not $git){throw 'PRECHECK_GIT=FAIL'}
 Push-Location $RepoRoot
 try{$actual=(& $git rev-parse HEAD).Trim();if($actual -ne $ExpectedSha){throw "EXACT_HEAD=FAIL expected=$ExpectedSha actual=$actual"}}finally{Pop-Location}
 Write-Host "EXACT_HEAD=PASS sha=$ExpectedSha"
+$publishedExpectedSha='306bccc7db5b1ce34dd68a3bc80093648c9224bd'
+$publishedRoot=Join-Path $RepoRoot 'vendor\Test_army_attack'
+if(-not (Test-Path -LiteralPath $publishedRoot)){throw "PUBLISHED_CONTENT=FAIL submodule_missing=$publishedRoot"}
+$publishedActualSha=(& $git -C $publishedRoot rev-parse HEAD).Trim()
+if($LASTEXITCODE -ne 0 -or $publishedActualSha -ne $publishedExpectedSha){throw "PUBLISHED_CONTENT=FAIL expected_sha=$publishedExpectedSha actual=$publishedActualSha"}
+$publishedVersions=Get-Content -LiteralPath (Join-Path $publishedRoot 'launcher\versions.json') -Raw|ConvertFrom-Json
+$publishedGame23=@($publishedVersions.game|Where-Object{[string]$_.id -eq '23'})|Select-Object -First 1
+if(-not $publishedGame23 -or [string]$publishedGame23.latestVersion -ne '23.2'){throw "PUBLISHED_CONTENT=FAIL expected_version=23.2"}
+$publishedVersion=[string]$publishedGame23.latestVersion
+$publishedGameRoot=Join-Path $publishedRoot 'armyattack'
+$publishedSwf=Join-Path $publishedGameRoot 'assets\iArmyAirOfflineSavingv23.swf'
+if(-not (Test-Path -LiteralPath $publishedSwf)){throw "PUBLISHED_SWF=FAIL missing=$publishedSwf"}
+$publishedSwfInfo=Get-Item -LiteralPath $publishedSwf
+$publishedSwfSha=(Get-FileHash -LiteralPath $publishedSwf -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "PUBLISHED_CONTENT=PASS sha=$publishedActualSha version=$publishedVersion"
+Write-Host "PUBLISHED_SWF=PASS size=$($publishedSwfInfo.Length) sha256=$publishedSwfSha"
+
 $androidSdk=Join-Path $AndroidBuildRoot 'AndroidSDK'
 $adb=Join-Path $androidSdk 'platform-tools\adb.exe'
 if(-not (Test-Path -LiteralPath $androidSdk)){throw "ANDROID_SDK=FAIL path=$androidSdk"}
@@ -125,18 +142,36 @@ $stage=Join-Path $buildRoot 'stage'
 foreach($p in @($seedExtract,$stage)){if(Test-Path $p){Remove-Item $p -Recurse -Force};New-Item -ItemType Directory -Force -Path $p|Out-Null}
 Expand-Archive -LiteralPath $seedZip -DestinationPath $seedExtract -Force
 $sourceRoot=Join-Path $seedExtract '23'
-$seedSwf=Join-Path $sourceRoot 'iArmyAirOfflineSavingv21_2.swf'
-$expectedSwfSha='4b7b09398779c33879f6aff337b57eca6dcc3ad637348a35d22bf2858005f3fc'
-if(-not (Test-Path $seedSwf)){throw "BINARY_SEED=FAIL missing_swf=$seedSwf"}
-$swfSha=(Get-FileHash $seedSwf -Algorithm SHA256).Hash.ToLowerInvariant()
-if($swfSha -ne $expectedSwfSha){throw "BINARY_SEED=FAIL expected=$expectedSwfSha actual=$swfSha"}
-Copy-Item -LiteralPath $seedSwf -Destination (Join-Path $stage 'iArmyAirOfflineSavingv21_2.swf') -Force
+$fallbackSeedSwf=Join-Path $sourceRoot 'iArmyAirOfflineSavingv21_2.swf'
+$fallbackExpectedSwfSha='4b7b09398779c33879f6aff337b57eca6dcc3ad637348a35d22bf2858005f3fc'
+if(-not (Test-Path $fallbackSeedSwf)){throw "BINARY_SEED_FALLBACK=FAIL missing_swf=$fallbackSeedSwf"}
+$fallbackSwfSha=(Get-FileHash $fallbackSeedSwf -Algorithm SHA256).Hash.ToLowerInvariant()
+if($fallbackSwfSha -ne $fallbackExpectedSwfSha){throw "BINARY_SEED_FALLBACK=FAIL expected=$fallbackExpectedSwfSha actual=$fallbackSwfSha"}
+Write-Host "BINARY_SEED_FALLBACK=PASS release=v23 sha256=$fallbackSwfSha"
+
+$appContentSwf='iArmyAirOfflineSavingv23.swf'
+$swfSha=$publishedSwfSha
+$swfSize=$publishedSwfInfo.Length
+Copy-Item -LiteralPath $publishedSwf -Destination (Join-Path $stage $appContentSwf) -Force
+Write-Host "BINARY_SEED=PASS source=published_v23_2 repository=Valverde-101/Test_army_attack source_sha=$publishedActualSha swf_sha256=$swfSha size=$swfSize"
+
 foreach($name in @('data','config')){
-  $base=Join-Path $sourceRoot $name;$dest=Join-Path $stage $name
+  $base=Join-Path $sourceRoot $name
+  $dest=Join-Path $stage $name
   Copy-Item -LiteralPath $base -Destination $dest -Recurse -Force
-  $head=Join-Path (Join-Path $RepoRoot 'src') $name
-  foreach($child in Get-ChildItem -LiteralPath $head -Force){Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force}
-  Write-Host "ANDROID_CONTENT_OVERLAY=PASS component=$name"
+
+  $publishedBase=Join-Path $publishedGameRoot $name
+  if(-not (Test-Path -LiteralPath $publishedBase)){throw "PUBLISHED_CONTENT=FAIL missing_component=$name"}
+  foreach($child in @(Get-ChildItem -LiteralPath $publishedBase -Force)){
+    Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force
+  }
+  Write-Host "ANDROID_CONTENT_OVERLAY=PASS source=published_v23_2 component=$name"
+
+  $owned=Join-Path (Join-Path $RepoRoot 'src') $name
+  foreach($child in @(Get-ChildItem -LiteralPath $owned -Force)){
+    Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force
+  }
+  Write-Host "ANDROID_CONTENT_OVERLAY=PASS source=principal_repo component=$name"
 }
 Copy-Item -LiteralPath (Join-Path $RepoRoot 'src\AppIconsForPublish') -Destination (Join-Path $stage 'AppIconsForPublish') -Recurse -Force
 $objectiveIcons=Join-Path $stage 'data\icons\mission_icons\objective_icons'
@@ -156,12 +191,12 @@ $xml=@"
 <?xml version="1.0" encoding="utf-8"?>
 <application xmlns="http://ns.adobe.com/air/application/$namespace">
   <id>army.attack</id>
-  <versionNumber>23.0.0</versionNumber>
-  <versionLabel>23-android-$($ExpectedSha.Substring(0,8))</versionLabel>
+  <versionNumber>23.2.0</versionNumber>
+  <versionLabel>23.2-android-$($ExpectedSha.Substring(0,8))</versionLabel>
   <filename>ArmyAttack</filename>
   <name>Army Attack</name>
   <initialWindow>
-    <content>iArmyAirOfflineSavingv21_2.swf</content>
+    <content>$appContentSwf</content>
     <visible>true</visible>
     <fullScreen>true</fullScreen>
     <aspectRatio>landscape</aspectRatio>
@@ -212,7 +247,43 @@ if($p2.ExitCode -ne 0 -or -not (Test-Path $apkPath)){
   throw 'BUILD=FAIL android_package'
 }
 $apk=Get-Item $apkPath;$apkSha=(Get-FileHash $apkPath -Algorithm SHA256).Hash.ToLowerInvariant()
-$prov=[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;build_tier=$tier;air_sdk=$air.Version;air_sdk_root=$air.Root;air_namespace=$namespace;java_home=$env:JAVA_HOME;java_major=$javaMajor;android_sdk=$androidSdk;target_android_api=$targetApi;target_abi=$targetAbi;binary_seed_release='v23';binary_seed_source_sha='324c29b6c9e0e32f61183bf52725662a2bd8aab9';swf_sha256=$swfSha;overlays=@('src/data','src/config');descriptor=$descriptor;removed_permissions=@('WRITE_EXTERNAL_STORAGE','MANAGE_EXTERNAL_STORAGE');excluded_extensions=@('fi.joniaromaa.adobeair.discordrpc');apk_path=$apkPath;apk_size=$apk.Length;apk_sha256=$apkSha}
+$prov=[ordered]@{
+  repository='Valverde-101/code-army-client'
+  tested_sha=$ExpectedSha
+  build_tier=$tier
+  air_sdk=$air.Version
+  air_sdk_root=$air.Root
+  air_namespace=$namespace
+  java_home=$env:JAVA_HOME
+  java_major=$javaMajor
+  android_sdk=$androidSdk
+  target_android_api=$targetApi
+  target_abi=$targetAbi
+  game_version='23.2'
+  binary_seed='published_v23_2'
+  binary_seed_source_repository='Valverde-101/Test_army_attack'
+  binary_seed_source_sha=$publishedActualSha
+  binary_seed_source_path='armyattack/assets/iArmyAirOfflineSavingv23.swf'
+  app_content_swf=$appContentSwf
+  swf_size=$swfSize
+  swf_sha256=$swfSha
+  fallback_binary_seed_release='v23'
+  fallback_binary_seed_source_sha='324c29b6c9e0e32f61183bf52725662a2bd8aab9'
+  fallback_swf_sha256=$fallbackSwfSha
+  overlays=@(
+    'verified-v23-release:data,config',
+    'vendor/Test_army_attack@306bccc7:armyattack/data,armyattack/config',
+    'src/data,src/config'
+  )
+  mods_source_path='vendor/Test_army_attack/mods'
+  mods_packaged_by_default=$false
+  descriptor=$descriptor
+  removed_permissions=@('WRITE_EXTERNAL_STORAGE','MANAGE_EXTERNAL_STORAGE')
+  excluded_extensions=@('fi.joniaromaa.adobeair.discordrpc')
+  apk_path=$apkPath
+  apk_size=$apk.Length
+  apk_sha256=$apkSha
+}
 $provPath=Join-Path $buildRoot 'BUILD-PROVENANCE.json'
 $prov|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $provPath -Encoding UTF8
 $toolchain=[ordered]@{
@@ -235,7 +306,7 @@ Write-Host "APK_GENERATED=PASS"
 Write-Host "APK_PATH=$apkPath"
 Write-Host "APK_SIZE=$($apk.Length)"
 Write-Host "APK_SHA256=$apkSha"
-Write-Host "SWF_SHA256=$swfSha"
+Write-Host "SWF_SHA256=$swfSha"`nWrite-Host "SWF_SIZE=$swfSize"`nWrite-Host "PUBLISHED_SOURCE_SHA=$publishedActualSha"`nWrite-Host "GAME_VERSION=$publishedVersion"
 Write-Host "AIR_VERSION=$($air.Version)"
 $playReady=if($harmanAndroid){'CANDIDATE'}else{'NO_LEGACY_TOOLCHAIN'}
 Write-Host "PLAY_READY=$playReady"

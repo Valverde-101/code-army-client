@@ -131,6 +131,17 @@ else {
 
 Push-Location $target
 try {
+  $env:GIT_TERMINAL_PROMPT='0'
+  & $git submodule sync --recursive
+  if($LASTEXITCODE -ne 0){throw "SUBMODULE_SYNC=FAIL exit=$LASTEXITCODE"}
+  & $git submodule update --init --recursive --force
+  if($LASTEXITCODE -ne 0){throw "SUBMODULE_UPDATE=FAIL exit=$LASTEXITCODE"}
+} finally {
+  Pop-Location
+}
+
+Push-Location $target
+try {
   $actual = (& $git rev-parse HEAD).Trim()
   if ($actual -ne $ExpectedSha) {
     throw "EXACT_HEAD=FAIL expected=$ExpectedSha actual=$actual"
@@ -159,14 +170,24 @@ try {
     throw "SOURCE_FILES=FAIL missing_count=$($missing.Count)"
   }
 
-  $asCount = (Get-ChildItem -LiteralPath $target -Recurse -File -Filter '*.as' -ErrorAction SilentlyContinue).Count
-  $flaCount = (Get-ChildItem -LiteralPath $target -Recurse -File -Filter '*.fla' -ErrorAction SilentlyContinue).Count
-  $pngCount = (Get-ChildItem -LiteralPath $target -Recurse -File -Filter '*.png' -ErrorAction SilentlyContinue).Count
-  $mp3Count = (Get-ChildItem -LiteralPath $target -Recurse -File -Filter '*.mp3' -ErrorAction SilentlyContinue).Count
-  $jsonCount = (Get-ChildItem -LiteralPath $target -Recurse -File -Filter '*.json' -ErrorAction SilentlyContinue).Count
+  $sourceInventory=Join-Path $target 'src'
+  $asCount = (Get-ChildItem -LiteralPath $sourceInventory -Recurse -File -Filter '*.as' -ErrorAction SilentlyContinue).Count
+  $flaCount = (Get-ChildItem -LiteralPath $sourceInventory -Recurse -File -Filter '*.fla' -ErrorAction SilentlyContinue).Count
+  $pngCount = (Get-ChildItem -LiteralPath $sourceInventory -Recurse -File -Filter '*.png' -ErrorAction SilentlyContinue).Count
+  $mp3Count = (Get-ChildItem -LiteralPath $sourceInventory -Recurse -File -Filter '*.mp3' -ErrorAction SilentlyContinue).Count
+  $jsonCount = (Get-ChildItem -LiteralPath $sourceInventory -Recurse -File -Filter '*.json' -ErrorAction SilentlyContinue).Count
+
+  $publishedPath=Join-Path $target 'vendor\Test_army_attack'
+  $publishedExpected='306bccc7db5b1ce34dd68a3bc80093648c9224bd'
+  if(-not (Test-Path -LiteralPath $publishedPath)){throw "PUBLISHED_SUBMODULE=FAIL missing=$publishedPath"}
+  $publishedActual=(& $git -C $publishedPath rev-parse HEAD).Trim()
+  if($LASTEXITCODE -ne 0 -or $publishedActual -ne $publishedExpected){
+    throw "PUBLISHED_SUBMODULE=FAIL expected=$publishedExpected actual=$publishedActual"
+  }
 
   Write-Host "EXACT_HEAD=PASS sha=$actual"
   Write-Host "SOURCE_FILES=PASS"
+  Write-Host "PUBLISHED_SUBMODULE=PASS path=$publishedPath sha=$publishedActual"
   Write-Host "AS_FILES=$asCount"
   Write-Host "FLA_FILES=$flaCount"
   Write-Host "PNG_FILES=$pngCount"

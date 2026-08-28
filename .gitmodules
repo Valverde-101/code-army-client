@@ -1,0 +1,4 @@
+[submodule "vendor/Test_army_attack"]
+	path = vendor/Test_army_attack
+	url = https://github.com/Valverde-101/Test_army_attack.git
+	branch = main
