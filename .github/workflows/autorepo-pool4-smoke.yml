@@ -1,0 +1,54 @@
+name: AutoRepo Pool4 Smoke
+
+on:
+  push:
+    branches:
+      - infra/autorepo-pool4-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  slot-a:
+    name: Pool smoke A
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    steps:
+      - name: Hold A
+        shell: powershell
+        run: |
+          Write-Host "SMOKE_JOB=A RUNNER_NAME=$env:RUNNER_NAME START=$(Get-Date -Format o)"
+          Start-Sleep -Seconds 20
+          Write-Host "SMOKE_JOB=A RUNNER_NAME=$env:RUNNER_NAME END=$(Get-Date -Format o)"
+
+  slot-b:
+    name: Pool smoke B
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    steps:
+      - name: Hold B
+        shell: powershell
+        run: |
+          Write-Host "SMOKE_JOB=B RUNNER_NAME=$env:RUNNER_NAME START=$(Get-Date -Format o)"
+          Start-Sleep -Seconds 20
+          Write-Host "SMOKE_JOB=B RUNNER_NAME=$env:RUNNER_NAME END=$(Get-Date -Format o)"
+
+  slot-c:
+    name: Pool smoke C
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    steps:
+      - name: Hold C
+        shell: powershell
+        run: |
+          Write-Host "SMOKE_JOB=C RUNNER_NAME=$env:RUNNER_NAME START=$(Get-Date -Format o)"
+          Start-Sleep -Seconds 20
+          Write-Host "SMOKE_JOB=C RUNNER_NAME=$env:RUNNER_NAME END=$(Get-Date -Format o)"
+
+  slot-d:
+    name: Pool smoke D
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    steps:
+      - name: Hold D
+        shell: powershell
+        run: |
+          Write-Host "SMOKE_JOB=D RUNNER_NAME=$env:RUNNER_NAME START=$(Get-Date -Format o)"
+          Start-Sleep -Seconds 20
+          Write-Host "SMOKE_JOB=D RUNNER_NAME=$env:RUNNER_NAME END=$(Get-Date -Format o)"
