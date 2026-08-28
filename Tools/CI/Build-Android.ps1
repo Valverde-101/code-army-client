@@ -32,7 +32,13 @@ $javaVersionOut=Join-Path $env:TEMP "army-java-version-$PID.out.txt"
 $javaVersionErr=Join-Path $env:TEMP "army-java-version-$PID.err.txt"
 $pJava=Start-Process -FilePath $java -ArgumentList '-version' -NoNewWindow -PassThru -Wait -RedirectStandardOutput $javaVersionOut -RedirectStandardError $javaVersionErr
 if($pJava.ExitCode -ne 0){throw "JAVA_VERSION=FAIL exit=$($pJava.ExitCode)"}
-foreach($vf in @($javaVersionOut,$javaVersionErr)){if(Test-Path $vf){Get-Content $vf|ForEach-Object{Write-Host "JAVA_VERSION=$_"};Remove-Item $vf -Force -ErrorAction SilentlyContinue}}
+$javaVersionLines=@()
+foreach($vf in @($javaVersionOut,$javaVersionErr)){if(Test-Path $vf){$javaVersionLines+=@(Get-Content $vf);Remove-Item $vf -Force -ErrorAction SilentlyContinue}}
+$javaVersionLines|ForEach-Object{Write-Host "JAVA_VERSION=$_"}
+$javaVersionText=($javaVersionLines -join "`n")
+$javaMajor=0
+if($javaVersionText -match 'version\s+"(?<major>\d+)(?:\.(?<minor>\d+))?'){$javaMajor=[int]$matches['major'];if($javaMajor -eq 1 -and $matches['minor']){$javaMajor=[int]$matches['minor']}}
+Write-Host "JAVA_MAJOR=$javaMajor"
 $airRoots=New-Object System.Collections.Generic.List[string]
 function Add-AirRoot([string]$p){if($p -and (Test-Path -LiteralPath (Join-Path $p 'bin\adt.bat')) -and -not $airRoots.Contains($p)){$airRoots.Add($p)}}
 if($env:AIR_HOME){Add-AirRoot $env:AIR_HOME}
@@ -56,6 +62,12 @@ if($airChoices.Count -eq 0){throw 'AIR_SDK=FAIL no usable adt.bat found'}
 $air=$airChoices|Sort-Object Score -Descending|Select-Object -First 1
 $modern=($air.Major -ge 51)
 Write-Host "AIR_SDK=PASS root=$($air.Root) version=$($air.Version) modern=$modern"
+if((-not $modern) -and $javaMajor -ge 9){
+  $legacyExport='--add-exports=java.base/sun.security.x509=ALL-UNNAMED'
+  $existing=[string]$env:JAVA_TOOL_OPTIONS
+  if($existing -notlike "*$legacyExport*"){$env:JAVA_TOOL_OPTIONS=(($existing+' '+$legacyExport).Trim())}
+  Write-Host "AIR_LEGACY_JAVA_COMPAT=PASS java_major=$javaMajor export=sun.security.x509"
+}
 if($modern){
   $sdkmanager=Get-ChildItem -LiteralPath $androidSdk -Recurse -File -Filter 'sdkmanager.bat' -ErrorAction SilentlyContinue|Sort-Object FullName|Select-Object -First 1
   $platform36=Join-Path $androidSdk 'platforms\android-36'
