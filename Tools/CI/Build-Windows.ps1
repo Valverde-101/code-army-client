@@ -240,6 +240,7 @@ if ($amxmlc) {
   $compilerErr = Join-Path $logRoot 'amxmlc.err.log'
   $args = @(
     '-debug=false',
+    '-warnings=false',
     '-source-path', $src,
     '-define=CONFIG::USE_DISCORD_RPC,false',
     "-output=$swfOut",
@@ -256,10 +257,16 @@ if ($amxmlc) {
   else {
     Write-Host "SWF_COMPILE_AMXMLC=FAIL exit=$($p.ExitCode) log=$compilerLog"
     if (Test-Path -LiteralPath $compilerLog) {
-      Get-Content -LiteralPath $compilerLog -Tail 80 | ForEach-Object { Write-Host $_ }
+      Write-Host '--- AMXMLC STDOUT HEAD ---'
+      Get-Content -LiteralPath $compilerLog -TotalCount 180 | ForEach-Object { Write-Host $_ }
+      Write-Host '--- AMXMLC STDOUT TAIL ---'
+      Get-Content -LiteralPath $compilerLog -Tail 180 | ForEach-Object { Write-Host $_ }
     }
     if (Test-Path -LiteralPath $compilerErr) {
-      Get-Content -LiteralPath $compilerErr -Tail 80 | ForEach-Object { Write-Host $_ }
+      Write-Host '--- AMXMLC STDERR HEAD ---'
+      Get-Content -LiteralPath $compilerErr -TotalCount 180 | ForEach-Object { Write-Host $_ }
+      Write-Host '--- AMXMLC STDERR TAIL ---'
+      Get-Content -LiteralPath $compilerErr -Tail 180 | ForEach-Object { Write-Host $_ }
     }
   }
 }
