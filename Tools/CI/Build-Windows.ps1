@@ -363,8 +363,8 @@ $certLog = Join-Path $logRoot 'adt-certificate.log'
 $certErr = Join-Path $logRoot 'adt-certificate.err.log'
 $certArgs = @(
   '-certificate',
-  '-cn', 'Army Attack Local CI',
-  '-o', 'Valverde Local Build',
+  '-cn', 'ArmyAttackLocalCI',
+  '-o', 'ValverdeLocalBuild',
   '-c', 'PE',
   '2048-RSA',
   $certPath,
