@@ -128,48 +128,15 @@ Write-Host "UPSTREAM_APP_EXE_SIZE=$($appExe.Length)"
 Write-Host "UPSTREAM_APP_EXE_SHA256=$appExeHash"
 Write-Host "UPSTREAM_EXE_VALIDATE=PASS"
 
-$preExisting = @{}
-Get-Process -ErrorAction SilentlyContinue | ForEach-Object { $preExisting[$_.Id] = $true }
-
-$proc = Start-Process -FilePath $appExe.FullName -WorkingDirectory $appExe.DirectoryName -PassThru
-Write-Host "UPSTREAM_START_ATTEMPT=pid=$($proc.Id)"
-Start-Sleep -Seconds 15
-
-$alive = $false
-$alivePid = $null
-if (-not $proc.HasExited) {
-  $alive = $true
-  $alivePid = $proc.Id
-}
-else {
-  try {
-    $rootEscaped = [regex]::Escape($extractRoot)
-    $candidate = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-      Where-Object {
-        $_.ExecutablePath -and $_.ExecutablePath -match "^$rootEscaped" -and -not $preExisting.ContainsKey([int]$_.ProcessId)
-      } |
-      Select-Object -First 1
-    if ($candidate) {
-      $alive = $true
-      $alivePid = [int]$candidate.ProcessId
-    }
-  } catch {}
-}
-
-if (-not $alive) {
-  $exitCode = if ($proc.HasExited) { $proc.ExitCode } else { 'unknown' }
-  throw "UPSTREAM_START=FAIL parent_exit=$exitCode no_live_process_after_15s"
-}
-
-Write-Host "UPSTREAM_START=PASS pid=$alivePid"
-Write-Host "UPSTREAM_SMOKE=PASS criterion=process_alive_15s"
-
-try {
-  Stop-Process -Id $alivePid -Force -ErrorAction SilentlyContinue
-} catch {}
-if (-not $proc.HasExited) {
-  try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
-}
-
+$runtimeValidator = Join-Path $PSScriptRoot 'Test-WindowsRuntime.ps1'
+$runtimeEvidence = Join-Path $logRoot 'runtime-upstream'
+& $runtimeValidator `
+  -ExePath $appExe.FullName `
+  -WorkingDirectory $appExe.DirectoryName `
+  -EvidenceRoot $runtimeEvidence `
+  -Label 'UPSTREAM_V23' `
+  -StabilitySeconds 30
+Write-Host "UPSTREAM_START=PASS criterion=validated_by_runtime_probe"
+Write-Host "UPSTREAM_SMOKE=PASS criterion=visible_window_visual_stability_30s"
 Write-Host "UPSTREAM_REFERENCE_VALIDATION=PASS"
 Write-Host "UPSTREAM_REFERENCE_PATH=$extractRoot"

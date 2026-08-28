@@ -415,14 +415,15 @@ Write-Host "EXE_SIZE=$($exe.Length)"
 Write-Host "EXE_SHA256=$exeHash"
 Write-Host "COMPILE_METHOD=$compileMethod"
 
-$launch = Start-Process -FilePath $exe.FullName -WorkingDirectory $bundleRoot -PassThru
-Start-Sleep -Seconds 12
-if ($launch.HasExited) {
-  throw "START=FAIL process exited early code=$($launch.ExitCode) exe=$($exe.FullName)"
-}
-Write-Host "START=PASS pid=$($launch.Id)"
-try { Stop-Process -Id $launch.Id -Force -ErrorAction SilentlyContinue } catch {}
-Write-Host "SMOKE=PASS criterion=process_alive_12s"
+$runtimeValidator = Join-Path $RepoRoot 'Tools\CI\Test-WindowsRuntime.ps1'
+$runtimeEvidence = Join-Path $logRoot 'runtime-source'
+& $runtimeValidator `
+  -ExePath $exe.FullName `
+  -WorkingDirectory $bundleRoot `
+  -EvidenceRoot $runtimeEvidence `
+  -Label 'SOURCE_REBUILD' `
+  -StabilitySeconds 30
+Write-Host "SMOKE=PASS criterion=visible_window_visual_stability_30s"
 
 # Remove the ephemeral signing identity after the build is complete.
 $certPassword = $null
@@ -430,4 +431,4 @@ if (Test-Path -LiteralPath $certPath) {
   Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
 }
 Write-Host "SIGNING_CLEANUP=PASS"
-Write-Host "FINAL_VALIDATION=PASS scope=windows_build_and_process_smoke"
+Write-Host "FINAL_VALIDATION=PASS scope=windows_build_window_visual_stability_crashcheck"
