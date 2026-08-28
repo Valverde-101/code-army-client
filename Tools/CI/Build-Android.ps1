@@ -58,7 +58,7 @@ foreach($base in @((Join-Path $AndroidBuildRoot 'Tools'),(Join-Path $AndroidBuil
 Add-AirRoot (Join-Path $AndroidBuildRoot 'Tools\AIRSDK-32')
 $airChoices=@()
 foreach($root in $airRoots){
-  $adt=Join-Path $root 'bin\\adt.bat'
+  $adt=Join-Path $root 'bin\adt.bat'
   $previousErrorActionPreference=$ErrorActionPreference
   try{
     # JVM notices such as "Picked up JAVA_TOOL_OPTIONS" are written to stderr.
@@ -75,7 +75,7 @@ foreach($root in $airRoots){
     Write-Host "AIR_DISCOVERY_WARNING root=$root exit=$probeExit output=$ver"
     continue
   }
-  if($ver -match '(\\d+)\\.(\\d+)'){
+  if($ver -match '(\d+)\.(\d+)'){
     $major=[int]$matches[1];$minor=[int]$matches[2]
     $airChoices+=[pscustomobject]@{Root=$root;Adt=$adt;Version=$ver;Major=$major;Minor=$minor;Score=($major*1000+$minor)}
     Write-Host "AIR_DISCOVERED root=$root version=$ver"
