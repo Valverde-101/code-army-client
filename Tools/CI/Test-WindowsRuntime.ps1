@@ -60,6 +60,7 @@ public static class ArmyAttackWindowProbe
     public static IntPtr FindVisibleWindow(int processId)
     {
         IntPtr found = IntPtr.Zero;
+        long bestArea = 0;
         EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
         {
             uint pid;
@@ -71,11 +72,18 @@ public static class ArmyAttackWindowProbe
             if (!GetWindowRect(hWnd, out r))
                 return true;
 
-            if ((r.Right - r.Left) < 200 || (r.Bottom - r.Top) < 150)
+            int width = r.Right - r.Left;
+            int height = r.Bottom - r.Top;
+            if (width < 200 || height < 150)
                 return true;
 
-            found = hWnd;
-            return false;
+            long area = (long)width * (long)height;
+            if (area > bestArea)
+            {
+                bestArea = area;
+                found = hWnd;
+            }
+            return true;
         }, IntPtr.Zero);
         return found;
     }
@@ -198,6 +206,7 @@ try {
   Write-Host "START_ATTEMPT=PASS label=$Label pid=$trackedPid exe=$ExePath"
 
   $deadline = (Get-Date).AddSeconds(20)
+  $rect = $null
   do {
     Start-Sleep -Milliseconds 500
     $proc.Refresh()
@@ -205,14 +214,23 @@ try {
       throw "START=FAIL label=$Label pid=$trackedPid exit=$($proc.ExitCode)"
     }
     $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
-  } while ($handle -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline)
+    if ($handle -ne [IntPtr]::Zero) {
+      try {
+        $candidateRect = Get-WindowRectObject $handle
+        if ($candidateRect.Width -ge 640 -and $candidateRect.Height -ge 480) {
+          $rect = $candidateRect
+          break
+        }
+        Write-Host "WINDOW_TRANSIENT=OBSERVED label=$Label handle=$handle width=$($candidateRect.Width) height=$($candidateRect.Height) title=$([ArmyAttackWindowProbe]::WindowTitle($handle))"
+      } catch {}
+    }
+  } while ((Get-Date) -lt $deadline)
 
-  if ($handle -eq [IntPtr]::Zero) {
-    throw "WINDOW_HANDLE=FAIL label=$Label pid=$trackedPid no_visible_window_after_20s"
+  if ($handle -eq [IntPtr]::Zero -or $null -eq $rect) {
+    throw "WINDOW_HANDLE=FAIL label=$Label pid=$trackedPid no_game_sized_window_after_20s"
   }
 
   $title = [ArmyAttackWindowProbe]::WindowTitle($handle)
-  $rect = Get-WindowRectObject $handle
   Write-Host "START=PASS label=$Label pid=$trackedPid"
   Write-Host "WINDOW_HANDLE=PASS label=$Label handle=$handle title=$title"
   Write-Host "WINDOW_RECT=PASS label=$Label left=$($rect.Left) top=$($rect.Top) width=$($rect.Width) height=$($rect.Height)"
@@ -223,6 +241,8 @@ try {
   Write-Host "WINDOW_RESPONDING=PASS label=$Label phase=initial"
 
   Start-Sleep -Seconds 3
+  $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
+  if ($handle -eq [IntPtr]::Zero) { throw "WINDOW_HANDLE=FAIL label=$Label phase=initial_capture" }
   $initial = Capture-WindowEvidence $handle 'initial'
 
   $elapsed = 0
@@ -233,12 +253,22 @@ try {
     if ($proc.HasExited) {
       throw "RUNTIME_STABILITY=FAIL label=$Label elapsed=$elapsed exit=$($proc.ExitCode)"
     }
+    $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
+    if ($handle -eq [IntPtr]::Zero) {
+      throw "WINDOW_HANDLE=FAIL label=$Label elapsed=$elapsed no_visible_window"
+    }
+    $sampleRect = Get-WindowRectObject $handle
+    if ($sampleRect.Width -lt 640 -or $sampleRect.Height -lt 480) {
+      throw "WINDOW_RECT=FAIL label=$Label elapsed=$elapsed width=$($sampleRect.Width) height=$($sampleRect.Height)"
+    }
     if ([ArmyAttackWindowProbe]::IsHungAppWindow($handle)) {
       throw "WINDOW_RESPONDING=FAIL label=$Label elapsed=$elapsed"
     }
-    Write-Host "RUNTIME_SAMPLE=PASS label=$Label elapsed=$elapsed working_set=$($proc.WorkingSet64) cpu=$($proc.TotalProcessorTime.TotalMilliseconds)"
+    Write-Host "RUNTIME_SAMPLE=PASS label=$Label elapsed=$elapsed window=$($sampleRect.Width)x$($sampleRect.Height) working_set=$($proc.WorkingSet64) cpu=$($proc.TotalProcessorTime.TotalMilliseconds)"
   }
 
+  $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
+  if ($handle -eq [IntPtr]::Zero) { throw "WINDOW_HANDLE=FAIL label=$Label phase=final_capture" }
   $final = Capture-WindowEvidence $handle 'final'
   $changed = $initial.Sha256 -ne $final.Sha256
   Write-Host "SCREENSHOT_CHANGED=$changed label=$Label"
