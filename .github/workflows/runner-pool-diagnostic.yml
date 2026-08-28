@@ -1,0 +1,71 @@
+name: Diagnose Windows runner pool
+
+on:
+  push:
+    branches:
+      - chore/local-army-bootstrap-20260827
+    paths:
+      - .github/workflows/runner-pool-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Inspect local runner registrations
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Inspect runner services safely
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Write-Host "DIAGNOSTIC_RUNNER=$env:RUNNER_NAME"
+          Write-Host "COMPUTER=$env:COMPUTERNAME"
+
+          $services=@(Get-CimInstance Win32_Service | Where-Object {
+            $_.Name -like 'actions.runner*' -or $_.DisplayName -like '*Actions Runner*'
+          } | Sort-Object Name)
+
+          Write-Host "RUNNER_SERVICE_COUNT=$($services.Count)"
+          foreach($svc in $services){
+            Write-Host "SERVICE_BEGIN"
+            Write-Host "SERVICE_NAME=$($svc.Name)"
+            Write-Host "SERVICE_STATE=$($svc.State)"
+            Write-Host "SERVICE_STARTMODE=$($svc.StartMode)"
+            Write-Host "SERVICE_STARTNAME=$($svc.StartName)"
+
+            $path=[string]$svc.PathName
+            $exe=''
+            if($path -match '^"([^"]+)"'){$exe=$matches[1]}
+            elseif($path -match '^(\S+\.exe)'){$exe=$matches[1]}
+            Write-Host "SERVICE_EXE=$exe"
+
+            if($exe -and (Test-Path -LiteralPath $exe)){
+              $root=Split-Path -Parent (Split-Path -Parent $exe)
+              Write-Host "RUNNER_ROOT=$root"
+              $runnerFile=Join-Path $root '.runner'
+              if(Test-Path -LiteralPath $runnerFile){
+                try{
+                  $r=Get-Content -LiteralPath $runnerFile -Raw | ConvertFrom-Json
+                  Write-Host "AGENT_NAME=$($r.agentName)"
+                  Write-Host "POOL_ID=$($r.poolId)"
+                  Write-Host "POOL_NAME=$($r.poolName)"
+                  Write-Host "SERVER_URL=$($r.serverUrl)"
+                  Write-Host "GITHUB_URL=$($r.gitHubUrl)"
+                  Write-Host "WORK_FOLDER=$($r.workFolder)"
+                  Write-Host "USE_V2_FLOW=$($r.useV2Flow)"
+                }catch{
+                  Write-Host "RUNNER_METADATA=UNREADABLE"
+                }
+              }else{
+                Write-Host "RUNNER_METADATA=MISSING"
+              }
+            }
+            Write-Host "SERVICE_END"
+          }
+
+          $listeners=@(Get-Process -Name 'Runner.Listener' -ErrorAction SilentlyContinue)
+          $workers=@(Get-Process -Name 'Runner.Worker' -ErrorAction SilentlyContinue)
+          Write-Host "RUNNER_LISTENER_PROCESSES=$($listeners.Count)"
+          Write-Host "RUNNER_WORKER_PROCESSES=$($workers.Count)"
