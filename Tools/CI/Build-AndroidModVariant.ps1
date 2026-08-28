@@ -68,7 +68,15 @@ $apksigner=Join-Path $buildTools 'apksigner.bat'
 $zipalign=Join-Path $buildTools 'zipalign.exe'
 foreach($p in @($adt,$java,$aapt,$apksigner,$zipalign,(Join-Path $packageSdk 'platforms\android-33\android.jar'))){if(-not (Test-Path -LiteralPath $p)){throw "MOD_TOOLCHAIN=FAIL missing=$p"}}
 $env:JAVA_HOME=$javaHome
+$javaBin=Join-Path $javaHome 'bin'
+$env:PATH=$javaBin+';'+$env:PATH
 Remove-Item Env:JAVA_TOOL_OPTIONS -ErrorAction SilentlyContinue
+$resolvedJava=(Get-Command java.exe -ErrorAction Stop).Source
+if(-not $resolvedJava.StartsWith($javaBin,[System.StringComparison]::OrdinalIgnoreCase)){throw "MOD_JAVA_PATH_PIN=FAIL variant=$Variant expected_root=$javaBin actual=$resolvedJava"}
+$javaVersionLines=@(& $resolvedJava -version 2>&1|ForEach-Object{$_.ToString()})
+$javaVersionText=$javaVersionLines -join ' '
+if($LASTEXITCODE -ne 0 -or $javaVersionText -notmatch 'version "17\.'){throw "MOD_JAVA_VERSION=FAIL variant=$Variant actual=$javaVersionText"}
+Write-Host "MOD_JAVA_PATH_PIN=PASS variant=$Variant path=$resolvedJava version=$javaVersionText"
 $adtVersion=(& $adt -version 2>&1|ForEach-Object{$_.ToString()}) -join ' '
 if($LASTEXITCODE -ne 0 -or $adtVersion -notmatch '^50\.2\.3\.6'){throw "MOD_TOOLCHAIN=FAIL air=$adtVersion"}
 Write-Host "MOD_TOOLCHAIN=PASS air=50.2.3.6 java=17 api=33 build_tools=33.0.2 abi=arm64-v8a"
