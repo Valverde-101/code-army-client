@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: army-attack-candidate-v6-${{ github.ref }}
-  cancel-in-progress: true
+  group: army-attack-candidate-${{ github.sha }}
+  cancel-in-progress: false
 
 env:
   EXPECTED_SOURCE_SHA: ${{ github.sha }}
