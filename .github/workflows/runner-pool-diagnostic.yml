@@ -109,6 +109,24 @@ jobs:
           }
           foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
             if(-not $drive.Root){continue}
+            $launcherRoot=Join-Path $drive.Root 'AndroidBuild\PC-LAUNCHER'
+            if(Test-Path -LiteralPath $launcherRoot){
+              foreach($src in @(Get-ChildItem -LiteralPath $launcherRoot -Recurse -File -Include '*.ps1','*.psm1' -ErrorAction SilentlyContinue)){
+                $srcLines=@(Get-Content -LiteralPath $src.FullName)
+                for($i=0;$i -lt $srcLines.Count;$i++){
+                  if($srcLines[$i] -match 'Run-AutoRepoBroker|AndroidBuild\.AutoRepo|AutoRepoBroker'){
+                    Write-Host "BROKER_CALL_FILE=$($src.FullName)"
+                    for($j=[Math]::Max(0,$i-5);$j -le [Math]::Min($srcLines.Count-1,$i+8);$j++){
+                      Write-Host ("BROKER_CALL_SRC[{0}]={1}" -f ($j+1),$srcLines[$j])
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if(-not $drive.Root){continue}
             $autoRepo=Join-Path $drive.Root 'AndroidBuild\PC-LAUNCHER\Launcher\Core\AndroidBuild.AutoRepo.psm1'
             if(Test-Path -LiteralPath $autoRepo){
               Write-Host "AUTOREPO_MODULE=$autoRepo"
