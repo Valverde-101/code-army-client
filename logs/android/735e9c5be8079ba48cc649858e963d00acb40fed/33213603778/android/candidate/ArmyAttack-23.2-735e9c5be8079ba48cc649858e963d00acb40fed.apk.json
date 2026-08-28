@@ -1,0 +1,11 @@
+﻿{
+    "tested_sha":  "735e9c5be8079ba48cc649858e963d00acb40fed",
+    "game_version":  "23.2",
+    "published_source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\735e9c5be8079ba48cc649858e963d00acb40fed\\android\\candidate\\ArmyAttack-23.2-735e9c5be8079ba48cc649858e963d00acb40fed.apk",
+    "apk_size":  66839606,
+    "apk_sha256":  "fb03f43ce361e0ac0a2b75c84bff3a2a3d1d0e181fae9a644f5e56c8b2e0b465",
+    "package_name":  "air.army.attack",
+    "build_tier":  "HARMAN_AIR50_ARM64"
+}
+

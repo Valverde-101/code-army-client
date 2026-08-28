@@ -1,0 +1,31 @@
+﻿{
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "735e9c5be8079ba48cc649858e963d00acb40fed",
+    "source_repository":  "Valverde-101/Test_army_attack",
+    "source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "variant":  "colossal",
+    "content_lineage":  "published_mod_snapshot",
+    "modern_android_runtime":  true,
+    "air_sdk":  "50.2.3.6",
+    "android_target_sdk":  33,
+    "android_min_sdk":  21,
+    "android_abi":  "arm64-v8a",
+    "package_name":  "air.army.attack.mod.colossal",
+    "swf_path":  "vendor/Test_army_attack/mods/colossal/assets/iArmyAirOffline.swf",
+    "swf_size":  12811330,
+    "swf_sha256":  "3b60072867357d2f4762ffe0bba433073b9bbf99c67f573c700aa8a47772dabb",
+    "data":  {
+                 "files":  450,
+                 "bytes":  17101869,
+                 "sha256":  "845f76f42117963ef2e247fc5ba29639457b3f475fb7a7dde4ff06a07461ec0a"
+             },
+    "config":  {
+                   "files":  8,
+                   "bytes":  2301205,
+                   "sha256":  "b7e8136ec0c3b92b0d33250bf928d68d69f83f42a6dee3d3204d07649531d70f"
+               },
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\735e9c5be8079ba48cc649858e963d00acb40fed\\android\\mods\\colossal\\ArmyAttack-mod-colossal-735e9c5be8079ba48cc649858e963d00acb40fed.apk",
+    "apk_size":  38526731,
+    "apk_sha256":  "875f7aa348c4a656eded3158dd8f6bbf1deeba4920d487ef972cfa6372e99770"
+}
+

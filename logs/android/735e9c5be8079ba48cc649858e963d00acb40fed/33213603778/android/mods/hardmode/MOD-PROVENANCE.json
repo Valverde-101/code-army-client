@@ -1,0 +1,31 @@
+﻿{
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "735e9c5be8079ba48cc649858e963d00acb40fed",
+    "source_repository":  "Valverde-101/Test_army_attack",
+    "source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "variant":  "hardmode",
+    "content_lineage":  "published_mod_snapshot",
+    "modern_android_runtime":  true,
+    "air_sdk":  "50.2.3.6",
+    "android_target_sdk":  33,
+    "android_min_sdk":  21,
+    "android_abi":  "arm64-v8a",
+    "package_name":  "air.army.attack.mod.hardmode",
+    "swf_path":  "vendor/Test_army_attack/mods/hardmode/assets/iArmyAirOffline.swf",
+    "swf_size":  12809494,
+    "swf_sha256":  "8666f379c20086dbcbb6e520923f170839ce9955917af9da8216717da2ef7e3b",
+    "data":  {
+                 "files":  441,
+                 "bytes":  16784832,
+                 "sha256":  "0ab9186b7dfe799fdb4b487f70c7470dd5c4360ccaadda4afc7cbfe1e210a4b6"
+             },
+    "config":  {
+                   "files":  9,
+                   "bytes":  4951037,
+                   "sha256":  "5bad32d13f249665cb53ab5a7a98f1dcd24653f35c45c2fff097b493179466ab"
+               },
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\735e9c5be8079ba48cc649858e963d00acb40fed\\android\\mods\\hardmode\\ArmyAttack-mod-hardmode-735e9c5be8079ba48cc649858e963d00acb40fed.apk",
+    "apk_size":  39074714,
+    "apk_sha256":  "7f6a2848eb2c786c15494eb5c6e7c10e1777130400cec3a5564561b8e6050958"
+}
+

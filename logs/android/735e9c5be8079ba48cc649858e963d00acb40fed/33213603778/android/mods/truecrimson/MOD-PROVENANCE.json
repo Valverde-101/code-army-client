@@ -1,0 +1,31 @@
+﻿{
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "735e9c5be8079ba48cc649858e963d00acb40fed",
+    "source_repository":  "Valverde-101/Test_army_attack",
+    "source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "variant":  "truecrimson",
+    "content_lineage":  "published_mod_snapshot",
+    "modern_android_runtime":  true,
+    "air_sdk":  "50.2.3.6",
+    "android_target_sdk":  33,
+    "android_min_sdk":  21,
+    "android_abi":  "arm64-v8a",
+    "package_name":  "air.army.attack.mod.truecrimson",
+    "swf_path":  "vendor/Test_army_attack/mods/truecrimson/assets/iArmyAirOffline.swf",
+    "swf_size":  26042886,
+    "swf_sha256":  "226a7aa895998e642f8f15144d3ff1c0761f0247c6d7726772140f94b211521c",
+    "data":  {
+                 "files":  442,
+                 "bytes":  17170137,
+                 "sha256":  "604e28a9e956a6bc1e6d8103564ce0cacc0f43a19f5ac13cbc3c6c47eaa8b82d"
+             },
+    "config":  {
+                   "files":  9,
+                   "bytes":  5083228,
+                   "sha256":  "8cca0a588af3489e4c39dc234089f2b25343919e368af6e13ab0d6b7f6df3699"
+               },
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\735e9c5be8079ba48cc649858e963d00acb40fed\\android\\mods\\truecrimson\\ArmyAttack-mod-truecrimson-735e9c5be8079ba48cc649858e963d00acb40fed.apk",
+    "apk_size":  52825075,
+    "apk_sha256":  "e8d2c190aa51435851ca1841f39526d533f7413681bcc696602bc4819e90a4d0"
+}
+

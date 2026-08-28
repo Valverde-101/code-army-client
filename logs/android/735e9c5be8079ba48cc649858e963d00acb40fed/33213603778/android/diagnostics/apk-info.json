@@ -1,0 +1,36 @@
+﻿{
+    "tested_sha":  "735e9c5be8079ba48cc649858e963d00acb40fed",
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\735e9c5be8079ba48cc649858e963d00acb40fed\\android\\ArmyAttack-android-arm64.apk",
+    "apk_size":  66839606,
+    "apk_sha256":  "fb03f43ce361e0ac0a2b75c84bff3a2a3d1d0e181fae9a644f5e56c8b2e0b465",
+    "package_name":  "air.army.attack",
+    "reference_package_name":  "air.army.attack",
+    "version_code":  "23002000",
+    "version_name":  "23.2-android-735e9c5b",
+    "min_sdk":  "21",
+    "target_sdk":  "33",
+    "reference_target_sdk":  "33",
+    "launchable_activity":  "air.army.attack.AIRAppEntry",
+    "abis":  [
+                 "arm64-v8a"
+             ],
+    "reference_abis":  [
+                           "arm64-v8a"
+                       ],
+    "seed_swf_path":  "assets/iArmyAirOfflineSavingv23.swf",
+    "seed_swf_size":  24871956,
+    "seed_swf_sha256":  "99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4",
+    "expected_seed_swf_size":  24871956,
+    "expected_seed_swf_sha256":  "99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4",
+    "data_entries":  528,
+    "config_entries":  22,
+    "signature":  "PASS",
+    "zipalign":  "PASS",
+    "build_tier":  "HARMAN_AIR50_ARM64",
+    "published_source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "game_version":  "23.2",
+    "failures":  [
+
+                 ]
+}
+

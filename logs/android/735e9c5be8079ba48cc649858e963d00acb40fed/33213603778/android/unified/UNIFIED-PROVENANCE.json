@@ -1,0 +1,89 @@
+﻿{
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "735e9c5be8079ba48cc649858e963d00acb40fed",
+    "android_only":  true,
+    "game_version":  "23.2",
+    "selector":  true,
+    "selector_swf":  "ArmyAttackLauncher.swf",
+    "selector_swf_sha256":  "8657061f2f1278a0f4f2c82a1bbb7dd0706a2f6e66464c48abc97a3599564834",
+    "profile_count":  10,
+    "profiles":  [
+                     "base",
+                     "none",
+                     "hardmode",
+                     "swapped",
+                     "swapped2",
+                     "hardmode-swapped",
+                     "hardmode-swapped2",
+                     "colossal",
+                     "crimson",
+                     "truecrimson"
+                 ],
+    "profile_swfs":  {
+                         "base":  {
+                                      "path":  "profiles/base/assets/game.swf",
+                                      "sha256":  "99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4",
+                                      "size":  24871956
+                                  },
+                         "colossal":  {
+                                          "path":  "profiles/colossal/assets/game.swf",
+                                          "sha256":  "3b60072867357d2f4762ffe0bba433073b9bbf99c67f573c700aa8a47772dabb",
+                                          "size":  12811330
+                                      },
+                         "crimson":  {
+                                         "path":  "profiles/crimson/assets/game.swf",
+                                         "sha256":  "e55e7078600c8220eb4d44c49c3f54e8789ad67780c8584c2cb32776c85e1bd9",
+                                         "size":  26042886
+                                     },
+                         "hardmode":  {
+                                          "path":  "profiles/hardmode/assets/game.swf",
+                                          "sha256":  "8666f379c20086dbcbb6e520923f170839ce9955917af9da8216717da2ef7e3b",
+                                          "size":  12809494
+                                      },
+                         "none":  {
+                                      "path":  "profiles/none/assets/game.swf",
+                                      "sha256":  "8666f379c20086dbcbb6e520923f170839ce9955917af9da8216717da2ef7e3b",
+                                      "size":  12809494
+                                  },
+                         "swapped":  {
+                                         "path":  "profiles/swapped/assets/game.swf",
+                                         "sha256":  "8666f379c20086dbcbb6e520923f170839ce9955917af9da8216717da2ef7e3b",
+                                         "size":  12809494
+                                     },
+                         "swapped2":  {
+                                          "path":  "profiles/swapped2/assets/game.swf",
+                                          "sha256":  "8666f379c20086dbcbb6e520923f170839ce9955917af9da8216717da2ef7e3b",
+                                          "size":  12809494
+                                      },
+                         "truecrimson":  {
+                                             "path":  "profiles/truecrimson/assets/game.swf",
+                                             "sha256":  "226a7aa895998e642f8f15144d3ff1c0761f0247c6d7726772140f94b211521c",
+                                             "size":  26042886
+                                         },
+                         "hardmode-swapped":  {
+                                                  "path":  "profiles/hardmode-swapped/assets/game.swf",
+                                                  "sha256":  "8666f379c20086dbcbb6e520923f170839ce9955917af9da8216717da2ef7e3b",
+                                                  "size":  12809494
+                                              },
+                         "hardmode-swapped2":  {
+                                                   "path":  "profiles/hardmode-swapped2/assets/game.swf",
+                                                   "sha256":  "8666f379c20086dbcbb6e520923f170839ce9955917af9da8216717da2ef7e3b",
+                                                   "size":  12809494
+                                               }
+                     },
+    "multi_mod_profiles":  [
+                               "hardmode-swapped",
+                               "hardmode-swapped2"
+                           ],
+    "multi_mod_conflict_policy":  "visual layer wins the two known Warfly shoot_up graphics conflicts",
+    "published_source_repository":  "Valverde-101/Test_army_attack",
+    "published_source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "air_sdk":  "50.2.3.6",
+    "java":  "17",
+    "android_target_sdk":  33,
+    "android_abi":  "arm64-v8a",
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\735e9c5be8079ba48cc649858e963d00acb40fed\\android\\unified\\ArmyAttack-23.2-MODS-735e9c5be8079ba48cc649858e963d00acb40fed.apk",
+    "apk_size":  357976639,
+    "apk_sha256":  "f6a1cb45ba6760f02340ec4c7a4392505fac140045520accd9512013941d0525"
+}
+

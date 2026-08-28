@@ -1,0 +1,31 @@
+﻿{
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "735e9c5be8079ba48cc649858e963d00acb40fed",
+    "source_repository":  "Valverde-101/Test_army_attack",
+    "source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "variant":  "crimson",
+    "content_lineage":  "published_mod_snapshot",
+    "modern_android_runtime":  true,
+    "air_sdk":  "50.2.3.6",
+    "android_target_sdk":  33,
+    "android_min_sdk":  21,
+    "android_abi":  "arm64-v8a",
+    "package_name":  "air.army.attack.mod.crimson",
+    "swf_path":  "vendor/Test_army_attack/mods/crimson/assets/iArmyAirOffline.swf",
+    "swf_size":  26042886,
+    "swf_sha256":  "e55e7078600c8220eb4d44c49c3f54e8789ad67780c8584c2cb32776c85e1bd9",
+    "data":  {
+                 "files":  442,
+                 "bytes":  17170137,
+                 "sha256":  "604e28a9e956a6bc1e6d8103564ce0cacc0f43a19f5ac13cbc3c6c47eaa8b82d"
+             },
+    "config":  {
+                   "files":  9,
+                   "bytes":  5083226,
+                   "sha256":  "2c1687682398651d5e85dcb409ee0638a870280897b920449b0443f73d465d75"
+               },
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\735e9c5be8079ba48cc649858e963d00acb40fed\\android\\mods\\crimson\\ArmyAttack-mod-crimson-735e9c5be8079ba48cc649858e963d00acb40fed.apk",
+    "apk_size":  52825075,
+    "apk_sha256":  "5b7a9e98d922a9b1b2b63574985d20937b4c8fcdf24cef839f77286dd030d023"
+}
+
