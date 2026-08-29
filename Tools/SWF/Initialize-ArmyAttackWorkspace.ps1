@@ -1,6 +1,7 @@
 param(
   [string]$RepositoryRoot,
-  [string]$Version = '23.2'
+  [string]$Version = '23.2',
+  [string]$GitPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,6 +21,24 @@ function Resolve-RepositoryRoot {
   }
 
   throw 'WORKSPACE_INIT=FAIL unable to resolve repository root'
+}
+
+function Resolve-GitExecutable {
+  param([string]$ExplicitGit)
+
+  if ($ExplicitGit) {
+    if (-not (Test-Path -LiteralPath $ExplicitGit)) {
+      throw "WORKSPACE_GIT=FAIL explicit git not found path=$ExplicitGit"
+    }
+    return (Resolve-Path -LiteralPath $ExplicitGit).Path
+  }
+
+  foreach ($name in @('git.exe', 'git')) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+  }
+
+  return $null
 }
 
 if ($Version -notmatch '^[0-9]+(?:\.[0-9]+){1,2}$') {
@@ -63,29 +82,27 @@ foreach ($path in $directories) {
   New-Item -ItemType Directory -Force -Path $path | Out-Null
 }
 
-Push-Location $repoRoot
-try {
-  $git = Get-Command git.exe -ErrorAction SilentlyContinue
-  if (-not $git) {
-    $git = Get-Command git -ErrorAction SilentlyContinue
-  }
-
-  if ($git) {
-    & $git.Source check-ignore -q '.work/'
+$git = Resolve-GitExecutable -ExplicitGit $GitPath
+if ($git) {
+  Push-Location $repoRoot
+  try {
+    & $git check-ignore -q '.work/'
     if ($LASTEXITCODE -ne 0) {
       throw 'WORKSPACE_GITIGNORE=FAIL .work/ is not ignored by Git'
     }
+    Write-Host "WORKSPACE_GIT=PASS path=$git"
     Write-Host 'WORKSPACE_GITIGNORE=PASS path=.work/'
   }
-  else {
-    Write-Host 'WORKSPACE_GITIGNORE=SKIPPED reason=git_not_found'
+  finally {
+    Pop-Location
   }
 }
-finally {
-  Pop-Location
+else {
+  Write-Host 'WORKSPACE_GIT=SKIPPED reason=git_not_found'
+  Write-Host 'WORKSPACE_GITIGNORE=SKIPPED reason=git_not_found'
 }
 
-Write-Host "WORKSPACE_INIT=PASS"
+Write-Host 'WORKSPACE_INIT=PASS'
 Write-Host "REPOSITORY_ROOT=$repoRoot"
 Write-Host "EDITABLE_ROOT=$editableRoot"
 Write-Host "RAW_ROOT=$rawRoot"
