@@ -65,6 +65,11 @@ jobs:
           Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
           Write-Host "RUN=$env:GITHUB_RUN_ID"
 
+      - name: Validate PowerShell syntax
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Test-PowerShellSyntax.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE
+
       - name: Synchronize canonical physical repository
         shell: powershell
         run: |

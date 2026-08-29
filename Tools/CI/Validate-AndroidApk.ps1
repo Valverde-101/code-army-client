@@ -69,7 +69,7 @@ try{
   $configCount=@($entries|Where-Object{$_.FullName -like 'assets/config/*' -and $_.Length -gt 0}).Count
   $profileEntries=@($entries|Where-Object{$_.FullName -like 'assets/profiles/*'})
   $selectorEntries=@($entries|Where-Object{$_.FullName -match '(?i)ArmyAttackLauncher|ArmyAttackDiagnostics|armyattackdiagnostics|com/valverde/armyattack/diagnostics'})
-  $rootSwfEntries=@($entries|Where-Object{$_.FullName -match '^assets/[^/]+\.swf
+  $rootSwfEntries=@($entries|Where-Object{$_.FullName -match '^assets/[^/]+\.swf$'})
 }finally{$zip.Dispose()}
 
 $failures=New-Object System.Collections.Generic.List[string]
@@ -133,7 +133,10 @@ $report=[ordered]@{
   seed_swf_path=$seedEntryPath;seed_swf_size=$seedSize;seed_swf_sha256=$seedHash
   expected_seed_swf_size=$expectedSwfSize;expected_seed_swf_sha256=$expectedSwfSha
   data_entries=$dataCount;config_entries=$configCount
-  base_only=$true;profiles_entries=$profileEntries.Count;selector_or_diagnostics_entries=$selectorEntries.Count;root_swf_count=$rootSwfEntries.Count
+  base_only=$true
+  profiles_entries=$profileEntries.Count
+  selector_or_diagnostics_entries=$selectorEntries.Count
+  root_swf_count=$rootSwfEntries.Count
   signature=$signature;zipalign=$alignment
   build_tier=$buildTier;published_source_sha=[string]$prov.binary_seed_source_sha;game_version=[string]$prov.game_version
   failures=@($failures)
@@ -198,131 +201,6 @@ $meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sh
 "$promoted.json"|ForEach-Object{$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $_ -Encoding UTF8}
 if($env:GITHUB_ENV){"PROMOTED_CANDIDATE_PATH=$promoted"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
 Write-Host "BASE_ONLY_VALIDATE=PASS modern_v23_2=true profiles=0 selector=false diagnostics_ane=false root_swf=$seedEntryPath"
-Write-Host "APK_VALIDATE=PASS"
-Write-Host "APK_PROMOTION=PASS path=$promoted sha256=$promotedSha"
-& (Join-Path $PSScriptRoot 'Publish-ApkFinal.ps1') -SourceApk $promoted -AndroidBuildRoot $AndroidBuildRoot -ExpectedSha $ExpectedSha -RelativePath 'ArmyAttack-23.2.apk' -Kind 'base-23.2'
-Write-Host "LISTA_PARA_PRUEBA_MANUAL=PASS"
-})
-}finally{$zip.Dispose()}
-
-$failures=New-Object System.Collections.Generic.List[string]
-$referencePackage=[string]$reference.package_name
-if(-not $package){$failures.Add('package_unparseable')}
-elseif($package -ne $referencePackage){$failures.Add("package expected=$referencePackage actual=$package")}
-if(-not $launch){$failures.Add('launchable_activity_missing')}
-if($permissions -match 'MANAGE_EXTERNAL_STORAGE'){$failures.Add('forbidden_permission=MANAGE_EXTERNAL_STORAGE')}
-if($permissions -match 'WRITE_EXTERNAL_STORAGE'){$failures.Add('forbidden_permission=WRITE_EXTERNAL_STORAGE')}
-
-$referenceAbis=@($reference.abis)
-foreach($requiredAbi in $referenceAbis){if($requiredAbi -and $abis -notcontains [string]$requiredAbi){$failures.Add("abi_missing=$requiredAbi actual=$($abis -join ',')")}}
-if($referenceAbis.Count -eq 0){$failures.Add('reference_abi_missing')}
-
-$referenceTarget=[string]$reference.target_sdk
-if($referenceTarget -match '^\d+$' -and $targetSdk -match '^\d+$'){
-  if([int]$targetSdk -lt [int]$referenceTarget){$failures.Add("target_sdk_regression reference=$referenceTarget actual=$targetSdk")}
-}else{$failures.Add('target_sdk_unparseable')}
-
-if(-not $seedFound){$failures.Add("seed_swf_missing path=$seedEntryPath")}
-else{
-  if($seedSize -ne $expectedSwfSize){$failures.Add("seed_swf_size expected=$expectedSwfSize actual=$seedSize")}
-  if($seedHash -ne $expectedSwfSha){$failures.Add("seed_swf_sha256 expected=$expectedSwfSha actual=$seedHash")}
-}
-if($dataCount -lt 500){$failures.Add("data_entries=$dataCount")}
-if($configCount -lt 10){$failures.Add("config_entries=$configCount")}
-
-$buildTier=[string]$prov.build_tier
-if([string]$prov.tested_sha -ne $ExpectedSha){$failures.Add("provenance_sha expected=$ExpectedSha actual=$($prov.tested_sha)")}
-if(([string]$prov.apk_sha256).ToLowerInvariant() -ne $apkSha){$failures.Add("provenance_apk_sha expected=$apkSha actual=$($prov.apk_sha256)")}
-if(([string]$prov.binary_seed_source_repository) -ne 'Valverde-101/Test_army_attack'){$failures.Add("binary_seed_source_repository=$($prov.binary_seed_source_repository)")}
-if(([string]$prov.binary_seed_source_sha) -ne '306bccc7db5b1ce34dd68a3bc80093648c9224bd'){$failures.Add("binary_seed_source_sha=$($prov.binary_seed_source_sha)")}
-if(([string]$prov.game_version) -ne '23.2'){$failures.Add("game_version=$($prov.game_version)")}
-if(([string]$published.published_source_sha) -ne '306bccc7db5b1ce34dd68a3bc80093648c9224bd'){$failures.Add("published_report_sha=$($published.published_source_sha)")}
-if(([string]$published.published_version) -ne '23.2'){$failures.Add("published_report_version=$($published.published_version)")}
-if($buildTier -eq 'LEGACY_AIR32_TEST'){$failures.Add('toolchain=LEGACY_AIR32_TEST')}
-
-$signature='SKIPPED'
-if($apksigner){
-  $sigLines=@(& $apksigner.FullName verify --verbose --print-certs $ApkPath 2>&1|ForEach-Object{$_.ToString()})
-  $sigExit=$LASTEXITCODE
-  ($sigLines -join [Environment]::NewLine)|Set-Content -LiteralPath (Join-Path $reportRoot 'apk-signature.txt') -Encoding UTF8
-  if($sigExit -ne 0){$signature="FAIL($sigExit)";$failures.Add("signature_exit=$sigExit")}else{$signature='PASS'}
-}
-$alignment='SKIPPED'
-if($zipalign){
-  & $zipalign.FullName -c -P 16 4 $ApkPath|Out-Null
-  $alignExit=$LASTEXITCODE
-  if($alignExit -ne 0){$alignment="FAIL($alignExit)";$failures.Add("zipalign_exit=$alignExit")}else{$alignment='PASS'}
-}
-
-$report=[ordered]@{
-  tested_sha=$ExpectedSha;apk_path=$ApkPath;apk_size=$apk.Length;apk_sha256=$apkSha
-  package_name=$package;reference_package_name=$referencePackage
-  version_code=$versionCode;version_name=$versionName;min_sdk=$minSdk;target_sdk=$targetSdk;reference_target_sdk=$referenceTarget
-  launchable_activity=$launch;abis=$abis;reference_abis=$referenceAbis
-  seed_swf_path=$seedEntryPath;seed_swf_size=$seedSize;seed_swf_sha256=$seedHash
-  expected_seed_swf_size=$expectedSwfSize;expected_seed_swf_sha256=$expectedSwfSha
-  data_entries=$dataCount;config_entries=$configCount;signature=$signature;zipalign=$alignment
-  build_tier=$buildTier;published_source_sha=[string]$prov.binary_seed_source_sha;game_version=[string]$prov.game_version
-  failures=@($failures)
-}
-$reportPath=Join-Path $reportRoot 'apk-info.json'
-$report|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $reportPath -Encoding UTF8
-$summaryPath=Join-Path $reportRoot 'summary.json'
-[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;apk_sha256=$apkSha;apk_validated=($failures.Count -eq 0);build_tier=$buildTier;game_version=[string]$prov.game_version;failures=@($failures)}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $summaryPath -Encoding UTF8
-
-$reportMd=Join-Path $reportRoot 'REPORT.md'
-@(
-  "# Army Attack Android validation","",
-  "- TESTED_SHA: $ExpectedSha",
-  "- game version: $($prov.game_version)",
-  "- published source: $($prov.binary_seed_source_repository)@$($prov.binary_seed_source_sha)",
-  "- APK: $ApkPath",
-  "- APK_SHA256: $apkSha",
-  "- package: $package",
-  "- ABI: $($abis -join ',')",
-  "- targetSdk: $targetSdk",
-  "- SWF: $seedEntryPath",
-  "- SWF_SHA256: $seedHash",
-  "- build tier: $buildTier",
-  "- signature: $signature",
-  "- zipalign: $alignment",
-  "- validation failures: $($failures.Count)",
-  $(if($failures.Count -gt 0){"- failures: $($failures -join '; ')"}else{"- failures: none"})
-)|Set-Content -LiteralPath $reportMd -Encoding UTF8
-
-Write-Host "APK_PATH=$ApkPath"
-Write-Host "APK_SIZE=$($apk.Length)"
-Write-Host "APK_SHA256=$apkSha"
-Write-Host "PACKAGE_NAME=$package"
-Write-Host "REFERENCE_PACKAGE_NAME=$referencePackage"
-Write-Host "TARGET_SDK=$targetSdk"
-Write-Host "REFERENCE_TARGET_SDK=$referenceTarget"
-Write-Host "ABI=$($abis -join ',')"
-Write-Host "REFERENCE_ABI=$($referenceAbis -join ',')"
-Write-Host "SWF_PATH=$seedEntryPath"
-Write-Host "SWF_SHA256=$seedHash"
-Write-Host "SIGNATURE=$signature"
-Write-Host "ZIPALIGN=$alignment"
-Write-Host "BUILD_TIER=$buildTier"
-Write-Host "GAME_VERSION=$($prov.game_version)"
-Write-Host "PUBLISHED_SOURCE_SHA=$($prov.binary_seed_source_sha)"
-Write-Host "APK_INFO=$reportPath"
-Write-Host "REPORT=$reportMd"
-
-if($failures.Count -gt 0){
-  foreach($failure in $failures){Write-Host "APK_VALIDATE_FINDING=$failure"}
-  throw "APK_VALIDATE=FAIL first=$($failures[0]) count=$($failures.Count)"
-}
-
-$candidateDir=Join-Path $reportRoot 'candidate'
-New-Item -ItemType Directory -Force -Path $candidateDir|Out-Null
-$promoted=Join-Path $candidateDir "ArmyAttack-23.2-$ExpectedSha.apk"
-Copy-Item -LiteralPath $ApkPath -Destination $promoted -Force
-$promotedSha=(Get-FileHash -LiteralPath $promoted -Algorithm SHA256).Hash.ToLowerInvariant()
-if($promotedSha -ne $apkSha){throw "APK_PROMOTION=FAIL expected=$apkSha actual=$promotedSha"}
-$meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sha=[string]$prov.binary_seed_source_sha;apk_path=$promoted;apk_size=(Get-Item $promoted).Length;apk_sha256=$promotedSha;package_name=$package;build_tier=$buildTier}
-"$promoted.json"|ForEach-Object{$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $_ -Encoding UTF8}
-if($env:GITHUB_ENV){"PROMOTED_CANDIDATE_PATH=$promoted"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
 Write-Host "APK_VALIDATE=PASS"
 Write-Host "APK_PROMOTION=PASS path=$promoted sha256=$promotedSha"
 & (Join-Path $PSScriptRoot 'Publish-ApkFinal.ps1') -SourceApk $promoted -AndroidBuildRoot $AndroidBuildRoot -ExpectedSha $ExpectedSha -RelativePath 'ArmyAttack-23.2.apk' -Kind 'base-23.2'
