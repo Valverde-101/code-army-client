@@ -121,6 +121,9 @@
 
 		private var mCharacterElements: Array;
 		private var mStaticElements: Array;
+		private var mLastSortX: Dictionary;
+		private var mLastSortY: Dictionary;
+		private var mSortDirty: Boolean = true;
 
 		public var mCamera: IsoCamera;
 
@@ -286,6 +289,9 @@
 			this.mAllElements = new Array();
 			this.mCharacterElements = new Array();
 			this.mStaticElements = new Array();
+			this.mLastSortX = new Dictionary(true);
+			this.mLastSortY = new Dictionary(true);
+			this.mSortDirty = true;
 			if (FeatureTuner.USE_ZOOM_IN_OUT) {
 				this.mContainer.addEventListener(TransformGestureEvent.GESTURE_ZOOM, this.ZoomInOut, false);
 			}
@@ -1107,6 +1113,7 @@
 
 		public function addObject(param1: Element): void {
 			this.mAllElements.push(param1);
+			this.mSortDirty = true;
 			if (param1 is IsometricCharacter) {
 				this.mCharacterElements.push(param1);
 			}
@@ -2596,13 +2603,17 @@
 				}
 			}
 			if (!Config.DISABLE_SORT) {
-				this.sortAll(_loc3_ || this.mMouseScrolling || Boolean(this.mObjectBeingMoved), _loc3_);
+				// Camera panning no longer forces a full object membership scan.
+				// Camera movement does not change object visibility/order semantics;
+				// the regular 25-frame gate and active placement still cover changes.
+				this.sortAll(_loc3_ || Boolean(this.mObjectBeingMoved), _loc3_);
 			}
 			if (_loc4_ != this.mPreviousCell) {
 				this.mPreviousCell = _loc4_;
 				if (this.mGame.mActivatedPlayerUnit) {
 					_loc7_ = Math.floor(this.mGame.mActivatedPlayerUnit.mX / this.mGridDimX);
-					if (_loc5_ = this.getTileUnderMouse()) {
+					_loc5_ = _loc4_;
+					if (_loc5_) {
 						_loc8_ = _loc5_.mPosI;
 						if (_loc7_ < _loc8_) {
 							this.mGame.mActivatedPlayerUnit.setAnimationDirection(AnimationController.DIR_RIGHT);
@@ -3021,14 +3032,28 @@
 			var _loc9_: int = 0;
 			var _loc2_: Boolean = false;
 			var _loc5_: int = 0;
+			var needsSort:Boolean = this.mSortDirty;
+			var lastX:Number = NaN;
+			var lastY:Number = NaN;
 			while (_loc5_ < param1.length) {
-				(_loc7_ = param1[_loc5_]).mSortIdx = _loc5_;
+				_loc7_ = param1[_loc5_] as Renderable;
+				lastX = Number(this.mLastSortX[_loc7_]);
+				lastY = Number(this.mLastSortY[_loc7_]);
+				if (isNaN(lastX) || isNaN(lastY) || lastX != _loc7_.mX || lastY != _loc7_.mY) {
+					needsSort = true;
+				}
+				_loc7_.mSortIdx = _loc5_;
 				_loc5_++;
+			}
+			if (!needsSort) {
+				return false;
 			}
 			param1.sort(this.ySort);
 			var _loc6_: int = 0;
 			while (_loc6_ < param1.length) {
 				if (!(_loc7_ = param1[_loc6_]).mScene) {
+					delete this.mLastSortX[_loc7_];
+					delete this.mLastSortY[_loc7_];
 					param1.splice(_loc6_, 1);
 					_loc2_ = true;
 					_loc6_--;
@@ -3051,6 +3076,14 @@
 				}
 				_loc6_++;
 			}
+			_loc6_ = 0;
+			while (_loc6_ < param1.length) {
+				_loc7_ = param1[_loc6_] as Renderable;
+				this.mLastSortX[_loc7_] = _loc7_.mX;
+				this.mLastSortY[_loc7_] = _loc7_.mY;
+				_loc6_++;
+			}
+			this.mSortDirty = false;
 			return _loc2_;
 		}
 
@@ -3119,6 +3152,9 @@
 			if ((_loc5_ = this.mAllElements.indexOf(param1)) >= 0) {
 				this.mAllElements.splice(_loc5_, 1);
 			}
+			this.mSortDirty = true;
+			delete this.mLastSortX[param1];
+			delete this.mLastSortY[param1];
 			if (param1 is IsometricCharacter) {
 				_loc5_ = this.mCharacterElements.indexOf(param1);
 				if (_loc5_ >= 0) {
@@ -3180,6 +3216,7 @@
 
 		public function setSelectedObject(param1: Renderable): void {
 			this.mObjectBeingMoved = param1;
+			this.mSortDirty = true;
 			this.mMapGUIEffectsLayer.highlightPlacingArea();
 		}
 
@@ -4186,6 +4223,8 @@
 			this.mAllElements = null;
 			this.mCharacterElements = null;
 			this.mStaticElements = null;
+			this.mLastSortX = null;
+			this.mLastSortY = null;
 			for (_loc3_ in this.mSoundMakers) {
 				(this.mSoundMakers[_loc3_] as Renderable).destroy();
 				this.mSoundMakers[_loc3_] = null;

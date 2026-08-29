@@ -83,7 +83,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v1'
+  patch_version='mobile-engine-v2'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@(
@@ -104,10 +104,13 @@ $manifest=[ordered]@{
     'remove_unused_sort_hit_tests',
     'fix_sort_order_change_index_comparison',
     'indexed_character_hot_loop',
-    'indexed_static_object_hot_loop'
+    'indexed_static_object_hot_loop',
+    'skip_global_membership_scan_while_camera_pans',
+    'skip_sort_when_object_positions_are_unchanged',
+    'reuse_existing_mouse_cell_result'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v1 source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v2 source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

@@ -461,7 +461,7 @@ jobs:
           if('${{ steps.publish_logs.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL evidence_upload'}
           Write-Host "BASE_ONLY_MODE=PASS modern_v23_2=true mods=false selector=false diagnostics_ane=true"
           Write-Host "SWF_SOURCE_ORIGINAL=PASS canonical_v23_2=true"
-          Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v1 classes=TileMapGraphic,IsometricScene enemy_ai_cadence=unchanged"
+          Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v2 classes=TileMapGraphic,IsometricScene enemy_ai_cadence=unchanged"
           Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,INICIAR,MARCAR_LAG,DETENER,ZIP render_mode=gpu profiler=low_overhead_v2"
           Write-Host "ADB_DEVICE=SKIPPED_WITH_REASON manual_physical_test"
           Write-Host "INSTALL=SKIPPED_WITH_REASON user_manual_install"
