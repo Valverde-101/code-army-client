@@ -101,18 +101,70 @@ function Copy-EvidenceFile([string]$Source,[string]$Relative){
   $published.Add([ordered]@{path=$Relative.Replace('\','/');bytes=$out.Length;sha256=$hash})
 }
 
-if(Test-Path -LiteralPath $androidRoot){
-  foreach($file in @(Get-ChildItem -LiteralPath $androidRoot -Recurse -File -ErrorAction SilentlyContinue)){
-    $relative=$file.FullName.Substring($androidRoot.Length).TrimStart('\','/')
-    Copy-EvidenceFile $file.FullName (Join-Path 'android' $relative)
+# Publish only diagnostic evidence. Never recurse the whole Android build tree:
+# stage/, v23/, candidate/, performance exports and game assets are build inputs/outputs,
+# not validation evidence and must not be committed under Logs/**.
+$androidRootEvidence=@(
+  'adt-android.out.log',
+  'adt-android.err.log',
+  'ArmyAttack-android-app.xml',
+  'BUILD-PROVENANCE.json',
+  'TOOLCHAIN.json',
+  'PERFORMANCE-PATCH.json',
+  'apk-badging.txt',
+  'apk-permissions.txt',
+  'apk-signature.txt',
+  'apk-info.json',
+  'summary.json',
+  'REPORT.md'
+)
+foreach($name in $androidRootEvidence){
+  Copy-EvidenceFile (Join-Path $androidRoot $name) (Join-Path 'android' $name)
+}
+
+foreach($dirName in @('diagnostics','physical')){
+  $dir=Join-Path $androidRoot $dirName
+  if(Test-Path -LiteralPath $dir){
+    foreach($file in @(Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue)){
+      $relative=$file.FullName.Substring($dir.Length).TrimStart('\','/')
+      Copy-EvidenceFile $file.FullName (Join-Path (Join-Path 'android' $dirName) $relative)
+    }
   }
 }
-if(Test-Path -LiteralPath $referenceRoot){
-  foreach($file in @(Get-ChildItem -LiteralPath $referenceRoot -Recurse -File -ErrorAction SilentlyContinue)){
-    $relative=$file.FullName.Substring($referenceRoot.Length).TrimStart('\','/')
-    Copy-EvidenceFile $file.FullName (Join-Path 'reference-v21.1' $relative)
+
+# FFDec patch logs are valuable on failures, but exported/decompiled payloads are not.
+$perfLogRoot=Join-Path $androidRoot 'performance\performance-patch-work'
+if(Test-Path -LiteralPath $perfLogRoot){
+  foreach($file in @(Get-ChildItem -LiteralPath $perfLogRoot -Recurse -File -Filter '*.log' -ErrorAction SilentlyContinue)){
+    $relative=$file.FullName.Substring($perfLogRoot.Length).TrimStart('\','/')
+    Copy-EvidenceFile $file.FullName (Join-Path 'android\performance-patch-work' $relative)
   }
 }
+
+foreach($name in @('aapt-badging.txt','reference.json')){
+  Copy-EvidenceFile (Join-Path $referenceRoot $name) (Join-Path 'reference-v21.1' $name)
+}
+
+$forbiddenEvidencePrefixes=@(
+  'android/stage/',
+  'android/v23/',
+  'android/candidate/',
+  'android/performance/'
+)
+foreach($entry in @($published.ToArray())){
+  $normalized=[string]$entry.path
+  foreach($prefix in $forbiddenEvidencePrefixes){
+    if($normalized.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){
+      throw "LOG_PUBLISH=FAIL build_payload_staged path=$normalized"
+    }
+  }
+}
+$maxPublishedFiles=250
+if($published.Count -gt $maxPublishedFiles){throw "LOG_PUBLISH=FAIL evidence_file_count count=$($published.Count) max=$maxPublishedFiles"}
+$totalEvidenceBytes=[int64](($published|Measure-Object -Property bytes -Sum).Sum)
+$maxEvidenceBytes=25MB
+if($totalEvidenceBytes -gt $maxEvidenceBytes){throw "LOG_PUBLISH=FAIL evidence_bytes bytes=$totalEvidenceBytes max=$maxEvidenceBytes"}
+Write-Host "EVIDENCE_SCOPE=PASS files=$($published.Count) bytes=$totalEvidenceBytes max_files=$maxPublishedFiles max_bytes=$maxEvidenceBytes"
 
 # Explicitly prove forbidden local payloads are not staged.
 $forbidden=@('.apk','.aab','.p12','.pfx','.keystore','.jks','.zip','.7z','.exe','.dll','.so','.swf')
