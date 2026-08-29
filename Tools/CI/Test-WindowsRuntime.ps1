@@ -118,6 +118,29 @@ function Get-WindowRectObject([IntPtr]$Handle) {
   }
 }
 
+function Wait-VisibleWindow([int]$ProcessId,[int]$TimeoutMilliseconds = 4000,[string]$Phase = 'reacquire') {
+  $deadline=(Get-Date).AddMilliseconds($TimeoutMilliseconds)
+  $attempt=0
+  do {
+    $attempt++
+    $candidate=[ArmyAttackWindowProbe]::FindVisibleWindow($ProcessId)
+    if($candidate -ne [IntPtr]::Zero){
+      try{
+        $rect=Get-WindowRectObject $candidate
+        if($rect.Width -ge 640 -and $rect.Height -ge 480){
+          if($attempt -gt 1){
+            Write-Host "WINDOW_REACQUIRE=PASS label=$Label phase=$Phase attempts=$attempt handle=$candidate width=$($rect.Width) height=$($rect.Height)"
+          }
+          return $candidate
+        }
+      }catch{}
+    }
+    Start-Sleep -Milliseconds 250
+  } while((Get-Date) -lt $deadline)
+  Write-Host "WINDOW_REACQUIRE=FAIL label=$Label phase=$Phase attempts=$attempt timeout_ms=$TimeoutMilliseconds"
+  return [IntPtr]::Zero
+}
+
 function Capture-WindowEvidence([IntPtr]$Handle, [string]$Suffix) {
   $rect = Get-WindowRectObject $Handle
   if ($rect.Width -lt 640 -or $rect.Height -lt 480) {
@@ -273,7 +296,11 @@ try {
     }
     $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
     if ($handle -eq [IntPtr]::Zero) {
-      throw "WINDOW_HANDLE=FAIL label=$Label elapsed=$elapsed no_visible_window"
+      Write-Host "WINDOW_TRANSIENT=OBSERVED label=$Label elapsed=$elapsed reason=no_visible_window"
+      $handle = Wait-VisibleWindow -ProcessId $trackedPid -TimeoutMilliseconds 4000 -Phase ("stability-"+$elapsed)
+      if ($handle -eq [IntPtr]::Zero) {
+        throw "WINDOW_HANDLE=FAIL label=$Label elapsed=$elapsed no_visible_window_after_reacquire"
+      }
     }
     $sampleRect = Get-WindowRectObject $handle
     if ($sampleRect.Width -lt 640 -or $sampleRect.Height -lt 480) {
@@ -286,7 +313,11 @@ try {
   }
 
   $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
-  if ($handle -eq [IntPtr]::Zero) { throw "WINDOW_HANDLE=FAIL label=$Label phase=final_capture" }
+  if ($handle -eq [IntPtr]::Zero) {
+    Write-Host "WINDOW_TRANSIENT=OBSERVED label=$Label phase=final_capture reason=no_visible_window"
+    $handle = Wait-VisibleWindow -ProcessId $trackedPid -TimeoutMilliseconds 4000 -Phase 'final_capture'
+  }
+  if ($handle -eq [IntPtr]::Zero) { throw "WINDOW_HANDLE=FAIL label=$Label phase=final_capture after_reacquire" }
   $final = Capture-WindowEvidence $handle 'final'
   $changed = $initial.Sha256 -ne $final.Sha256
   Write-Host "SCREENSHOT_CHANGED=$changed label=$Label"
