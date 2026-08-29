@@ -1,0 +1,28 @@
+﻿{
+    "schema_version":  1,
+    "patch_version":  "android-perf-v1",
+    "source_swf":  "V:\\AndroidBuild\\Repositories\\code-army-client\\vendor\\Test_army_attack\\armyattack\\assets\\iArmyAirOfflineSavingv23.swf",
+    "source_size":  24871956,
+    "source_sha256":  "99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4",
+    "output_swf":  "V:\\AndroidBuild\\Toolchains\\AIR50-API33-BT33.0.2\\Builds\\code-army-client\\f980012740a2c48fc4eba0655e836ba5c6349c12\\android\\performance\\iArmyAirOfflineSavingv23.swf",
+    "output_size":  24880134,
+    "output_sha256":  "b3caab04bb235ba28476778e9e04181d9a6821a83378c8727c31f6870c03722e",
+    "classes":  [
+                    "game.isometric.IsometricScene",
+                    "game.characters.EnemyUnit",
+                    "game.particles.SmokeEmitter"
+                ],
+    "policy":  {
+                   "movement_per_frame":  true,
+                   "camera_per_frame":  true,
+                   "projectiles_per_frame":  true,
+                   "hud_per_frame":  true,
+                   "static_logic_tick_ms":  50,
+                   "environment_tick_ms":  33,
+                   "pointer_hover_per_frame":  true,
+                   "enemy_reaction_tick_ms":  50,
+                   "scrolling_visibility_scan_per_frame":  true,
+                   "smoke_max_concurrent_particles":  18
+               }
+}
+
