@@ -147,6 +147,13 @@ try {
     throw "EXACT_HEAD=FAIL expected=$ExpectedSha actual=$actual"
   }
 
+  $workspaceInit = Join-Path $target 'Tools\SWF\Initialize-ArmyAttackWorkspace.ps1'
+  if (-not (Test-Path -LiteralPath $workspaceInit)) {
+    throw "SWF_WORKSPACE=FAIL initializer_missing=$workspaceInit"
+  }
+  & $workspaceInit -RepositoryRoot $target -Version '23.2' -GitPath $git
+  Write-Host "SWF_WORKSPACE=PASS version=23.2"
+
   $required = @(
     'README.md',
     'src\GameMain.as',
