@@ -428,7 +428,7 @@ jobs:
           if('${{ steps.publish_logs.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL evidence_upload'}
           Write-Host "BASE_ONLY_MODE=PASS modern_v23_2=true mods=false selector=false diagnostics_ane=true"
           Write-Host "SWF_ORIGINAL=PASS bytecode_modified=false"
-          Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,INICIAR,MARCAR_LAG,DETENER,ZIP render_mode=direct"
+          Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,INICIAR,MARCAR_LAG,DETENER,ZIP render_mode=gpu profiler=low_overhead_v2"
           Write-Host "SANITIZATION=PASS via_publish_logs"
           Write-Host "EVIDENCE_UPLOAD=PASS via_publish_logs"
           Write-Host "FINAL_VALIDATION=PASS candidate"

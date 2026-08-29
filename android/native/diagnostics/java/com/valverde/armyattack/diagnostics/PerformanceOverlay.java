@@ -89,7 +89,11 @@ public final class PerformanceOverlay {
     private final Activity activity;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final ExecutorService sampler = Executors.newSingleThreadExecutor();
     private final int cores = Math.max(1, Runtime.getRuntime().availableProcessors());
+    private static final long RECORD_SAMPLE_MS = 1000L;
+    private static final long PANEL_SAMPLE_MS = 1500L;
+    private static final long HEAVY_SAMPLE_MS = 5000L;
 
     private FrameLayout root;
     private LinearLayout panel;
@@ -101,6 +105,15 @@ public final class PerformanceOverlay {
     private boolean sampleLoopActive = false;
     private boolean recording = false;
     private boolean frameLoopActive = false;
+
+    private final AtomicBoolean heavySampleInFlight = new AtomicBoolean(false);
+    private volatile double latestPssMb = -1.0;
+    private volatile double latestJavaMb = -1.0;
+    private volatile double latestNativeMb = -1.0;
+    private volatile long latestGcCount = -1L;
+    private volatile long latestGcTimeMs = -1L;
+    private volatile int latestThermal = -1;
+    private long lastHeavySampleElapsedMs = 0L;
 
     private long lastCpuMs = -1L;
     private long lastWallMs = -1L;
@@ -158,10 +171,11 @@ public final class PerformanceOverlay {
                 sampleLoopActive = false;
                 return;
             }
+            scheduleHeavyMetrics(false);
             MetricSample sample = collectSample();
             renderSample(sample);
             if (recording) persistSample(sample);
-            long delay = recording ? 500L : 1000L;
+            long delay = recording ? RECORD_SAMPLE_MS : PANEL_SAMPLE_MS;
             main.postDelayed(this, delay);
         }
     };
@@ -276,7 +290,9 @@ public final class PerformanceOverlay {
         maxFrameNsSession = 0L;
         lastCpuMs = -1L;
         lastWallMs = -1L;
+        lastHeavySampleElapsedMs = 0L;
         resetFrameWindow();
+        scheduleHeavyMetrics(true);
 
         final File dir = sessionDir;
         io.execute(new Runnable() {
@@ -438,22 +454,12 @@ public final class PerformanceOverlay {
         lastWallMs = nowWall;
         lastCpuMs = nowCpu;
 
-        Debug.MemoryInfo mi = new Debug.MemoryInfo();
-        Debug.getMemoryInfo(mi);
-        Runtime rt = Runtime.getRuntime();
-        double pssMb = mi.getTotalPss() / 1024.0;
-        double javaMb = (rt.totalMemory() - rt.freeMemory()) / 1048576.0;
-        double nativeMb = Debug.getNativeHeapAllocatedSize() / 1048576.0;
-
-        long gcCount = runtimeStat("art.gc.gc-count");
-        long gcTime = runtimeStat("art.gc.gc-time");
-        int thermal = -1;
-        if (Build.VERSION.SDK_INT >= 29) {
-            try {
-                PowerManager pm = (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
-                if (pm != null) thermal = pm.getCurrentThermalStatus();
-            } catch (Throwable ignored) {}
-        }
+        double pssMb = latestPssMb;
+        double javaMb = latestJavaMb;
+        double nativeMb = latestNativeMb;
+        long gcCount = latestGcCount;
+        long gcTime = latestGcTimeMs;
+        int thermal = latestThermal;
 
         double fps = frameNsWindow > 0L ? (1_000_000_000.0 * frameCountWindow / (double) frameNsWindow) : 0.0;
         double maxFrameMs = maxFrameNsWindow / 1_000_000.0;
@@ -467,8 +473,41 @@ public final class PerformanceOverlay {
         );
     }
 
+    private void scheduleHeavyMetrics(boolean force) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (!force && lastHeavySampleElapsedMs > 0L && (now - lastHeavySampleElapsedMs) < HEAVY_SAMPLE_MS) return;
+        if (!heavySampleInFlight.compareAndSet(false, true)) return;
+        lastHeavySampleElapsedMs = now;
+        final Context appContext = activity.getApplicationContext();
+        sampler.execute(new Runnable() {
+            @Override public void run() {
+                try {
+                    Debug.MemoryInfo mi = new Debug.MemoryInfo();
+                    Debug.getMemoryInfo(mi);
+                    Runtime rt = Runtime.getRuntime();
+                    latestPssMb = mi.getTotalPss() / 1024.0;
+                    latestJavaMb = (rt.totalMemory() - rt.freeMemory()) / 1048576.0;
+                    latestNativeMb = Debug.getNativeHeapAllocatedSize() / 1048576.0;
+                    latestGcCount = runtimeStat("art.gc.gc-count");
+                    latestGcTimeMs = runtimeStat("art.gc.gc-time");
+                    int thermal = -1;
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        try {
+                            PowerManager pm = (PowerManager) appContext.getSystemService(Context.POWER_SERVICE);
+                            if (pm != null) thermal = pm.getCurrentThermalStatus();
+                        } catch (Throwable ignored) {}
+                    }
+                    latestThermal = thermal;
+                } catch (Throwable ignored) {
+                } finally {
+                    heavySampleInFlight.set(false);
+                }
+            }
+        });
+    }
+
     private void renderSample(MetricSample s) {
-        if (metricsView == null) return;
+        if (metricsView == null || !panelVisible) return;
         String fpsText = recording ? String.format(Locale.US, "%.1f", s.vsyncFps) : "—";
         metricsView.setText(
             String.format(Locale.US,
@@ -511,6 +550,7 @@ public final class PerformanceOverlay {
         }
         frameLoopActive = false;
         io.shutdown();
+        sampler.shutdown();
         if (root != null && root.getParent() instanceof ViewGroup) {
             ((ViewGroup) root.getParent()).removeView(root);
         }

@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$ApkPath,
   [Parameter(Mandatory=$true)][string]$AndroidBuildRoot,
-  [Parameter(Mandatory=$true)][string]$ExpectedSha
+  [Parameter(Mandatory=$true)][string]$ExpectedSha,
+  [ValidateSet('gpu','direct')][string]$ExpectedRenderMode='gpu'
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -121,7 +122,7 @@ if(([string]$prov.swf_sha256).ToLowerInvariant() -ne $canonicalSwfSha){$failures
 if($seedHash -ne $canonicalSwfSha){$failures.Add("apk_swf_sha=$seedHash")}
 if([bool]$prov.swf_performance_patched){$failures.Add('swf_performance_patched=true')}
 if([string]$prov.performance_patch_version -ne 'none'){$failures.Add("performance_patch_version=$($prov.performance_patch_version)")}
-if([string]$prov.render_mode -ne 'direct'){$failures.Add("render_mode=$($prov.render_mode)")}
+if([string]$prov.render_mode -ne $ExpectedRenderMode){$failures.Add("render_mode expected=$ExpectedRenderMode actual=$($prov.render_mode)")}
 if(-not [bool]$prov.native_performance_overlay){$failures.Add('native_performance_overlay=false')}
 if(-not [bool]$prov.diagnostics_ane_packaged){$failures.Add('diagnostics_ane_packaged=false')}
 if(-not [string]$prov.diagnostics_ane_sha256){$failures.Add('diagnostics_ane_sha256_missing')}
@@ -171,7 +172,7 @@ $report=[ordered]@{
 $reportPath=Join-Path $reportRoot 'apk-info.json'
 $report|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $reportPath -Encoding UTF8
 $summaryPath=Join-Path $reportRoot 'summary.json'
-[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;apk_sha256=$apkSha;apk_validated=($failures.Count -eq 0);build_tier=$buildTier;game_version=[string]$prov.game_version;failures=@($failures)}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $summaryPath -Encoding UTF8
+[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;apk_sha256=$apkSha;apk_validated=($failures.Count -eq 0);build_tier=$buildTier;game_version=[string]$prov.game_version;render_mode=[string]$prov.render_mode;expected_render_mode=$ExpectedRenderMode;failures=@($failures)}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $summaryPath -Encoding UTF8
 
 $reportMd=Join-Path $reportRoot 'REPORT.md'
 @(
@@ -234,7 +235,7 @@ $meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sh
 "$promoted.json"|ForEach-Object{$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $_ -Encoding UTF8}
 if($env:GITHUB_ENV){"PROMOTED_CANDIDATE_PATH=$promoted"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
 Write-Host "SWF_ORIGINAL_VALIDATE=PASS sha256=$canonicalSwfSha bytecode_modified=false"
-Write-Host "NATIVE_PERF_OVERLAY_VALIDATE=PASS provider=DiagnosticsProvider authority=air.army.attack.armyattackdiagnostics render_mode=direct"
+Write-Host "NATIVE_PERF_OVERLAY_VALIDATE=PASS provider=DiagnosticsProvider authority=air.army.attack.armyattackdiagnostics render_mode=$ExpectedRenderMode"
 Write-Host "BASE_ONLY_VALIDATE=PASS modern_v23_2=true profiles=0 selector=false diagnostics_ane=true root_swf=$seedEntryPath swf_original=true"
 Write-Host "APK_VALIDATE=PASS"
 Write-Host "APK_PROMOTION=PASS path=$promoted sha256=$promotedSha"

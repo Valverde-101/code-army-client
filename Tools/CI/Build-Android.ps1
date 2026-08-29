@@ -1,10 +1,13 @@
 param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
-  [Parameter(Mandatory=$true)][string]$AndroidBuildRoot
+  [Parameter(Mandatory=$true)][string]$AndroidBuildRoot,
+  [ValidateSet('gpu','direct')][string]$RenderMode='gpu'
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+$renderMode=$RenderMode.ToLowerInvariant()
+Write-Host "RENDER_MODE_REQUEST=PASS mode=$renderMode"
 $gitCandidates=@((Join-Path $AndroidBuildRoot 'Tools\Git\cmd\git.exe'),(Join-Path $AndroidBuildRoot 'PortableGit\cmd\git.exe'))
 $gitCmd=Get-Command git.exe -ErrorAction SilentlyContinue
 if($gitCmd){$gitCandidates=@($gitCmd.Source)+$gitCandidates}
@@ -269,7 +272,7 @@ $xml=@"
     <visible>true</visible>
     <fullScreen>true</fullScreen>
     <aspectRatio>landscape</aspectRatio>
-    <renderMode>direct</renderMode>
+    <renderMode>$renderMode</renderMode>
     <autoOrients>false</autoOrients>
   </initialWindow>
   <extensions>
@@ -291,7 +294,7 @@ $xml=@"
         <application android:hardwareAccelerated="true" android:usesCleartextTraffic="false">
           <provider android:name="com.valverde.armyattack.diagnostics.DiagnosticsProvider" android:authorities="air.army.attack.armyattackdiagnostics" android:exported="false" android:grantUriPermissions="true"/>
           <meta-data android:name="armyattack.tested_sha" android:value="$ExpectedSha"/>
-          <meta-data android:name="armyattack.render_mode" android:value="direct"/>
+          <meta-data android:name="armyattack.render_mode" android:value="$renderMode"/>
           <meta-data android:name="armyattack.perf_overlay" android:value="true"/>
         </application>
       </manifest>
@@ -300,12 +303,12 @@ $xml=@"
 </application>
 "@
 $xml|Set-Content -LiteralPath $descriptor -Encoding UTF8
-Write-Host "ANDROID_DESCRIPTOR=PASS namespace=$namespace permissions=none discord_ane=excluded render_mode=direct native_perf_overlay=true"
+Write-Host "ANDROID_DESCRIPTOR=PASS namespace=$namespace permissions=none discord_ane=excluded render_mode=$renderMode native_perf_overlay=true"
 $cert=Join-Path $buildRoot 'android-ci-signing.p12'
 $certPass='ArmyAttackLocalCI'
 if(Test-Path $cert){Remove-Item $cert -Force}
 $tier=if($air.Major -eq 50){'HARMAN_AIR50_ARM64'}elseif($air.Major -ge 51){'MODERN_ARM64'}else{'LEGACY_AIR32_TEST'}
-$apkName=if($harmanAndroid){'ArmyAttack-android-arm64.apk'}else{'ArmyAttack-android-legacy.apk'}
+$apkName=if($harmanAndroid){"ArmyAttack-android-arm64-$renderMode.apk"}else{"ArmyAttack-android-legacy-$renderMode.apk"}
 $apkPath=Join-Path $buildRoot $apkName
 $stdout=Join-Path $buildRoot 'adt-android.out.log';$stderr=Join-Path $buildRoot 'adt-android.err.log'
 try{
@@ -355,9 +358,11 @@ $prov=[ordered]@{
   swf_sha256=$swfSha
   swf_performance_patched=$false
   performance_patch_version='none'
-  render_mode='direct'
+  render_mode=$renderMode
   native_performance_overlay=$true
-  native_performance_overlay_mode='test'
+  native_performance_overlay_mode='test-low-overhead-v2'
+  native_performance_overlay_sample_ms=1000
+  native_performance_overlay_heavy_sample_ms=5000
   native_performance_overlay_metrics=@('process_cpu','pss','java_heap','native_heap','gc_count','gc_time','thermal','vsync_jank')
   diagnostics_ane_sha256=$diagnosticsAneSha
   fallback_binary_seed_release='v23'
@@ -397,7 +402,7 @@ $toolchain=[ordered]@{
 }
 $toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
 $toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
-Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=true swf_original=true native_perf_overlay=true render_mode=direct"
+Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=true swf_original=true native_perf_overlay=true render_mode=$renderMode"
 Write-Host "BUILD=PASS platform=android tier=$tier"
 Write-Host "APK_GENERATED=PASS"
 Write-Host "APK_PATH=$apkPath"
@@ -406,7 +411,7 @@ Write-Host "APK_SHA256=$apkSha"
 Write-Host "SWF_SOURCE_SHA256=$swfSha"
 Write-Host "SWF_SHA256=$swfSha"
 Write-Host "SWF_SIZE=$swfSize"
-Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,INICIAR,MARCAR_LAG,DETENER,ZIP render_mode=direct ane_sha256=$diagnosticsAneSha"
+Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,INICIAR,MARCAR_LAG,DETENER,ZIP render_mode=$renderMode profiler=low_overhead_v2 ane_sha256=$diagnosticsAneSha"
 Write-Host "PUBLISHED_SOURCE_SHA=$publishedActualSha"
 Write-Host "GAME_VERSION=$publishedVersion"
 Write-Host "AIR_VERSION=$($air.Version)"
