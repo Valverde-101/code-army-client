@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "game": "Army Attack",
+  "content_version": "23.2",
+  "published_repository": "Valverde-101/Test_army_attack",
+  "submodule_path": "vendor/Test_army_attack",
+  "pinned_submodule_sha": "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+  "swf_relative_path": "armyattack/assets/iArmyAirOfflineSavingv23.swf",
+  "source_path_from_repo": "vendor/Test_army_attack/armyattack/assets/iArmyAirOfflineSavingv23.swf",
+  "size": 24871956,
+  "sha256": "99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4",
+  "git_blob_sha1": "72f1128cb50f4c1d1c7dab455ad5c802bed76771",
+  "raw_destination": ".work/swf-extracted/23.2",
+  "editable_destination": "editable/armyattack-23.2"
+}
