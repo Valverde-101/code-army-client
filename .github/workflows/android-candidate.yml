@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - chore/local-army-bootstrap-20260827
+    paths-ignore:
+      - 'Tools/SWF/**'
+      - 'editable/armyattack-23.2/**'
+      - '.github/workflows/swf-extract.yml'
+      - '.github/workflows/android-candidate.yml'
   workflow_dispatch:
 
 permissions:

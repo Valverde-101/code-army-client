@@ -55,7 +55,29 @@ if (-not (Test-Path -LiteralPath $hashCsv)) { throw "SWF_VALIDATE=FAIL hash_inve
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.extraction_status -ne 'PASS') { throw "SWF_VALIDATE=FAIL manifest_status=$($manifest.extraction_status)" }
-if ($manifest.repository_head -ne $actualHead) { throw "SWF_VALIDATE=FAIL manifest_head=$($manifest.repository_head) actual_head=$actualHead" }
+$extractedFromSha = [string]$manifest.repository_head
+if (-not $extractedFromSha) { throw 'SWF_VALIDATE=FAIL manifest_repository_head_missing' }
+
+if ($extractedFromSha -ne $actualHead) {
+  & $git -C $repoRoot cat-file -e "$extractedFromSha^{commit}" 2>$null
+  if ($LASTEXITCODE -ne 0) { throw "RAW_REUSE=FAIL extracted_from_sha_not_available=$extractedFromSha" }
+
+  $reuseSensitivePaths = @(
+    'vendor/Test_army_attack',
+    'Tools/SWF/Extract-ArmyAttack.ps1',
+    'Tools/SWF/Ensure-FFDec.ps1',
+    'editable/armyattack-23.2/manifest/source-swf.json'
+  )
+  $changedInputs = @(& $git -C $repoRoot diff --name-only $extractedFromSha $actualHead -- $reuseSensitivePaths)
+  if ($changedInputs.Count -gt 0) {
+    $changedInputs | ForEach-Object { Write-Host "RAW_REUSE_CHANGED_INPUT=$_" }
+    throw "RAW_REUSE=FAIL extracted_from_sha=$extractedFromSha validated_sha=$actualHead reason=extraction_inputs_changed"
+  }
+  Write-Host "RAW_REUSE=PASS extracted_from_sha=$extractedFromSha validated_sha=$actualHead"
+} else {
+  Write-Host "RAW_PROVENANCE=PASS extracted_from_sha=$extractedFromSha validated_sha=$actualHead"
+}
+
 if ($manifest.source.sha256 -ne $ExpectedSourceSha256.ToLowerInvariant()) { throw "SWF_VALIDATE=FAIL source_sha256 expected=$ExpectedSourceSha256 actual=$($manifest.source.sha256)" }
 
 $sourcePath = Join-Path $repoRoot ($manifest.source.path.Replace('/','\'))
@@ -77,27 +99,30 @@ foreach ($name in $minimumRequired.Keys) {
 $rows = @(Import-Csv -LiteralPath $hashCsv)
 if ($rows.Count -lt 1) { throw 'SWF_VALIDATE=FAIL hash_inventory_empty' }
 
-$mismatches = New-Object System.Collections.Generic.List[object]
+$mismatches = @()
 $checked = 0
 foreach ($row in $rows) {
   $path = Join-Path $rawRoot ($row.path.Replace('/','\'))
-  if (-not (Test-Path -LiteralPath $path)) { $mismatches.Add([PSCustomObject]@{path=$row.path;reason='missing'}); continue }
+  if (-not (Test-Path -LiteralPath $path)) { $mismatches += [PSCustomObject]@{path=$row.path;reason='missing'}; continue }
   $file = Get-Item -LiteralPath $path
-  if ([Int64]$row.size -ne $file.Length) { $mismatches.Add([PSCustomObject]@{path=$row.path;reason='size';expected=$row.size;actual=$file.Length}); continue }
+  if ([Int64]$row.size -ne $file.Length) { $mismatches += [PSCustomObject]@{path=$row.path;reason='size';expected=$row.size;actual=$file.Length}; continue }
   $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
-  if ($hash -ne $row.sha256.ToLowerInvariant()) { $mismatches.Add([PSCustomObject]@{path=$row.path;reason='sha256';expected=$row.sha256;actual=$hash}); continue }
+  if ($hash -ne $row.sha256.ToLowerInvariant()) { $mismatches += [PSCustomObject]@{path=$row.path;reason='sha256';expected=$row.sha256;actual=$hash}; continue }
   $checked++
 }
 
 New-Item -ItemType Directory -Force -Path $reportRoot | Out-Null
 $validationPath = Join-Path $reportRoot 'validation.json'
+$validationStatus = if ($mismatches.Count -eq 0) { 'PASS' } else { 'FAIL' }
 $result = [ordered]@{
   schema_version=1
-  status=if($mismatches.Count -eq 0){'PASS'}else{'FAIL'}
+  status=$validationStatus
   repository_head=$actualHead
+  extracted_from_sha=$extractedFromSha
+  reused_extraction=($extractedFromSha -ne $actualHead)
   source_sha256=$actualSourceHash
   checked_files=$checked
-  mismatches=@($mismatches)
+  mismatches=$mismatches
   categories=$categoryResults
   validated_utc=[DateTime]::UtcNow.ToString('o')
 }
