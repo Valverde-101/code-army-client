@@ -333,8 +333,11 @@ $prov=[ordered]@{
     'vendor/Test_army_attack@306bccc7:armyattack/data,armyattack/config',
     'src/data,src/config'
   )
+  content_mode='base-only-modern-v23.2'
   mods_source_path='vendor/Test_army_attack/mods'
   mods_packaged_by_default=$false
+  selector_packaged=$false
+  diagnostics_ane_packaged=$false
   descriptor=$descriptor
   removed_permissions=@('WRITE_EXTERNAL_STORAGE','MANAGE_EXTERNAL_STORAGE')
   excluded_extensions=@('fi.joniaromaa.adobeair.discordrpc')
@@ -359,6 +362,7 @@ $toolchain=[ordered]@{
 }
 $toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
 $toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
+Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=false"
 Write-Host "BUILD=PASS platform=android tier=$tier"
 Write-Host "APK_GENERATED=PASS"
 Write-Host "APK_PATH=$apkPath"

@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$AndroidBuildRoot,
-  [Parameter(Mandatory=$true)][string]$ExpectedSha
+  [Parameter(Mandatory=$true)][string]$ExpectedSha,
+  [switch]$BaseOnly
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -40,7 +41,9 @@ $publishedVersion=[string]$game23.latestVersion
 if($publishedVersion -ne '23.2'){throw "PUBLISHED_CONTENT=FAIL expected_version=23.2 actual=$publishedVersion"}
 
 $publishedSwf=Join-Path $publishedGame 'assets\iArmyAirOfflineSavingv23.swf'
-foreach($required in @($publishedSwf,(Join-Path $publishedGame 'data'),(Join-Path $publishedGame 'config'),$publishedMods)){
+$requiredPublished=@($publishedSwf,(Join-Path $publishedGame 'data'),(Join-Path $publishedGame 'config'))
+if(-not $BaseOnly){$requiredPublished+=$publishedMods}
+foreach($required in $requiredPublished){
   if(-not (Test-Path -LiteralPath $required)){throw "PUBLISHED_CONTENT=FAIL missing=$required"}
 }
 $swf=Get-Item -LiteralPath $publishedSwf
@@ -49,21 +52,23 @@ $swfSha=(Get-FileHash -LiteralPath $publishedSwf -Algorithm SHA256).Hash.ToLower
 $modCatalog=@()
 $modTotalFiles=0L
 $modTotalBytes=0L
-foreach($dir in @(Get-ChildItem -LiteralPath $publishedMods -Directory -ErrorAction Stop|Sort-Object Name)){
-  $files=@(Get-ChildItem -LiteralPath $dir.FullName -Recurse -File -ErrorAction Stop)
-  $bytes=($files|Measure-Object Length -Sum).Sum
-  if($null -eq $bytes){$bytes=0}
-  $modTotalFiles+=$files.Count
-  $modTotalBytes+=[int64]$bytes
-  $modCatalog+=[ordered]@{
-    id=$dir.Name
-    path=("vendor/Test_army_attack/mods/"+$dir.Name)
-    files=$files.Count
-    bytes=[int64]$bytes
-    swf=@($files|Where-Object{$_.Extension -ieq '.swf'}).Count
-    json=@($files|Where-Object{$_.Extension -ieq '.json'}).Count
-    png=@($files|Where-Object{$_.Extension -ieq '.png'}).Count
-    mp3=@($files|Where-Object{$_.Extension -ieq '.mp3'}).Count
+if(-not $BaseOnly){
+  foreach($dir in @(Get-ChildItem -LiteralPath $publishedMods -Directory -ErrorAction Stop|Sort-Object Name)){
+    $files=@(Get-ChildItem -LiteralPath $dir.FullName -Recurse -File -ErrorAction Stop)
+    $bytes=($files|Measure-Object Length -Sum).Sum
+    if($null -eq $bytes){$bytes=0}
+    $modTotalFiles+=$files.Count
+    $modTotalBytes+=[int64]$bytes
+    $modCatalog+=[ordered]@{
+      id=$dir.Name
+      path=("vendor/Test_army_attack/mods/"+$dir.Name)
+      files=$files.Count
+      bytes=[int64]$bytes
+      swf=@($files|Where-Object{$_.Extension -ieq '.swf'}).Count
+      json=@($files|Where-Object{$_.Extension -ieq '.json'}).Count
+      png=@($files|Where-Object{$_.Extension -ieq '.png'}).Count
+      mp3=@($files|Where-Object{$_.Extension -ieq '.mp3'}).Count
+    }
   }
 }
 
@@ -130,14 +135,15 @@ $report=[ordered]@{
     sha256=$swfSha
   }
   content_diff=[ordered]@{data=$dataDiff;config=$configDiff}
-  mods_catalog=$catalogPath
+  base_only=[bool]$BaseOnly
+  mods_catalog=$(if($BaseOnly){$null}else{$catalogPath})
 }
 $reportPath=Join-Path $reportRoot 'PUBLISHED-CONTENT.json'
 $report|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $reportPath -Encoding UTF8
 
 if($env:GITHUB_ENV){
   "PUBLISHED_CONTENT_REPORT=$reportPath"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-  "MODS_CATALOG=$catalogPath"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+  if(-not $BaseOnly){"MODS_CATALOG=$catalogPath"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
   "PUBLISHED_SOURCE_SHA=$publishedActual"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
   "PUBLISHED_VERSION=$publishedVersion"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
   "PUBLISHED_SWF_PATH=$publishedSwf"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
@@ -146,7 +152,12 @@ if($env:GITHUB_ENV){
 
 Write-Host "PUBLISHED_CONTENT=PASS repository=Valverde-101/Test_army_attack sha=$publishedActual version=$publishedVersion"
 Write-Host "PUBLISHED_SWF=PASS size=$($swf.Length) sha256=$swfSha"
-Write-Host "MODS_DISCOVERED=PASS count=$($modCatalog.Count) files=$modTotalFiles bytes=$modTotalBytes names=$((@($modCatalog|ForEach-Object{$_.id})) -join ',')"
+if($BaseOnly){
+  Write-Host 'MODS_DISCOVERED=SKIPPED_WITH_REASON base_only_modern_v23_2'
+  Write-Host 'PUBLISHED_BASE_ONLY=PASS version=23.2'
+}else{
+  Write-Host "MODS_DISCOVERED=PASS count=$($modCatalog.Count) files=$modTotalFiles bytes=$modTotalBytes names=$((@($modCatalog|ForEach-Object{$_.id})) -join ',')"
+}
 Write-Host "PUBLISHED_DATA_DIFF published=$($dataDiff.published_files) owned=$($dataDiff.owned_files) identical=$($dataDiff.identical) different=$($dataDiff.different.Count) published_only=$($dataDiff.published_only.Count) owned_only=$($dataDiff.owned_only.Count)"
 Write-Host "PUBLISHED_CONFIG_DIFF published=$($configDiff.published_files) owned=$($configDiff.owned_files) identical=$($configDiff.identical) different=$($configDiff.different.Count) published_only=$($configDiff.published_only.Count) owned_only=$($configDiff.owned_only.Count)"
 Write-Host "PUBLISHED_CONTENT_REPORT=$reportPath"

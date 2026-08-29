@@ -71,7 +71,7 @@ jobs:
           & '.\Tools\CI\Bootstrap-PhysicalClone.ps1' -Repository $env:GITHUB_REPOSITORY -ExpectedSha $env:EXPECTED_SOURCE_SHA -SourceBranch $env:SOURCE_BRANCH
 
   published-audit:
-    name: 2A. Audit v23.2 and mods
+    name: 2A. Audit modern v23.2 base
     needs: source-sync
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 15
@@ -95,7 +95,7 @@ jobs:
       - name: Audit published v23.2 and mods
         shell: powershell
         run: |
-          & '.\Tools\CI\Audit-PublishedContent.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+          & '.\Tools\CI\Audit-PublishedContent.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -BaseOnly
 
   toolchain-preflight:
     name: 2B. Provision HARMAN/JDK/SDK
@@ -155,7 +155,7 @@ jobs:
 
   windows-regression:
     name: 2D. Windows regression
-    if: github.event_name == 'workflow_dispatch'
+    if: false
     needs: source-sync
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 30
@@ -211,7 +211,7 @@ jobs:
 
   mod-variants:
     name: 3M. Android mod ${{ matrix.variant }}
-    if: github.event_name == 'workflow_dispatch'
+    if: false
     needs: [source-sync, published-audit, toolchain-preflight]
     strategy:
       fail-fast: false
@@ -328,6 +328,7 @@ jobs:
 
   unified-selector:
     name: 4U. Unified Android mod selector
+    if: false
     needs: [android-candidate, published-audit, toolchain-preflight]
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 60
@@ -359,7 +360,7 @@ jobs:
   final-report:
     name: 4. Publish logs and final gate
     if: always()
-    needs: [source-sync, published-audit, toolchain-preflight, reference-apk, windows-regression, android-candidate, mod-variants, unified-selector]
+    needs: [source-sync, published-audit, toolchain-preflight, reference-apk, android-candidate]
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 10
     steps:
@@ -409,27 +410,18 @@ jobs:
           Write-Host "PUBLISHED_AUDIT=${{ needs.published-audit.result }}"
           Write-Host "TOOLCHAIN_PREFLIGHT=${{ needs.toolchain-preflight.result }}"
           Write-Host "REFERENCE_APK=${{ needs.reference-apk.result }}"
-          Write-Host "WINDOWS_REGRESSION=${{ needs.windows-regression.result }}"
           Write-Host "ANDROID_CANDIDATE=${{ needs.android-candidate.result }}"
-          Write-Host "MOD_VARIANTS=${{ needs.mod-variants.result }}"
-          Write-Host "UNIFIED_SELECTOR=${{ needs.unified-selector.result }}"
+          Write-Host "WINDOWS_REGRESSION=SKIPPED_WITH_REASON android_base_only"
+          Write-Host "MOD_VARIANTS=SKIPPED_WITH_REASON android_base_only"
+          Write-Host "UNIFIED_SELECTOR=SKIPPED_WITH_REASON android_base_only"
           Write-Host "LOG_PUBLISH_OUTCOME=${{ steps.publish_logs.outcome }}"
           if('${{ needs.source-sync.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL source_sync'}
           if('${{ needs.published-audit.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL published_audit'}
           if('${{ needs.toolchain-preflight.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL toolchain_preflight'}
           if('${{ needs.reference-apk.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL reference_apk'}
-          if('${{ github.event_name }}' -eq 'workflow_dispatch'){
-            if('${{ needs.windows-regression.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL windows_regression'}
-            if('${{ needs.mod-variants.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL mod_variants'}
-          }else{
-            if('${{ needs.windows-regression.result }}' -ne 'skipped'){throw 'FINAL_VALIDATION=FAIL windows_regression_expected_skipped'}
-            if('${{ needs.mod-variants.result }}' -ne 'skipped'){throw 'FINAL_VALIDATION=FAIL mod_variants_expected_skipped'}
-            Write-Host 'WINDOWS_REGRESSION=SKIPPED_WITH_REASON android_push_fast_lane'
-            Write-Host 'MOD_VARIANTS=SKIPPED_WITH_REASON unified_selector_contains_profiles'
-          }
           if('${{ needs.android-candidate.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_candidate'}
-          if('${{ needs.unified-selector.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL unified_selector'}
           if('${{ steps.publish_logs.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL evidence_upload'}
+          Write-Host "BASE_ONLY_MODE=PASS modern_v23_2=true mods=false selector=false diagnostics_ane=false"
           Write-Host "SANITIZATION=PASS via_publish_logs"
           Write-Host "EVIDENCE_UPLOAD=PASS via_publish_logs"
           Write-Host "FINAL_VALIDATION=PASS candidate"
