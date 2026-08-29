@@ -1,0 +1,83 @@
+﻿{
+    "source_repository":  "Valverde-101/Test_army_attack",
+    "source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "packaged_by_default":  false,
+    "mods":  [
+                 {
+                     "id":  "colossal",
+                     "path":  "vendor/Test_army_attack/mods/colossal",
+                     "files":  459,
+                     "bytes":  32214404,
+                     "swf":  1,
+                     "json":  7,
+                     "png":  363,
+                     "mp3":  82
+                 },
+                 {
+                     "id":  "crimson",
+                     "path":  "vendor/Test_army_attack/mods/crimson",
+                     "files":  452,
+                     "bytes":  48296249,
+                     "swf":  1,
+                     "json":  8,
+                     "png":  355,
+                     "mp3":  82
+                 },
+                 {
+                     "id":  "hardmode",
+                     "path":  "vendor/Test_army_attack/mods/hardmode",
+                     "files":  451,
+                     "bytes":  34545363,
+                     "swf":  1,
+                     "json":  8,
+                     "png":  354,
+                     "mp3":  82
+                 },
+                 {
+                     "id":  "none",
+                     "path":  "vendor/Test_army_attack/mods/none",
+                     "files":  451,
+                     "bytes":  34698430,
+                     "swf":  1,
+                     "json":  8,
+                     "png":  354,
+                     "mp3":  82
+                 },
+                 {
+                     "id":  "swapped",
+                     "path":  "vendor/Test_army_attack/mods/swapped",
+                     "files":  451,
+                     "bytes":  34698383,
+                     "swf":  1,
+                     "json":  8,
+                     "png":  354,
+                     "mp3":  82
+                 },
+                 {
+                     "id":  "swapped2",
+                     "path":  "vendor/Test_army_attack/mods/swapped2",
+                     "files":  451,
+                     "bytes":  34695836,
+                     "swf":  1,
+                     "json":  8,
+                     "png":  354,
+                     "mp3":  82
+                 },
+                 {
+                     "id":  "truecrimson",
+                     "path":  "vendor/Test_army_attack/mods/truecrimson",
+                     "files":  452,
+                     "bytes":  48296251,
+                     "swf":  1,
+                     "json":  8,
+                     "png":  355,
+                     "mp3":  82
+                 }
+             ],
+    "totals":  {
+                   "mods":  7,
+                   "files":  3167,
+                   "bytes":  267444916
+               }
+}
+

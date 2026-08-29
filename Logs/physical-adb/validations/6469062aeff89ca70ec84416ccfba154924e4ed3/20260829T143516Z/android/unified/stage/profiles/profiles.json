@@ -1,0 +1,103 @@
+﻿{
+    "schema":  1,
+    "tested_sha":  "6469062aeff89ca70ec84416ccfba154924e4ed3",
+    "source_repository":  "Valverde-101/Test_army_attack",
+    "source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "android_only":  true,
+    "profile_count":  10,
+    "multi_mod_profiles":  [
+                               "hardmode-swapped",
+                               "hardmode-swapped2"
+                           ],
+    "compatibility":  {
+                          "classic_runtime_swf_group":  [
+                                                            "none",
+                                                            "hardmode",
+                                                            "swapped",
+                                                            "swapped2",
+                                                            "hardmode-swapped",
+                                                            "hardmode-swapped2"
+                                                        ],
+                          "exclusive_runtime_profiles":  [
+                                                             "base",
+                                                             "colossal",
+                                                             "crimson",
+                                                             "truecrimson"
+                                                         ],
+                          "swapped_and_swapped2_mutually_exclusive":  true,
+                          "multi_mod_conflict_policy":  "visual layer wins the two known Warfly shoot_up graphics conflicts"
+                      },
+    "profiles":  [
+                     {
+                         "id":  "base",
+                         "name":  "Army Attack 23.2",
+                         "description":  "Modern published 23.2 runtime",
+                         "swf":  "profiles/base/assets/game.swf",
+                         "kind":  "modern"
+                     },
+                     {
+                         "id":  "none",
+                         "name":  "Classic Mods",
+                         "description":  "Classic shared mod runtime without layers",
+                         "swf":  "profiles/none/assets/game.swf",
+                         "kind":  "classic"
+                     },
+                     {
+                         "id":  "hardmode",
+                         "name":  "Classic + Hard Mode",
+                         "description":  "Hard Mode layer",
+                         "swf":  "profiles/hardmode/assets/game.swf",
+                         "kind":  "classic-layer"
+                     },
+                     {
+                         "id":  "swapped",
+                         "name":  "Classic + Swapped",
+                         "description":  "Swapped visual layer",
+                         "swf":  "profiles/swapped/assets/game.swf",
+                         "kind":  "classic-layer"
+                     },
+                     {
+                         "id":  "swapped2",
+                         "name":  "Classic + Swapped 2",
+                         "description":  "Swapped 2 visual layer",
+                         "swf":  "profiles/swapped2/assets/game.swf",
+                         "kind":  "classic-layer"
+                     },
+                     {
+                         "id":  "hardmode-swapped",
+                         "name":  "Hard Mode + Swapped",
+                         "description":  "Verified same-runtime multi-mod profile",
+                         "swf":  "profiles/hardmode-swapped/assets/game.swf",
+                         "kind":  "multi-mod"
+                     },
+                     {
+                         "id":  "hardmode-swapped2",
+                         "name":  "Hard Mode + Swapped 2",
+                         "description":  "Verified same-runtime multi-mod profile",
+                         "swf":  "profiles/hardmode-swapped2/assets/game.swf",
+                         "kind":  "multi-mod"
+                     },
+                     {
+                         "id":  "colossal",
+                         "name":  "Colossal Island",
+                         "description":  "Experimental unfinished custom island mode",
+                         "swf":  "profiles/colossal/assets/game.swf",
+                         "kind":  "exclusive"
+                     },
+                     {
+                         "id":  "crimson",
+                         "name":  "Crimson",
+                         "description":  "Crimson full runtime",
+                         "swf":  "profiles/crimson/assets/game.swf",
+                         "kind":  "exclusive"
+                     },
+                     {
+                         "id":  "truecrimson",
+                         "name":  "True Crimson",
+                         "description":  "True Crimson full runtime",
+                         "swf":  "profiles/truecrimson/assets/game.swf",
+                         "kind":  "exclusive"
+                     }
+                 ]
+}
+

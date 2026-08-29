@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<extension xmlns="http://ns.adobe.com/air/extension/50.2">
+  <id>com.valverde.armyattack.diagnostics</id>
+  <versionNumber>1.0.0</versionNumber>
+  <platforms>
+    <platform name="Android-ARM">
+      <applicationDeployment>
+        <nativeLibrary>armyattack-diagnostics.jar</nativeLibrary>
+        <initializer>com.valverde.armyattack.diagnostics.DiagnosticsExtension</initializer>
+        <finalizer>com.valverde.armyattack.diagnostics.DiagnosticsExtension</finalizer>
+      </applicationDeployment>
+    </platform>
+    <platform name="Android-ARM64">
+      <applicationDeployment>
+        <nativeLibrary>armyattack-diagnostics.jar</nativeLibrary>
+        <initializer>com.valverde.armyattack.diagnostics.DiagnosticsExtension</initializer>
+        <finalizer>com.valverde.armyattack.diagnostics.DiagnosticsExtension</finalizer>
+      </applicationDeployment>
+    </platform>
+  </platforms>
+</extension>
+
