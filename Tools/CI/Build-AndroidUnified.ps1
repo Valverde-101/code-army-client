@@ -151,18 +151,132 @@ $profilesRoot=Join-Path $stage 'profiles'
 New-Item -ItemType Directory -Force -Path $profilesRoot|Out-Null
 $profileHashes=[ordered]@{}
 
+$patchedSwfCache=@{}
+$patchRoot=Join-Path $outRoot 'patched-swfs'
+New-Item -ItemType Directory -Force -Path $patchRoot|Out-Null
+
+function Resolve-FFDecForUnified {
+  $ensure=Join-Path $RepoRoot 'Tools\SWF\Ensure-FFDec.ps1'
+  & $ensure -RepositoryRoot $RepoRoot
+  $root=Join-Path $RepoRoot '.work\tools\ffdec'
+  foreach($name in @('ffdec-cli.exe','ffdec.bat','ffdec.jar')){
+    $item=Get-ChildItem -LiteralPath $root -Recurse -File -Filter $name -ErrorAction SilentlyContinue|Sort-Object FullName -Descending|Select-Object -First 1
+    if($item){return $item.FullName}
+  }
+  throw 'UNIFIED_SECONDARY_PATCH=FAIL ffdec_not_found'
+}
+
+$ffdecUnified=Resolve-FFDecForUnified
+
+function Invoke-FFDecUnified([string[]]$Arguments,[string]$LogPath){
+  if([IO.Path]::GetExtension($ffdecUnified).ToLowerInvariant() -eq '.jar'){
+    $lines=@(& $java '-jar' $ffdecUnified @Arguments 2>&1|ForEach-Object{$_.ToString()})
+  }else{
+    $lines=@(& $ffdecUnified @Arguments 2>&1|ForEach-Object{$_.ToString()})
+  }
+  $exit=$LASTEXITCODE
+  $lines|Set-Content -LiteralPath $LogPath -Encoding UTF8
+  if($exit -ne 0){
+    $lines|Select-Object -Last 80|ForEach-Object{Write-Host $_}
+    throw "UNIFIED_SECONDARY_PATCH=FAIL ffdec_exit=$exit log=$LogPath"
+  }
+}
+
+function Resolve-PatchedSecondarySwf([string]$Swf,[string]$Id){
+  $sourceHash=(Get-FileHash -LiteralPath $Swf -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($patchedSwfCache.ContainsKey($sourceHash)){
+    Write-Host "UNIFIED_SECONDARY_PATCH=REUSE id=$Id source_sha256=$sourceHash"
+    return [string]$patchedSwfCache[$sourceHash]
+  }
+
+  $work=Join-Path $patchRoot $sourceHash
+  if(Test-Path -LiteralPath $work){Remove-Item -LiteralPath $work -Recurse -Force}
+  New-Item -ItemType Directory -Force -Path $work|Out-Null
+  $export=Join-Path $work 'export'
+  New-Item -ItemType Directory -Force -Path $export|Out-Null
+  Invoke-FFDecUnified @('-cli','-onerror','abort','-selectclass','GameMain','-export','script',$export,$Swf) (Join-Path $work 'export.log')
+
+  $gm=@(Get-ChildItem -LiteralPath $export -Recurse -File -Filter 'GameMain.as' -ErrorAction Stop)
+  if($gm.Count -ne 1){throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id GameMain_count=$($gm.Count)"}
+  $src=[IO.File]::ReadAllText($gm[0].FullName)
+  $marker='__androidSecondaryStageReady'
+  if($src.Contains($marker)){
+    $existing=Join-Path $work 'patched.swf'
+    Copy-Item -LiteralPath $Swf -Destination $existing -Force
+    $patchedSwfCache[$sourceHash]=$existing
+    return $existing
+  }
+
+  $signature='public function GameMain()'
+  $start=$src.IndexOf($signature,[StringComparison]::Ordinal)
+  if($start -lt 0){throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id constructor_missing"}
+  $open=$src.IndexOf('{',$start)
+  $depth=0;$close=-1
+  for($i=$open;$i -lt $src.Length;$i++){
+    if($src[$i] -eq '{'){$depth++}
+    elseif($src[$i] -eq '}'){$depth--;if($depth -eq 0){$close=$i;break}}
+  }
+  if($open -lt 0 -or $close -lt 0){throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id constructor_bounds"}
+
+  $body=$src.Substring($open+1,$close-$open-1)
+  $body=[regex]::Replace($body,'(?m)^\s*super\(\);\s*','',1)
+  $replacement=@"
+public function GameMain() {
+            super();
+            if (stage != null) {
+                this.__androidSecondaryStageReady();
+            } else {
+                addEventListener(Event.ADDED_TO_STAGE, this.__androidSecondaryAddedToStage, false, 0, true);
+            }
+        }
+
+        private function __androidSecondaryAddedToStage(param1:Event):void {
+            removeEventListener(Event.ADDED_TO_STAGE, this.__androidSecondaryAddedToStage);
+            this.__androidSecondaryStageReady();
+        }
+
+        private function __androidSecondaryStageReady():void {
+$body
+        }
+"@
+  $patchedSource=$src.Substring(0,$start)+$replacement+$src.Substring($close+1)
+  $patchedAs=Join-Path $work 'GameMain.as'
+  [IO.File]::WriteAllText($patchedAs,$patchedSource,(New-Object Text.UTF8Encoding($false)))
+  $patchedSwf=Join-Path $work 'patched.swf'
+  Invoke-FFDecUnified @('-cli','-onerror','abort','-replace',$Swf,$patchedSwf,'GameMain',$patchedAs) (Join-Path $work 'replace.log')
+  if(-not (Test-Path -LiteralPath $patchedSwf)){throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id patched_missing"}
+
+  $verify=Join-Path $work 'verify'
+  New-Item -ItemType Directory -Force -Path $verify|Out-Null
+  Invoke-FFDecUnified @('-cli','-onerror','abort','-selectclass','GameMain','-export','script',$verify,$patchedSwf) (Join-Path $work 'verify.log')
+  $vgm=@(Get-ChildItem -LiteralPath $verify -Recurse -File -Filter 'GameMain.as' -ErrorAction Stop)
+  if($vgm.Count -ne 1){throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id verify_count=$($vgm.Count)"}
+  $verifyText=[IO.File]::ReadAllText($vgm[0].FullName)
+  if(-not $verifyText.Contains($marker) -or -not $verifyText.Contains('Event.ADDED_TO_STAGE')){
+    throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id guard_verify"
+  }
+
+  $patchedHash=(Get-FileHash -LiteralPath $patchedSwf -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($patchedHash -eq $sourceHash){throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id hash_unchanged"}
+  $patchedSwfCache[$sourceHash]=$patchedSwf
+  Write-Host "UNIFIED_SECONDARY_PATCH=PASS id=$Id source_sha256=$sourceHash patched_sha256=$patchedHash"
+  return $patchedSwf
+}
+
 function Add-Profile([string]$Id,[string]$Swf,[string]$Data,[string]$Config){
   $root=Join-Path $profilesRoot $Id
   $assets=Join-Path $root 'assets'
   New-Item -ItemType Directory -Force -Path $assets|Out-Null
   $destSwf=Join-Path $assets 'game.swf'
-  Copy-Item -LiteralPath $Swf -Destination $destSwf -Force
+  $sourceHash=(Get-FileHash -LiteralPath $Swf -Algorithm SHA256).Hash.ToLowerInvariant()
+  $androidSwf=Resolve-PatchedSecondarySwf $Swf $Id
+  Copy-Item -LiteralPath $androidSwf -Destination $destSwf -Force
   Copy-Tree $Data (Join-Path $root 'data')
   Copy-Tree $Config (Join-Path $root 'config')
   Sanitize-Profile $root
   $swfHash=(Get-FileHash -LiteralPath $destSwf -Algorithm SHA256).Hash.ToLowerInvariant()
-  $profileHashes[$Id]=[ordered]@{path=("profiles/"+$Id+"/assets/game.swf");sha256=$swfHash;size=(Get-Item $destSwf).Length}
-  Write-Host "UNIFIED_PROFILE_STAGE=PASS id=$Id swf_sha256=$swfHash size=$((Get-Item $destSwf).Length)"
+  $profileHashes[$Id]=[ordered]@{path=("profiles/"+$Id+"/assets/game.swf");source_sha256=$sourceHash;sha256=$swfHash;size=(Get-Item $destSwf).Length;android_secondary_stage_guard=$true}
+  Write-Host "UNIFIED_PROFILE_STAGE=PASS id=$Id source_sha256=$sourceHash swf_sha256=$swfHash stage_guard=true size=$((Get-Item $destSwf).Length)"
 }
 
 Add-Profile 'base' $baseSwf (Join-Path $baseStage 'data') (Join-Path $baseStage 'config')
@@ -358,6 +472,7 @@ $prov=[ordered]@{
   selector=$true
   selector_swf='ArmyAttackLauncher.swf'
   selector_swf_sha256=$launcherSha
+  secondary_swf_stage_guard=$true
   profile_count=$manifest.profile_count
   profiles=@($manifest.profiles|ForEach-Object{$_.id})
   profile_swfs=$profileHashes
@@ -380,7 +495,7 @@ $badging|Set-Content -LiteralPath (Join-Path $outRoot 'apk-badging.txt') -Encodi
 & (Join-Path $RepoRoot 'Tools\CI\Publish-ApkFinal.ps1') -SourceApk $apkPath -AndroidBuildRoot $PhysicalAndroidBuildRoot -ExpectedSha $ExpectedSha -RelativePath 'ArmyAttack-23.2-MODS.apk' -Kind 'unified-mod-selector'
 
 Write-Host "UNIFIED_BUILD=PASS"
-Write-Host "UNIFIED_SELECTOR=PASS profile_count=$($manifest.profile_count)"
+Write-Host "UNIFIED_SELECTOR=PASS profile_count=$($manifest.profile_count) secondary_swf_stage_guard=true"
 Write-Host "UNIFIED_MULTI_MOD=PASS profiles=$($manifest.multi_mod_profiles -join ',')"
 Write-Host "UNIFIED_APK_VALIDATE=PASS package=air.army.attack target_sdk=33 abi=arm64-v8a"
 Write-Host "UNIFIED_APK_PATH=$apkPath"
