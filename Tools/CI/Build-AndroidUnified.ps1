@@ -147,6 +147,16 @@ if(Test-Path -LiteralPath $outRoot){Remove-Item -LiteralPath $outRoot -Recurse -
 New-Item -ItemType Directory -Force -Path $stage|Out-Null
 Copy-Tree (Join-Path $baseStage 'AppIconsForPublish') (Join-Path $stage 'AppIconsForPublish')
 
+$extensionsDir=Join-Path $outRoot 'extensions'
+New-Item -ItemType Directory -Force -Path $extensionsDir|Out-Null
+$diagnosticsAneScript=Join-Path $RepoRoot 'Tools\CI\Build-AndroidDiagnosticsAne.ps1'
+if(-not (Test-Path -LiteralPath $diagnosticsAneScript)){throw "UNIFIED_DIAGNOSTICS=FAIL build_script_missing=$diagnosticsAneScript"}
+& $diagnosticsAneScript -RepoRoot $RepoRoot -AirRoot $airRoot -AndroidSdkRoot $sdk -OutputDirectory $extensionsDir
+$diagnosticsAne=Join-Path $extensionsDir 'ArmyAttackDiagnostics.ane'
+if(-not (Test-Path -LiteralPath $diagnosticsAne)){throw "UNIFIED_DIAGNOSTICS=FAIL ane_missing=$diagnosticsAne"}
+$diagnosticsAneSha=(Get-FileHash -LiteralPath $diagnosticsAne -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "UNIFIED_DIAGNOSTICS_ANE=PASS path=$diagnosticsAne sha256=$diagnosticsAneSha"
+
 $profilesRoot=Join-Path $stage 'profiles'
 New-Item -ItemType Directory -Force -Path $profilesRoot|Out-Null
 $profileHashes=[ordered]@{}
@@ -377,6 +387,9 @@ $xml=@"
     <renderMode>auto</renderMode>
     <autoOrients>false</autoOrients>
   </initialWindow>
+  <extensions>
+    <extensionID>com.valverde.armyattack.diagnostics</extensionID>
+  </extensions>
   <icon>
     <image36x36>AppIconsForPublish/icon36.png</image36x36>
     <image48x48>AppIconsForPublish/icon48.png</image48x48>
@@ -390,7 +403,9 @@ $xml=@"
       <manifest>
         <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="33"/>
         <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
-        <application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"/>
+        <application android:hardwareAccelerated="true" android:usesCleartextTraffic="false">
+          <provider android:name="com.valverde.armyattack.diagnostics.DiagnosticsProvider" android:authorities="air.army.attack.armyattackdiagnostics" android:exported="false" android:grantUriPermissions="true"/>
+        </application>
       </manifest>
     ]]></manifestAdditions>
   </android>
@@ -407,7 +422,7 @@ try{
   $certArgs=@('-certificate','-cn','ArmyAttackUnified','-ou','Dev','-o','ValverdeLocalBuild','-c','PE','2048-RSA',$cert,$certPass)
   $certProc=Start-Process -FilePath $adt -ArgumentList $certArgs -WorkingDirectory $outRoot -NoNewWindow -PassThru -Wait
   if($certProc.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $cert)){throw "UNIFIED_CERT=FAIL exit=$($certProc.ExitCode)"}
-  $args=@('-package','-target','apk-captive-runtime','-arch','armv8','-storetype','pkcs12','-keystore',$cert,'-storepass',$certPass,$apkPath,$descriptor,'-C',$stage,'.','-platformsdk',$packageSdk)
+  $args=@('-package','-target','apk-captive-runtime','-arch','armv8','-storetype','pkcs12','-keystore',$cert,'-storepass',$certPass,$apkPath,$descriptor,'-extdir',$extensionsDir,'-C',$stage,'.','-platformsdk',$packageSdk)
   $pp=Start-Process -FilePath $adt -ArgumentList $args -WorkingDirectory $outRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $adtOut -RedirectStandardError $adtErr
   if($pp.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $apkPath)){
     if(Test-Path $adtOut){Get-Content $adtOut -Tail 120|ForEach-Object{Write-Host $_}}
@@ -424,6 +439,12 @@ if($LASTEXITCODE -ne 0){throw 'UNIFIED_VALIDATE=FAIL badging'}
 $badgingText=$badging -join [Environment]::NewLine
 if($badgingText -notmatch "package:\s+name='air\.army\.attack'"){throw 'UNIFIED_VALIDATE=FAIL package'}
 if($badgingText -notmatch "targetSdkVersion:'33'"){throw 'UNIFIED_VALIDATE=FAIL target_sdk'}
+$manifestDump=@(& $aapt dump xmltree $apkPath AndroidManifest.xml 2>&1|ForEach-Object{$_.ToString()})
+if($LASTEXITCODE -ne 0){throw 'UNIFIED_DIAGNOSTICS=FAIL manifest_dump'}
+$manifestText=$manifestDump -join [Environment]::NewLine
+if($manifestText -notmatch 'com\.valverde\.armyattack\.diagnostics\.DiagnosticsProvider'){throw 'UNIFIED_DIAGNOSTICS=FAIL provider_missing'}
+if($manifestText -notmatch 'air\.army\.attack\.armyattackdiagnostics'){throw 'UNIFIED_DIAGNOSTICS=FAIL authority_missing'}
+Write-Host 'UNIFIED_DIAGNOSTICS_MANIFEST=PASS provider=DiagnosticsProvider authority=air.army.attack.armyattackdiagnostics'
 
 $entries=@(& $aapt list $apkPath 2>&1|ForEach-Object{$_.ToString()})
 if($LASTEXITCODE -ne 0){throw 'UNIFIED_VALIDATE=FAIL list'}
@@ -473,6 +494,10 @@ $prov=[ordered]@{
   selector_swf='ArmyAttackLauncher.swf'
   selector_swf_sha256=$launcherSha
   secondary_swf_stage_guard=$true
+  diagnostics_share_zip=$true
+  diagnostics_extension_id='com.valverde.armyattack.diagnostics'
+  diagnostics_ane_sha256=$diagnosticsAneSha
+  diagnostics_content_provider='air.army.attack.armyattackdiagnostics'
   profile_count=$manifest.profile_count
   profiles=@($manifest.profiles|ForEach-Object{$_.id})
   profile_swfs=$profileHashes
@@ -496,6 +521,7 @@ $badging|Set-Content -LiteralPath (Join-Path $outRoot 'apk-badging.txt') -Encodi
 
 Write-Host "UNIFIED_BUILD=PASS"
 Write-Host "UNIFIED_SELECTOR=PASS profile_count=$($manifest.profile_count) secondary_swf_stage_guard=true"
+Write-Host "UNIFIED_DIAGNOSTICS=PASS share_zip=true sharesheet=true provider=air.army.attack.armyattackdiagnostics ane_sha256=$diagnosticsAneSha"
 Write-Host "UNIFIED_MULTI_MOD=PASS profiles=$($manifest.multi_mod_profiles -join ',')"
 Write-Host "UNIFIED_APK_VALIDATE=PASS package=air.army.attack target_sdk=33 abi=arm64-v8a"
 Write-Host "UNIFIED_APK_PATH=$apkPath"

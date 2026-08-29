@@ -34,6 +34,7 @@ package {
         private var statusText:TextField;
         private var profileText:TextField;
         private var playButton:Sprite;
+        private var diagnostics:ArmyAttackDiagnostics;
         private var loader:Loader;
         private var menu:Sprite = new Sprite();
 
@@ -47,6 +48,7 @@ package {
             stage.align = StageAlign.TOP_LEFT;
             stage.addEventListener(Event.RESIZE, onResize);
             stage.addEventListener(KeyboardEvent.KEY_DOWN, onKeyDown);
+            diagnostics = new ArmyAttackDiagnostics(this);
             loadManifest();
         }
 
@@ -55,6 +57,7 @@ package {
             u.addEventListener(Event.COMPLETE, function(e:Event):void {
                 try {
                     manifest = JSON.parse(String(u.data));
+                    diagnostics.setManifest(manifest);
                     var list:Array = manifest.profiles as Array;
                     for each (var p:Object in list) profiles[String(p.id)] = p;
                     renderMenu();
@@ -106,8 +109,9 @@ package {
             statusText = makeText("", 15, false, 0x9EABB7, 675, 554, 540, 45);
             menu.addChild(statusText);
 
-            playButton = makeButton("JUGAR", 675, 610, 510, 68, 0xB88A17, 0xF8FAFC, onPlay);
+            playButton = makeButton("JUGAR", 675, 610, 245, 58, 0xB88A17, 0xF8FAFC, onPlay);
             menu.addChild(playButton);
+            menu.addChild(diagnostics.makeShareButton(940, 610, 245, 58));
             refresh();
             onResize();
         }
@@ -208,11 +212,13 @@ package {
             }
             playButton.mouseEnabled = false;
             statusText.text = "Cargando " + String(p.name) + "...";
+            diagnostics.setProfile(profileId, String(p.name), String(p.swf));
             loadGame(String(p.swf), p);
         }
 
         private function loadGame(path:String, p:Object):void {
             loader = new Loader();
+            diagnostics.attachLoader(loader);
 
             // Army Attack's document class accesses stage directly from its constructor.
             // The Loader must already belong to our Stage before the child SWF is
@@ -255,10 +261,12 @@ package {
             } else {
                 message = String(e.error);
             }
+            diagnostics.capture("GAME_UNCAUGHT", message);
             restoreMenuWithError("ERROR DEL JUEGO: " + message);
         }
 
         private function loadFailure(e:Event):void {
+            diagnostics.capture("LOAD_FAILURE", e.toString());
             restoreMenuWithError("ERROR AL CARGAR: " + e.toString());
         }
 
