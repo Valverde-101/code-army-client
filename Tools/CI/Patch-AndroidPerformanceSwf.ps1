@@ -81,9 +81,6 @@ $1
 
       private var mAndroidPerfStaticAccumulator:int = 0;
       private var mAndroidPerfEnvAccumulator:int = 0;
-      private var mAndroidPerfPointerAccumulator:int = 0;
-      private var mAndroidPerfPointerCell:GridCell = null;
-      private var mAndroidPerfSortFlip:Boolean = false;
 '@
   $isometric=[regex]::Replace($isometric,$fieldPattern,$fieldBlock,1)
 
@@ -116,57 +113,16 @@ this.updateCharacters(param1);
 '@
   $isometric=[regex]::Replace($isometric,$staticPattern,$staticBlock,1)
 
-  $pointerPattern='var\s+_loc4_\s*:\s*GridCell\s*=\s*this\.getTileUnderMouse\(\);'
-  if(-not [regex]::IsMatch($isometric,$pointerPattern)){throw 'PERF_PATCH=FAIL pointer_anchor'}
-  $pointerBlock=@'
-this.mAndroidPerfPointerAccumulator += param1;
-         var __androidPerfPointerTick:Boolean = this.mAndroidPerfPointerAccumulator >= 50 || Boolean(this.mObjectBeingMoved) || mouseDownAction;
-         var _loc4_:GridCell = this.mAndroidPerfPointerCell;
-         if(__androidPerfPointerTick)
-         {
-            this.mAndroidPerfPointerAccumulator = 0;
-            _loc4_ = this.getTileUnderMouse();
-            this.mAndroidPerfPointerCell = _loc4_;
-         }
-'@
-  $isometric=[regex]::Replace($isometric,$pointerPattern,$pointerBlock,1)
-
-  $highlightPattern='if\s*\(\s*this\.mGame\.mState\s*==\s*GameState\.STATE_PLAY\s*\|\|\s*this\.mGame\.mState\s*==\s*GameState\.STATE_PVP\s*\|\|\s*this\.mGame\.mState\s*==\s*GameState\.STATE_VISITING_NEIGHBOUR\s*\)'
-  if(-not [regex]::IsMatch($isometric,$highlightPattern)){throw 'PERF_PATCH=FAIL highlight_anchor'}
-  $isometric=[regex]::Replace($isometric,$highlightPattern,'if(__androidPerfPointerTick && (this.mGame.mState == GameState.STATE_PLAY || this.mGame.mState == GameState.STATE_PVP || this.mGame.mState == GameState.STATE_VISITING_NEIGHBOUR))',1)
-
-  $cursorPattern='this\.updateCursors\(param1\);'
-  if(-not [regex]::IsMatch($isometric,$cursorPattern)){throw 'PERF_PATCH=FAIL cursor_anchor'}
-  $cursorBlock=@'
-if(__androidPerfPointerTick)
-         {
-            this.updateCursors(param1);
-         }
-'@
-  $isometric=[regex]::Replace($isometric,$cursorPattern,$cursorBlock,1)
-
-  $sortPattern='this\.sortAll\(\s*_loc3_\s*\|\|\s*this\.mMouseScrolling\s*\|\|\s*Boolean\(this\.mObjectBeingMoved\)\s*,\s*_loc3_\s*\);'
-  if(-not [regex]::IsMatch($isometric,$sortPattern)){throw 'PERF_PATCH=FAIL sort_anchor'}
-  $sortBlock=@'
-var __androidPerfVisibilityScan:Boolean = _loc3_ || Boolean(this.mObjectBeingMoved);
-            if(this.mMouseScrolling && !__androidPerfVisibilityScan)
-            {
-               this.mAndroidPerfSortFlip = !this.mAndroidPerfSortFlip;
-               __androidPerfVisibilityScan = this.mAndroidPerfSortFlip;
-            }
-            this.sortAll(__androidPerfVisibilityScan,_loc3_);
-'@
-  $isometric=[regex]::Replace($isometric,$sortPattern,$sortBlock,1)
 }
 
-foreach($marker in @('mAndroidPerfStaticAccumulator','mAndroidPerfEnvAccumulator','mAndroidPerfPointerAccumulator','__androidPerfPointerTick','__androidPerfVisibilityScan')){Assert-Contains $isometric $marker 'isometric'}
+foreach($marker in @('mAndroidPerfStaticAccumulator','mAndroidPerfEnvAccumulator')){Assert-Contains $isometric $marker 'isometric'}
 
 $isometricPatchedAs=Join-Path $work 'IsometricScene.as'
 [IO.File]::WriteAllText($isometricPatchedAs,$isometric,(New-Object Text.UTF8Encoding($false)))
 $isometricSwf=Join-Path $work '01-isometric.swf'
 Replace-Class $current 'game.isometric.IsometricScene' $isometricPatchedAs $isometricSwf 'isometric'
 $current=$isometricSwf
-Write-Host 'PERF_PATCH_ISOMETRIC=PASS static_tick_ms=50 env_tick_ms=33 pointer_tick_ms=50 scroll_visibility_divisor=2'
+Write-Host 'PERF_PATCH_ISOMETRIC=PASS static_tick_ms=50 env_tick_ms=33 pointer_per_frame=true visibility_scan_per_frame=true'
 
 $enemyExport=Export-Class $current 'game.characters.EnemyUnit' 'EnemyUnit.as' 'enemy'
 $enemy=[IO.File]::ReadAllText($enemyExport)
@@ -180,7 +136,7 @@ $1
 '@
   $enemy=[regex]::Replace($enemy,$enemyFieldPattern,$enemyFieldBlock,1)
 
-  $reactionLocalPattern='(private\s+function\s+updateReactionState\s*\(\s*param1\s*:\s*int\s*\)\s*:\s*void\s*\{[\s\S]*?var\s+_loc11_\s*:\s*TextFormat\s*=\s*null\s*;)'
+  $reactionLocalPattern='(private\s+function\s+updateReactionState\s*\(\s*param1\s*:\s*int\s*\)\s*:\s*void\s*\{)'
   if(-not [regex]::IsMatch($enemy,$reactionLocalPattern)){throw 'PERF_PATCH=FAIL enemy_reaction_anchor'}
   $reactionBlock=@'
 $1
@@ -224,7 +180,7 @@ $outputSha=(Get-FileHash -LiteralPath $OutputSwf -Algorithm SHA256).Hash.ToLower
 if($outputSha -eq $sourceSha){throw "PERF_PATCH=FAIL output_hash_unchanged sha256=$outputSha"}
 
 $verifyMarkers=[ordered]@{
-  'game.isometric.IsometricScene'=@('mAndroidPerfStaticAccumulator','__androidPerfPointerTick','__androidPerfVisibilityScan')
+  'game.isometric.IsometricScene'=@('mAndroidPerfStaticAccumulator','mAndroidPerfEnvAccumulator')
   'game.characters.EnemyUnit'=@('mAndroidPerfReactionAccumulator')
   'game.particles.SmokeEmitter'=@('mMaxConcurrentParticles = 18','_loc2_--')
 }
@@ -254,9 +210,9 @@ $report=[ordered]@{
     hud_per_frame=$true
     static_logic_tick_ms=50
     environment_tick_ms=33
-    pointer_hover_tick_ms=50
+    pointer_hover_per_frame=$true
     enemy_reaction_tick_ms=50
-    scrolling_visibility_scan_divisor=2
+    scrolling_visibility_scan_per_frame=$true
     smoke_max_concurrent_particles=18
   }
 }
