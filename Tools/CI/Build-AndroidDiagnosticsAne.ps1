@@ -47,8 +47,7 @@ if(Test-Path -LiteralPath $work){Remove-Item -LiteralPath $work -Recurse -Force}
 $classes=Join-Path $work 'classes'
 $arm=Join-Path $work 'Android-ARM'
 $arm64=Join-Path $work 'Android-ARM64'
-$default=Join-Path $work 'default'
-New-Item -ItemType Directory -Force -Path $work,$classes,$arm,$arm64,$default|Out-Null
+New-Item -ItemType Directory -Force -Path $work,$classes,$arm,$arm64|Out-Null
 
 $swc=Join-Path $work 'ArmyAttackDiagnostics.swc'
 $compcArgs=@("-source-path+=$as3Root",'-include-classes=com.valverde.armyattack.diagnostics.DiagnosticsMarker',"-output=$swc")
@@ -68,8 +67,6 @@ $nativeJar=Join-Path $work 'armyattack-diagnostics.jar'
 if($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $nativeJar)){throw "DIAGNOSTICS_ANE=FAIL jar_exit=$LASTEXITCODE"}
 Copy-Item -LiteralPath $nativeJar -Destination (Join-Path $arm 'armyattack-diagnostics.jar') -Force
 Copy-Item -LiteralPath $nativeJar -Destination (Join-Path $arm64 'armyattack-diagnostics.jar') -Force
-'no-native-code'|Set-Content -LiteralPath (Join-Path $default 'README.txt') -Encoding ASCII
-
 $extensionXml=Join-Path $work 'extension.xml'
 $xml=@'
 <?xml version="1.0" encoding="utf-8"?>
@@ -91,9 +88,6 @@ $xml=@'
         <finalizer>com.valverde.armyattack.diagnostics.DiagnosticsExtension</finalizer>
       </applicationDeployment>
     </platform>
-    <platform name="default">
-      <applicationDeployment/>
-    </platform>
   </platforms>
 </extension>
 '@
@@ -101,7 +95,7 @@ $xml|Set-Content -LiteralPath $extensionXml -Encoding UTF8
 
 $ane=Join-Path $out 'ArmyAttackDiagnostics.ane'
 if(Test-Path -LiteralPath $ane){Remove-Item -LiteralPath $ane -Force}
-$aneArgs=@('-package','-target','ane',$ane,$extensionXml,'-swc',$swc,'-platform','Android-ARM','-C',$arm,'.','-platform','Android-ARM64','-C',$arm64,'.','-platform','default','-C',$default,'.')
+$aneArgs=@('-package','-target','ane',$ane,$extensionXml,'-swc',$swc,'-platform','Android-ARM','-C',$arm,'.','-platform','Android-ARM64','-C',$arm64,'.')
 & $adt @aneArgs
 if($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $ane)){throw "DIAGNOSTICS_ANE=FAIL adt_exit=$LASTEXITCODE"}
 
