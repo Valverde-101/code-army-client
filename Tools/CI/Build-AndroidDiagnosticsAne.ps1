@@ -96,14 +96,27 @@ $xml|Set-Content -LiteralPath $extensionXml -Encoding UTF8
 $ane=Join-Path $out 'ArmyAttackDiagnostics.ane'
 if(Test-Path -LiteralPath $ane){Remove-Item -LiteralPath $ane -Force}
 $aneArgs=@('-package','-target','ane',$ane,$extensionXml,'-swc',$swc,'-platform','Android-ARM','-C',$arm,'.','-platform','Android-ARM64','-C',$arm64,'.')
-& $adt @aneArgs
-if($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $ane)){throw "DIAGNOSTICS_ANE=FAIL adt_exit=$LASTEXITCODE"}
+$adtLog=Join-Path $work 'adt-ane.log'
+$adtLines=@(& $adt @aneArgs 2>&1|ForEach-Object{$_.ToString()})
+$adtExit=$LASTEXITCODE
+$adtLines|Set-Content -LiteralPath $adtLog -Encoding UTF8
+if($adtExit -ne 0 -or -not (Test-Path -LiteralPath $ane)){
+  $adtLines|Select-Object -Last 80|ForEach-Object{Write-Host $_}
+  throw "DIAGNOSTICS_ANE=FAIL adt_exit=$adtExit log=$adtLog"
+}
+Write-Host "DIAGNOSTICS_ANE_ADT=PASS log=$adtLog"
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip=[IO.Compression.ZipFile]::OpenRead($ane)
 try{
   $names=@($zip.Entries|ForEach-Object{$_.FullName})
-  foreach($required in @('META-INF/ANE/extension.xml','Android-ARM/armyattack-diagnostics.jar','Android-ARM64/armyattack-diagnostics.jar')){
+  foreach($required in @(
+    'META-INF/ANE/extension.xml',
+    'META-INF/ANE/Android-ARM/library.swf',
+    'META-INF/ANE/Android-ARM/armyattack-diagnostics.jar',
+    'META-INF/ANE/Android-ARM64/library.swf',
+    'META-INF/ANE/Android-ARM64/armyattack-diagnostics.jar'
+  )){
     if(-not ($names -contains $required)){throw "DIAGNOSTICS_ANE=FAIL packaged_entry_missing=$required"}
   }
 }finally{$zip.Dispose()}

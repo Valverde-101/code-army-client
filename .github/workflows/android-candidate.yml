@@ -9,14 +9,17 @@ on:
       - 'editable/armyattack-23.2/**'
       - '.github/workflows/swf-extract.yml'
       - '.github/workflows/android-candidate.yml'
+      - '.github/workflows/enable-autorepo-pool4.yml'
+      - 'Tools/CI/Enable-AutoRepoPool4.ps1'
+      - 'Tools/CI/Start-AutoRepoPool4.runtime.ps1'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: army-attack-candidate-${{ github.sha }}
-  cancel-in-progress: false
+  group: army-attack-candidate-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   EXPECTED_SOURCE_SHA: ${{ github.sha }}
