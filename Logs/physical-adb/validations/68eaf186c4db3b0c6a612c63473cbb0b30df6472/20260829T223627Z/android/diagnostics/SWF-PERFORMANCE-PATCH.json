@@ -1,0 +1,46 @@
+﻿{
+    "schema_version":  1,
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "68eaf186c4db3b0c6a612c63473cbb0b30df6472",
+    "patch_version":  "mobile-engine-v1",
+    "source_swf":  {
+                       "path":  "V:\\AndroidBuild\\Repositories\\code-army-client\\vendor\\Test_army_attack\\armyattack\\assets\\iArmyAirOfflineSavingv23.swf",
+                       "size":  24871956,
+                       "sha256":  "99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4"
+                   },
+    "output_swf":  {
+                       "path":  "V:\\AndroidBuild\\Toolchains\\AIR50-API33-BT33.0.2\\Builds\\code-army-client\\68eaf186c4db3b0c6a612c63473cbb0b30df6472\\android\\stage\\iArmyAirOfflineSavingv23.swf",
+                       "size":  24879962,
+                       "sha256":  "e3ace21df87fb0fed61241dd50bba8029476c93b1dfcfa4747dfcf71c82ce21c"
+                   },
+    "classes":  [
+                    {
+                        "name":  "game.battlefield.TileMapGraphic",
+                        "source":  "src/game/battlefield/TileMapGraphic.as",
+                        "sha256":  "cc13ba0b512e04e7be49cae5199e0552548683d741f8c88123db0788d4cb6641"
+                    },
+                    {
+                        "name":  "game.isometric.IsometricScene",
+                        "source":  "src/game/isometric/IsometricScene.as",
+                        "sha256":  "05d090ebb2feb7c1bfce94eb639e94bd3f4cc42fd249c9eac7e286c88f21a599"
+                    }
+                ],
+    "guarantees":  [
+                       "enemy_character_update_cadence_unchanged",
+                       "enemy_actions_update_cadence_unchanged",
+                       "enemy_movement_update_cadence_unchanged",
+                       "visual_assets_preserved_from_source_swf",
+                       "audio_assets_preserved_from_source_swf",
+                       "animate_linkage_preserved_from_source_swf"
+                   ],
+    "optimizations":  [
+                          "padded_tilemap_camera_cache_256px",
+                          "tilemap_rebuild_threshold_72pct",
+                          "remove_unused_sort_hit_tests",
+                          "fix_sort_order_change_index_comparison",
+                          "indexed_character_hot_loop",
+                          "indexed_static_object_hot_loop"
+                      ],
+    "generated_utc":  "2026-08-29T22:33:43.2241555Z"
+}
+
