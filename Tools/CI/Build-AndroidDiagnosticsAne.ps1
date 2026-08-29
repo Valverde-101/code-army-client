@@ -81,7 +81,8 @@ foreach($requiredClass in @(
 )){
   if(-not ($jarEntries -contains $requiredClass)){throw "DIAGNOSTICS_ANE=FAIL native_class_missing=$requiredClass"}
 }
-Write-Host 'DIAGNOSTICS_ANE_CLASSES=PASS extension=true provider=true'
+$nativeJarSha=(Get-FileHash -LiteralPath $nativeJar -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "DIAGNOSTICS_ANE_CLASSES=PASS extension=true provider=true jar_sha256=$nativeJarSha"
 Copy-Item -LiteralPath $nativeJar -Destination (Join-Path $arm 'armyattack-diagnostics.jar') -Force
 Copy-Item -LiteralPath $nativeJar -Destination (Join-Path $arm64 'armyattack-diagnostics.jar') -Force
 $extensionXml=Join-Path $work 'extension.xml'

@@ -154,6 +154,7 @@ jobs:
 
   windows-regression:
     name: 2D. Windows regression
+    if: github.event_name == 'workflow_dispatch'
     needs: source-sync
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 30
@@ -209,6 +210,7 @@ jobs:
 
   mod-variants:
     name: 3M. Android mod ${{ matrix.variant }}
+    if: github.event_name == 'workflow_dispatch'
     needs: [source-sync, published-audit, toolchain-preflight]
     strategy:
       fail-fast: false
@@ -398,8 +400,15 @@ jobs:
           if('${{ needs.published-audit.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL published_audit'}
           if('${{ needs.toolchain-preflight.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL toolchain_preflight'}
           if('${{ needs.reference-apk.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL reference_apk'}
-          if('${{ needs.windows-regression.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL windows_regression'}
+          if('${{ github.event_name }}' -eq 'workflow_dispatch'){
+            if('${{ needs.windows-regression.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL windows_regression'}
+            if('${{ needs.mod-variants.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL mod_variants'}
+          }else{
+            if('${{ needs.windows-regression.result }}' -ne 'skipped'){throw 'FINAL_VALIDATION=FAIL windows_regression_expected_skipped'}
+            if('${{ needs.mod-variants.result }}' -ne 'skipped'){throw 'FINAL_VALIDATION=FAIL mod_variants_expected_skipped'}
+            Write-Host 'WINDOWS_REGRESSION=SKIPPED_WITH_REASON android_push_fast_lane'
+            Write-Host 'MOD_VARIANTS=SKIPPED_WITH_REASON unified_selector_contains_profiles'
+          }
           if('${{ needs.android-candidate.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_candidate'}
-          if('${{ needs.mod-variants.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL mod_variants'}
           if('${{ needs.unified-selector.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL unified_selector'}
           Write-Host "FINAL_VALIDATION=PASS candidate"
