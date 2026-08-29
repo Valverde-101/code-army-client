@@ -8,11 +8,16 @@ package {
     import flash.events.SecurityErrorEvent;
     import flash.events.UncaughtErrorEvent;
     import flash.external.ExtensionContext;
+    import flash.filesystem.File;
+    import flash.filesystem.FileMode;
+    import flash.filesystem.FileStream;
     import flash.system.Capabilities;
     import flash.text.TextField;
     import flash.text.TextFormat;
 
     public final class ArmyAttackDiagnostics {
+        private static const EXTENSION_ID:String = "com.valverde.armyattack.diagnostics";
+
         private var owner:Sprite;
         private var context:ExtensionContext;
         private var events:Array = [];
@@ -21,17 +26,16 @@ package {
         private var currentPath:String = "";
         private var testedSha:String = "unknown";
         private var lastError:String = "";
+        private var statusField:TextField;
+        private var persistedPath:String = "";
 
         public function ArmyAttackDiagnostics(owner:Sprite) {
             this.owner = owner;
-            try {
-                context = ExtensionContext.createExtensionContext("com.valverde.armyattack.diagnostics", "");
-                record("DIAGNOSTICS_EXTENSION", context ? "READY" : "UNAVAILABLE");
-            } catch (err:Error) {
-                context = null;
-                record("DIAGNOSTICS_EXTENSION_ERROR", formatError(err));
-            }
-            record("DIAGNOSTICS_INIT", "capabilities=" + Capabilities.version);
+            record("DIAGNOSTICS_INIT", "capabilities=" + Capabilities.version + ";extension=lazy");
+        }
+
+        public function setStatusField(field:TextField):void {
+            statusField = field;
         }
 
         public function setManifest(manifest:Object):void {
@@ -80,6 +84,7 @@ package {
             events.push({utc:new Date().toUTCString(), kind:kind, detail:detail});
             while (events.length > 250) events.shift();
             trace("ARMY_DIAG " + kind + " " + detail);
+            persistSnapshot();
         }
 
         public function makeShareButton(x:Number, y:Number, w:Number, h:Number):Sprite {
@@ -107,24 +112,66 @@ package {
         }
 
         private function share(e:MouseEvent):void {
+            showStatus("Generando diagnóstico ZIP...");
             record("SHARE_REQUEST", "profile=" + currentProfile);
-            if (!context) {
-                capture("SHARE_ERROR", "extension_unavailable");
+
+            if (!ensureContext()) {
+                showStatus("ERROR ZIP: extensión Android no disponible. latest.json guardado en almacenamiento interno.");
                 return;
             }
+
             try {
+                var ping:Object = context.call("ping");
+                record("DIAGNOSTICS_PING", String(ping));
+                if (String(ping).indexOf("READY:") != 0) {
+                    capture("SHARE_ERROR", "ping_failed=" + String(ping));
+                    showStatus("ERROR ZIP: ANE no está READY: " + String(ping));
+                    return;
+                }
+
                 var result:Object = context.call("shareZip", payload(), "ArmyAttack-" + currentProfile);
-                record("SHARE_RESULT", String(result));
+                var resultText:String = String(result);
+                record("SHARE_RESULT", resultText);
+                if (resultText.indexOf("ERROR:") == 0 || resultText == "null") {
+                    capture("SHARE_ERROR", resultText);
+                    showStatus("ERROR AL COMPARTIR: " + resultText + " • latest.json guardado.");
+                } else {
+                    showStatus("ZIP LISTO • abre WhatsApp/correo/Drive en el selector de Android.");
+                }
             } catch (err:Error) {
                 capture("SHARE_EXCEPTION", formatError(err));
+                showStatus("ERROR AL COMPARTIR: " + err.message + " • latest.json guardado.");
             }
         }
 
-        private function payload():String {
+        private function ensureContext():Boolean {
+            if (context) return true;
+            try {
+                // AIR's documented Android ANE pattern uses a null context type.
+                context = ExtensionContext.createExtensionContext(EXTENSION_ID, null);
+                if (!context) {
+                    capture("DIAGNOSTICS_EXTENSION_ERROR", "createExtensionContext_returned_null");
+                    return false;
+                }
+                record("DIAGNOSTICS_EXTENSION", "READY");
+                return true;
+            } catch (err:Error) {
+                context = null;
+                capture("DIAGNOSTICS_EXTENSION_ERROR", formatError(err));
+                return false;
+            }
+        }
+
+        private function showStatus(value:String):void {
+            if (statusField) statusField.text = value;
+            trace("ARMY_DIAG_STATUS " + value);
+        }
+
+        private function snapshot():Object {
             var screen:String = "no-stage";
             if (owner && owner.stage) screen = owner.stage.stageWidth + "x" + owner.stage.stageHeight;
-            return JSON.stringify({
-                schema_version:1,
+            return {
+                schema_version:2,
                 generated_utc:new Date().toUTCString(),
                 app:"Army Attack Android",
                 game_version:"23.2",
@@ -135,8 +182,30 @@ package {
                 capabilities_version:Capabilities.version,
                 screen:screen,
                 last_error:lastError,
+                persisted_path:persistedPath,
                 events:events
-            }, null, 2);
+            };
+        }
+
+        private function payload():String {
+            return JSON.stringify(snapshot(), null, 2);
+        }
+
+        private function persistSnapshot():void {
+            var stream:FileStream;
+            try {
+                var dir:File = File.applicationStorageDirectory.resolvePath("diagnostics");
+                if (!dir.exists) dir.createDirectory();
+                var file:File = dir.resolvePath("latest.json");
+                persistedPath = file.nativePath;
+                stream = new FileStream();
+                stream.open(file, FileMode.WRITE);
+                stream.writeUTFBytes(JSON.stringify(snapshot(), null, 2));
+                stream.close();
+            } catch (err:Error) {
+                try { if (stream) stream.close(); } catch (ignored:Error) {}
+                trace("ARMY_DIAG_PERSIST_ERROR " + err.toString());
+            }
         }
 
         private function formatAnyError(value:Object):String {

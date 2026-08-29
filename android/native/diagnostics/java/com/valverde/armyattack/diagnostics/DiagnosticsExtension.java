@@ -39,12 +39,30 @@ public final class DiagnosticsExtension implements FREExtension {
         @Override
         public Map<String, FREFunction> getFunctions() {
             Map<String, FREFunction> functions = new HashMap<String, FREFunction>();
+            functions.put("ping", new PingFunction());
             functions.put("shareZip", new ShareZipFunction());
             return functions;
         }
 
         @Override
         public void dispose() {}
+    }
+
+    private static final class PingFunction implements FREFunction {
+        @Override
+        public FREObject call(final FREContext context, FREObject[] args) {
+            try {
+                final Activity activity = context.getActivity();
+                if (activity == null) return FREObject.newObject("ERROR:no_activity");
+                return FREObject.newObject("READY:" + activity.getPackageName() + ":" + activity.getClass().getName());
+            } catch (Throwable t) {
+                try {
+                    return FREObject.newObject("ERROR:" + t.getClass().getSimpleName() + ":" + String.valueOf(t.getMessage()));
+                } catch (Throwable ignored) {
+                    return null;
+                }
+            }
+        }
     }
 
     private static final class ShareZipFunction implements FREFunction {
@@ -76,15 +94,20 @@ public final class DiagnosticsExtension implements FREExtension {
                 send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 send.setClipData(ClipData.newRawUri("Army Attack diagnostics", uri));
 
-                activity.runOnUiThread(new Runnable() {
+                final Runnable openChooser = new Runnable() {
                     @Override
                     public void run() {
                         Intent chooser = Intent.createChooser(send, "Compartir diagnóstico Army Attack");
                         activity.startActivity(chooser);
                     }
-                });
+                };
+                if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                    openChooser.run();
+                } else {
+                    activity.runOnUiThread(openChooser);
+                }
 
-                return FREObject.newObject(uri.toString());
+                return FREObject.newObject("QUEUED:" + uri.toString());
             } catch (Throwable t) {
                 try {
                     return FREObject.newObject("ERROR:" + t.getClass().getSimpleName() + ":" + String.valueOf(t.getMessage()));

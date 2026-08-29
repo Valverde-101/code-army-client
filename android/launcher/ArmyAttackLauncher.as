@@ -108,6 +108,7 @@ package {
             menu.addChild(profileText);
             statusText = makeText("", 15, false, 0x9EABB7, 675, 554, 540, 45);
             menu.addChild(statusText);
+            diagnostics.setStatusField(statusText);
 
             playButton = makeButton("JUGAR", 675, 610, 245, 58, 0xB88A17, 0xF8FAFC, onPlay);
             menu.addChild(playButton);
@@ -247,7 +248,12 @@ package {
             }
 
             if (statusText) statusText.text = "Abriendo " + String(p.name) + " • " + gameFile.url;
-            var context:LoaderContext = new LoaderContext(false, ApplicationDomain.currentDomain, null);
+            // Each runtime gets an isolated child domain. Loading every mod into the
+            // launcher domain leaks definitions after unload and can make later profiles
+            // reuse classes/linkages from the previously selected SWF.
+            var gameDomain:ApplicationDomain = new ApplicationDomain(ApplicationDomain.currentDomain);
+            var context:LoaderContext = new LoaderContext(false, gameDomain, null);
+            diagnostics.record("SWF_DOMAIN", "isolated_child=true;profile=" + resolveProfileId());
             loader.load(new URLRequest(gameFile.url), context);
         }
 

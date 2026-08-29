@@ -230,6 +230,9 @@ function Resolve-PatchedSecondarySwf([string]$Swf,[string]$Id){
 
   $body=$src.Substring($open+1,$close-$open-1)
   $body=[regex]::Replace($body,'(?m)^\s*super\(\);\s*','',1)
+  $body=$body.Replace('this.resetGame();','__androidBootstrapPhase = "resetGame"; this.resetGame(); __androidBootstrapPhase = "postResetGame";')
+  $body=$body.Replace('addEventListener(Event.ENTER_FRAME','__androidBootstrapPhase = "listeners"; addEventListener(Event.ENTER_FRAME')
+  $body=$body.Replace('this.setDiscordStatus({});','__androidBootstrapPhase = "discord"; this.setDiscordStatus({}); __androidBootstrapPhase = "ready";')
   $replacement=@"
 public function GameMain() {
             super();
@@ -246,15 +249,103 @@ public function GameMain() {
         }
 
         private function __androidSecondaryStageReady():void {
+            var __androidBootstrapPhase:String = "state_setup";
+            try {
 $body
+            } catch (__androidBootstrapError:Error) {
+                var __androidBootstrapStack:String = __androidBootstrapError.getStackTrace();
+                throw new Error("ARMY_BOOTSTRAP_" + __androidBootstrapPhase + ": " + __androidBootstrapError.toString() + (__androidBootstrapStack ? "\n" + __androidBootstrapStack : ""));
+            }
         }
 "@
   $patchedSource=$src.Substring(0,$start)+$replacement+$src.Substring($close+1)
   $patchedAs=Join-Path $work 'GameMain.as'
   [IO.File]::WriteAllText($patchedAs,$patchedSource,(New-Object Text.UTF8Encoding($false)))
-  $patchedSwf=Join-Path $work 'patched.swf'
-  Invoke-FFDecUnified @('-cli','-onerror','abort','-replace',$Swf,$patchedSwf,'GameMain',$patchedAs) (Join-Path $work 'replace.log')
-  if(-not (Test-Path -LiteralPath $patchedSwf)){throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id patched_missing"}
+  $patchedSwf=Join-Path $work 'patched-gamemain.swf'
+  Invoke-FFDecUnified @('-cli','-onerror','abort','-replace',$Swf,$patchedSwf,'GameMain',$patchedAs) (Join-Path $work 'replace-gamemain.log')
+  if(-not (Test-Path -LiteralPath $patchedSwf)){throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id patched_gamemain_missing"}
+
+  # Patch LoadingState so malformed/missing Animate loading-screen children can
+  # never cause Error #1009 during the first state transition.
+  $loadingExport=Join-Path $work 'loading-export'
+  New-Item -ItemType Directory -Force -Path $loadingExport|Out-Null
+  Invoke-FFDecUnified @('-cli','-onerror','abort','-selectclass','game.states.LoadingState','-export','script',$loadingExport,$patchedSwf) (Join-Path $work 'export-loadingstate.log')
+  $loadingFiles=@(Get-ChildItem -LiteralPath $loadingExport -Recurse -File -Filter 'LoadingState.as' -ErrorAction Stop)
+  if($loadingFiles.Count -ne 1){throw "UNIFIED_LOADING_GUARD=FAIL id=$Id export_count=$($loadingFiles.Count)"}
+  $loadingSrc=[IO.File]::ReadAllText($loadingFiles[0].FullName)
+  $loadingAnchor='this.mLoadingClip = param3;'
+  if(-not $loadingSrc.Contains($loadingAnchor)){throw "UNIFIED_LOADING_GUARD=FAIL id=$Id anchor_missing"}
+  $loadingGuard=@'
+this.mLoadingClip = param3;
+          var __androidFillBar:MovieClip = this.mLoadingClip ? this.mLoadingClip.getChildByName("Fill_Bar") as MovieClip : null;
+          if (__androidFillBar == null) {
+             var __androidFallback:MovieClip = new MovieClip();
+             var __androidTitle:TextField = new TextField();
+             __androidTitle.name = "Text_Title";
+             __androidTitle.text = "Army Attack";
+             __androidTitle.width = 500;
+             __androidTitle.height = 40;
+             __androidTitle.x = 262;
+             __androidTitle.y = 300;
+             __androidFallback.addChild(__androidTitle);
+             __androidFillBar = new MovieClip();
+             __androidFillBar.name = "Fill_Bar";
+             __androidFillBar.x = 312;
+             __androidFillBar.y = 365;
+             __androidFillBar.graphics.beginFill(0x3A4650);
+             __androidFillBar.graphics.drawRoundRect(0,0,400,70,12,12);
+             __androidFillBar.graphics.endFill();
+             __androidFallback.addChild(__androidFillBar);
+             this.mLoadingClip = __androidFallback;
+          }
+          if (!(__androidFillBar.getChildByName("Progress") is TextField)) {
+             var __androidProgress:TextField = new TextField();
+             __androidProgress.name = "Progress";
+             __androidProgress.text = "0%";
+             __androidProgress.width = 100;
+             __androidProgress.height = 28;
+             __androidProgress.x = 150;
+             __androidProgress.y = 8;
+             __androidFillBar.addChild(__androidProgress);
+          }
+          if (!(__androidFillBar.getChildByName("Text_Description") is TextField)) {
+             var __androidDescription:TextField = new TextField();
+             __androidDescription.name = "Text_Description";
+             __androidDescription.text = "Loading...";
+             __androidDescription.width = 360;
+             __androidDescription.height = 28;
+             __androidDescription.x = 20;
+             __androidDescription.y = 38;
+             __androidFillBar.addChild(__androidDescription);
+          }
+'@
+  $loadingSrc=$loadingSrc.Replace($loadingAnchor,$loadingGuard)
+  $loadingAs=Join-Path $work 'LoadingState.as'
+  [IO.File]::WriteAllText($loadingAs,$loadingSrc,(New-Object Text.UTF8Encoding($false)))
+  $loadingPatchedSwf=Join-Path $work 'patched-loadingstate.swf'
+  Invoke-FFDecUnified @('-cli','-onerror','abort','-replace',$patchedSwf,$loadingPatchedSwf,'game.states.LoadingState',$loadingAs) (Join-Path $work 'replace-loadingstate.log')
+  if(-not (Test-Path -LiteralPath $loadingPatchedSwf)){throw "UNIFIED_LOADING_GUARD=FAIL id=$Id output_missing"}
+  Write-Host "UNIFIED_LOADING_GUARD=PASS id=$Id fill_bar=true progress=true description=true"
+
+  # Stage-size reads happen during Config.init(). Make them safe during the
+  # first mobile frame even if AIR has not attached mMainClip.stage yet.
+  $stateExport=Join-Path $work 'gamestate-export'
+  New-Item -ItemType Directory -Force -Path $stateExport|Out-Null
+  Invoke-FFDecUnified @('-cli','-onerror','abort','-selectclass','game.states.GameState','-export','script',$stateExport,$loadingPatchedSwf) (Join-Path $work 'export-gamestate.log')
+  $stateFiles=@(Get-ChildItem -LiteralPath $stateExport -Recurse -File -Filter 'GameState.as' -ErrorAction Stop)
+  if($stateFiles.Count -ne 1){throw "UNIFIED_STAGE_SIZE_GUARD=FAIL id=$Id export_count=$($stateFiles.Count)"}
+  $stateSrc=[IO.File]::ReadAllText($stateFiles[0].FullName)
+  $stateSrc=[regex]::Replace($stateSrc,'public function getStageWidth\(\)\s*:\s*int\s*\{\s*return\s+mMainClip\.stage\.stageWidth;\s*\}','public function getStageWidth(): int { if (mMainClip != null && mMainClip.stage != null) return mMainClip.stage.stageWidth; return Config.SCREEN_WIDTH > 0 ? Config.SCREEN_WIDTH : 1280; }')
+  $stateSrc=[regex]::Replace($stateSrc,'public function getStageHeight\(\)\s*:\s*int\s*\{\s*return\s+mMainClip\.stage\.stageHeight;\s*\}','public function getStageHeight(): int { if (mMainClip != null && mMainClip.stage != null) return mMainClip.stage.stageHeight; return Config.SCREEN_HEIGHT > 0 ? Config.SCREEN_HEIGHT : 720; }')
+  if(-not $stateSrc.Contains('mMainClip != null && mMainClip.stage != null')){throw "UNIFIED_STAGE_SIZE_GUARD=FAIL id=$Id replacement_missing"}
+  $stateAs=Join-Path $work 'GameState.as'
+  [IO.File]::WriteAllText($stateAs,$stateSrc,(New-Object Text.UTF8Encoding($false)))
+  $runtimePatchedSwf=Join-Path $work 'patched.swf'
+  Invoke-FFDecUnified @('-cli','-onerror','abort','-replace',$loadingPatchedSwf,$runtimePatchedSwf,'game.states.GameState',$stateAs) (Join-Path $work 'replace-gamestate.log')
+  if(-not (Test-Path -LiteralPath $runtimePatchedSwf)){throw "UNIFIED_STAGE_SIZE_GUARD=FAIL id=$Id output_missing"}
+  Write-Host "UNIFIED_STAGE_SIZE_GUARD=PASS id=$Id fallback=1280x720"
+
+  $patchedSwf=$runtimePatchedSwf
 
   $verify=Join-Path $work 'verify'
   New-Item -ItemType Directory -Force -Path $verify|Out-Null
@@ -262,7 +353,7 @@ $body
   $vgm=@(Get-ChildItem -LiteralPath $verify -Recurse -File -Filter 'GameMain.as' -ErrorAction Stop)
   if($vgm.Count -ne 1){throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id verify_count=$($vgm.Count)"}
   $verifyText=[IO.File]::ReadAllText($vgm[0].FullName)
-  if(-not $verifyText.Contains($marker) -or -not $verifyText.Contains('Event.ADDED_TO_STAGE')){
+  if(-not $verifyText.Contains($marker) -or -not $verifyText.Contains('Event.ADDED_TO_STAGE') -or -not $verifyText.Contains('ARMY_BOOTSTRAP_')){
     throw "UNIFIED_SECONDARY_PATCH=FAIL id=$Id guard_verify"
   }
 
@@ -285,7 +376,7 @@ function Add-Profile([string]$Id,[string]$Swf,[string]$Data,[string]$Config){
   Copy-Tree $Config (Join-Path $root 'config')
   Sanitize-Profile $root
   $swfHash=(Get-FileHash -LiteralPath $destSwf -Algorithm SHA256).Hash.ToLowerInvariant()
-  $profileHashes[$Id]=[ordered]@{path=("profiles/"+$Id+"/assets/game.swf");source_sha256=$sourceHash;sha256=$swfHash;size=(Get-Item $destSwf).Length;android_secondary_stage_guard=$true}
+  $profileHashes[$Id]=[ordered]@{path=("profiles/"+$Id+"/assets/game.swf");source_sha256=$sourceHash;sha256=$swfHash;size=(Get-Item $destSwf).Length;android_secondary_stage_guard=$true;android_loading_guard=$true;android_stage_size_guard=$true}
   Write-Host "UNIFIED_PROFILE_STAGE=PASS id=$Id source_sha256=$sourceHash swf_sha256=$swfHash stage_guard=true size=$((Get-Item $destSwf).Length)"
 }
 
@@ -494,6 +585,9 @@ $prov=[ordered]@{
   selector_swf='ArmyAttackLauncher.swf'
   selector_swf_sha256=$launcherSha
   secondary_swf_stage_guard=$true
+  secondary_swf_loading_guard=$true
+  secondary_swf_stage_size_guard=$true
+  isolated_profile_application_domain=$true
   diagnostics_share_zip=$true
   diagnostics_extension_id='com.valverde.armyattack.diagnostics'
   diagnostics_ane_sha256=$diagnosticsAneSha
@@ -520,7 +614,7 @@ $badging|Set-Content -LiteralPath (Join-Path $outRoot 'apk-badging.txt') -Encodi
 & (Join-Path $RepoRoot 'Tools\CI\Publish-ApkFinal.ps1') -SourceApk $apkPath -AndroidBuildRoot $PhysicalAndroidBuildRoot -ExpectedSha $ExpectedSha -RelativePath 'ArmyAttack-23.2-MODS.apk' -Kind 'unified-mod-selector'
 
 Write-Host "UNIFIED_BUILD=PASS"
-Write-Host "UNIFIED_SELECTOR=PASS profile_count=$($manifest.profile_count) secondary_swf_stage_guard=true"
+Write-Host "UNIFIED_SELECTOR=PASS profile_count=$($manifest.profile_count) secondary_swf_stage_guard=true loading_guard=true stage_size_guard=true isolated_domain=true"
 Write-Host "UNIFIED_DIAGNOSTICS=PASS share_zip=true sharesheet=true provider=air.army.attack.armyattackdiagnostics ane_sha256=$diagnosticsAneSha"
 Write-Host "UNIFIED_MULTI_MOD=PASS profiles=$($manifest.multi_mod_profiles -join ',')"
 Write-Host "UNIFIED_APK_VALIDATE=PASS package=air.army.attack target_sdk=33 abi=arm64-v8a"
