@@ -201,10 +201,23 @@ if($fallbackSwfSha -ne $fallbackExpectedSwfSha){throw "BINARY_SEED_FALLBACK=FAIL
 Write-Host "BINARY_SEED_FALLBACK=PASS release=v23 sha256=$fallbackSwfSha"
 
 $appContentSwf='iArmyAirOfflineSavingv23.swf'
-$swfSha=$publishedSwfSha
-$swfSize=$publishedSwfInfo.Length
-Copy-Item -LiteralPath $publishedSwf -Destination (Join-Path $stage $appContentSwf) -Force
-Write-Host "BINARY_SEED=PASS source=published_v23_2 repository=Valverde-101/Test_army_attack source_sha=$publishedActualSha swf_sha256=$swfSha size=$swfSize"
+$sourceSwfSha=$publishedSwfSha
+$sourceSwfSize=$publishedSwfInfo.Length
+$performanceRoot=Join-Path $buildRoot 'performance'
+$performanceSwf=Join-Path $performanceRoot $appContentSwf
+$performanceReport=Join-Path $buildRoot 'PERFORMANCE-PATCH.json'
+$performanceScript=Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1'
+if(-not (Test-Path -LiteralPath $performanceScript)){throw "PERF_PATCH=FAIL script_missing=$performanceScript"}
+New-Item -ItemType Directory -Force -Path $performanceRoot|Out-Null
+& $performanceScript -RepoRoot $RepoRoot -SourceSwf $publishedSwf -OutputSwf $performanceSwf -ReportPath $performanceReport
+if(-not (Test-Path -LiteralPath $performanceSwf)){throw "PERF_PATCH=FAIL output_missing=$performanceSwf"}
+if(-not (Test-Path -LiteralPath $performanceReport)){throw "PERF_PATCH=FAIL report_missing=$performanceReport"}
+$swfSha=(Get-FileHash -LiteralPath $performanceSwf -Algorithm SHA256).Hash.ToLowerInvariant()
+$swfSize=(Get-Item -LiteralPath $performanceSwf).Length
+if($swfSha -eq $sourceSwfSha){throw "PERF_PATCH=FAIL patched_hash_matches_source sha256=$swfSha"}
+Copy-Item -LiteralPath $performanceSwf -Destination (Join-Path $stage $appContentSwf) -Force
+Write-Host "BINARY_SEED=PASS source=published_v23_2 repository=Valverde-101/Test_army_attack source_sha=$publishedActualSha source_swf_sha256=$sourceSwfSha patched_swf_sha256=$swfSha size=$swfSize"
+Write-Host "ANDROID_PERFORMANCE_PATCH=PASS version=android-perf-v1 report=$performanceReport"
 
 foreach($name in @('data','config')){
   $base=Join-Path $sourceRoot $name
@@ -323,8 +336,14 @@ $prov=[ordered]@{
   binary_seed_source_sha=$publishedActualSha
   binary_seed_source_path='armyattack/assets/iArmyAirOfflineSavingv23.swf'
   app_content_swf=$appContentSwf
+  swf_source_size=$sourceSwfSize
+  swf_source_sha256=$sourceSwfSha
   swf_size=$swfSize
   swf_sha256=$swfSha
+  swf_performance_patched=$true
+  performance_patch_version='android-perf-v1'
+  performance_patch_report=$performanceReport
+  performance_patch_classes=@('game.isometric.IsometricScene','game.characters.EnemyUnit','game.particles.SmokeEmitter')
   fallback_binary_seed_release='v23'
   fallback_binary_seed_source_sha='324c29b6c9e0e32f61183bf52725662a2bd8aab9'
   fallback_swf_sha256=$fallbackSwfSha
@@ -362,14 +381,17 @@ $toolchain=[ordered]@{
 }
 $toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
 $toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
-Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=false"
+Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=false performance_patch=android-perf-v1"
 Write-Host "BUILD=PASS platform=android tier=$tier"
 Write-Host "APK_GENERATED=PASS"
 Write-Host "APK_PATH=$apkPath"
 Write-Host "APK_SIZE=$($apk.Length)"
 Write-Host "APK_SHA256=$apkSha"
+Write-Host "SWF_SOURCE_SHA256=$sourceSwfSha"
 Write-Host "SWF_SHA256=$swfSha"
 Write-Host "SWF_SIZE=$swfSize"
+Write-Host "PERFORMANCE_PATCH_VERSION=android-perf-v1"
+Write-Host "PERFORMANCE_PATCH_REPORT=$performanceReport"
 Write-Host "PUBLISHED_SOURCE_SHA=$publishedActualSha"
 Write-Host "GAME_VERSION=$publishedVersion"
 Write-Host "AIR_VERSION=$($air.Version)"

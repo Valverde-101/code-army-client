@@ -15,12 +15,15 @@ $apkSha=(Get-FileHash -LiteralPath $ApkPath -Algorithm SHA256).Hash.ToLowerInvar
 $referencePath=Join-Path $AndroidBuildRoot "Builds\code-army-client\$ExpectedSha\android-upstream-v21.1\reference.json"
 $provenancePath=Join-Path $reportRoot 'BUILD-PROVENANCE.json'
 $publishedReportPath=Join-Path $reportRoot 'published\PUBLISHED-CONTENT.json'
+$performanceReportPath=Join-Path $reportRoot 'PERFORMANCE-PATCH.json'
 if(-not (Test-Path -LiteralPath $referencePath)){throw "APK_VALIDATE=FAIL reference_missing=$referencePath"}
 if(-not (Test-Path -LiteralPath $provenancePath)){throw "APK_VALIDATE=FAIL provenance_missing=$provenancePath"}
 if(-not (Test-Path -LiteralPath $publishedReportPath)){throw "APK_VALIDATE=FAIL published_report_missing=$publishedReportPath"}
+if(-not (Test-Path -LiteralPath $performanceReportPath)){throw "APK_VALIDATE=FAIL performance_report_missing=$performanceReportPath"}
 $reference=Get-Content -LiteralPath $referencePath -Raw|ConvertFrom-Json
 $prov=Get-Content -LiteralPath $provenancePath -Raw|ConvertFrom-Json
 $published=Get-Content -LiteralPath $publishedReportPath -Raw|ConvertFrom-Json
+$performance=Get-Content -LiteralPath $performanceReportPath -Raw|ConvertFrom-Json
 
 $expectedSwfSha=([string]$prov.swf_sha256).ToLowerInvariant()
 $expectedSwfSize=[int64]$prov.swf_size
@@ -109,6 +112,24 @@ if(([string]$prov.binary_seed_source_sha) -ne '306bccc7db5b1ce34dd68a3bc80093648
 if(([string]$prov.game_version) -ne '23.2'){$failures.Add("game_version=$($prov.game_version)")}
 if(([string]$published.published_source_sha) -ne '306bccc7db5b1ce34dd68a3bc80093648c9224bd'){$failures.Add("published_report_sha=$($published.published_source_sha)")}
 if(([string]$published.published_version) -ne '23.2'){$failures.Add("published_report_version=$($published.published_version)")}
+if([string]$prov.performance_patch_version -ne 'android-perf-v1'){$failures.Add("performance_patch_version=$($prov.performance_patch_version)")}
+if(-not [bool]$prov.swf_performance_patched){$failures.Add('performance_patch_disabled')}
+if([string]$performance.patch_version -ne 'android-perf-v1'){$failures.Add("performance_report_version=$($performance.patch_version)")}
+$canonicalSourceSha='99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4'
+$provenanceSourceSha=([string]$prov.swf_source_sha256).ToLowerInvariant()
+$performanceSourceSha=([string]$performance.source_sha256).ToLowerInvariant()
+$performanceOutputSha=([string]$performance.output_sha256).ToLowerInvariant()
+if($provenanceSourceSha -ne $canonicalSourceSha){$failures.Add("performance_source_sha expected=$canonicalSourceSha actual=$provenanceSourceSha")}
+if($performanceSourceSha -ne $canonicalSourceSha){$failures.Add("performance_report_source_sha expected=$canonicalSourceSha actual=$performanceSourceSha")}
+if($performanceOutputSha -ne $expectedSwfSha){$failures.Add("performance_output_sha expected=$expectedSwfSha actual=$performanceOutputSha")}
+if($expectedSwfSha -eq $canonicalSourceSha){$failures.Add('performance_patch_hash_unchanged')}
+$perfClasses=@($performance.classes)
+foreach($requiredClass in @('game.isometric.IsometricScene','game.characters.EnemyUnit','game.particles.SmokeEmitter')){
+  if($perfClasses -notcontains $requiredClass){$failures.Add("performance_class_missing=$requiredClass")}
+}
+if([int]$performance.policy.static_logic_tick_ms -ne 50){$failures.Add("performance_static_tick=$($performance.policy.static_logic_tick_ms)")}
+if([int]$performance.policy.enemy_reaction_tick_ms -ne 50){$failures.Add("performance_enemy_tick=$($performance.policy.enemy_reaction_tick_ms)")}
+if([int]$performance.policy.smoke_max_concurrent_particles -ne 18){$failures.Add("performance_smoke_max=$($performance.policy.smoke_max_concurrent_particles)")}
 if($buildTier -eq 'LEGACY_AIR32_TEST'){$failures.Add('toolchain=LEGACY_AIR32_TEST')}
 
 $signature='SKIPPED'
@@ -137,6 +158,11 @@ $report=[ordered]@{
   profiles_entries=$profileEntries.Count
   selector_or_diagnostics_entries=$selectorEntries.Count
   root_swf_count=$rootSwfEntries.Count
+  performance_patch_version=[string]$prov.performance_patch_version
+  performance_source_swf_sha256=[string]$prov.swf_source_sha256
+  performance_output_swf_sha256=[string]$performance.output_sha256
+  performance_classes=@($performance.classes)
+  performance_policy=$performance.policy
   signature=$signature;zipalign=$alignment
   build_tier=$buildTier;published_source_sha=[string]$prov.binary_seed_source_sha;game_version=[string]$prov.game_version
   failures=@($failures)
@@ -159,6 +185,9 @@ $reportMd=Join-Path $reportRoot 'REPORT.md'
   "- targetSdk: $targetSdk",
   "- SWF: $seedEntryPath",
   "- SWF_SHA256: $seedHash",
+  "- performance patch: $($prov.performance_patch_version)",
+  "- performance source SWF SHA256: $($prov.swf_source_sha256)",
+  "- performance classes: $(@($performance.classes) -join ', ')",
   "- build tier: $buildTier",
   "- signature: $signature",
   "- zipalign: $alignment",
@@ -182,6 +211,7 @@ Write-Host "ZIPALIGN=$alignment"
 Write-Host "BUILD_TIER=$buildTier"
 Write-Host "GAME_VERSION=$($prov.game_version)"
 Write-Host "BASE_ONLY_VALIDATE_STATE profiles=$($profileEntries.Count) selector_or_diagnostics=$($selectorEntries.Count) root_swf_count=$($rootSwfEntries.Count)"
+Write-Host "PERFORMANCE_PATCH_VALIDATE_STATE version=$($prov.performance_patch_version) source_sha256=$($prov.swf_source_sha256) output_sha256=$seedHash classes=$(@($performance.classes).Count)"
 Write-Host "PUBLISHED_SOURCE_SHA=$($prov.binary_seed_source_sha)"
 Write-Host "APK_INFO=$reportPath"
 Write-Host "REPORT=$reportMd"
@@ -200,7 +230,8 @@ if($promotedSha -ne $apkSha){throw "APK_PROMOTION=FAIL expected=$apkSha actual=$
 $meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sha=[string]$prov.binary_seed_source_sha;apk_path=$promoted;apk_size=(Get-Item $promoted).Length;apk_sha256=$promotedSha;package_name=$package;build_tier=$buildTier}
 "$promoted.json"|ForEach-Object{$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $_ -Encoding UTF8}
 if($env:GITHUB_ENV){"PROMOTED_CANDIDATE_PATH=$promoted"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
-Write-Host "BASE_ONLY_VALIDATE=PASS modern_v23_2=true profiles=0 selector=false diagnostics_ane=false root_swf=$seedEntryPath"
+Write-Host "PERFORMANCE_PATCH_VALIDATE=PASS version=android-perf-v1 static_tick_ms=50 enemy_tick_ms=50 smoke_max=18"
+Write-Host "BASE_ONLY_VALIDATE=PASS modern_v23_2=true profiles=0 selector=false diagnostics_ane=false root_swf=$seedEntryPath performance_patch=android-perf-v1"
 Write-Host "APK_VALIDATE=PASS"
 Write-Host "APK_PROMOTION=PASS path=$promoted sha256=$promotedSha"
 & (Join-Path $PSScriptRoot 'Publish-ApkFinal.ps1') -SourceApk $promoted -AndroidBuildRoot $AndroidBuildRoot -ExpectedSha $ExpectedSha -RelativePath 'ArmyAttack-23.2.apk' -Kind 'base-23.2'
