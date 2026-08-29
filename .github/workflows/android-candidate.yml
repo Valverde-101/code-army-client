@@ -13,6 +13,7 @@ on:
       - '.github/workflows/cancel-stale-android.yml'
       - 'Tools/CI/Enable-AutoRepoPool4.ps1'
       - 'Tools/CI/Start-AutoRepoPool4.runtime.ps1'
+      - 'Logs/**'
   workflow_dispatch:
 
 permissions:
@@ -411,4 +412,7 @@ jobs:
           }
           if('${{ needs.android-candidate.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_candidate'}
           if('${{ needs.unified-selector.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL unified_selector'}
+          if('${{ steps.publish_logs.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL evidence_upload'}
+          Write-Host "SANITIZATION=PASS via_publish_logs"
+          Write-Host "EVIDENCE_UPLOAD=PASS via_publish_logs"
           Write-Host "FINAL_VALIDATION=PASS candidate"

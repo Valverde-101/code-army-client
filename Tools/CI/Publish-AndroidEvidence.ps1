@@ -3,8 +3,7 @@ param(
   [Parameter(Mandatory=$true)][string]$AndroidBuildRoot,
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
   [Parameter(Mandatory=$true)][string]$RunId,
-  [Parameter(Mandatory=$true)][string]$SourceBranch,
-  [string]$EvidenceBranch='ci-logs'
+  [Parameter(Mandatory=$true)][string]$SourceBranch
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -16,7 +15,16 @@ $referenceRoot=Join-Path $buildRoot 'android-upstream-v21.1'
 if(-not (Test-Path -LiteralPath $RepoCheckoutRoot)){throw "LOG_PUBLISH=FAIL checkout_missing=$RepoCheckoutRoot"}
 if(-not (Test-Path -LiteralPath $buildRoot)){throw "LOG_PUBLISH=FAIL build_root_missing=$buildRoot"}
 
-$git=(Get-Command git.exe -ErrorAction Stop).Source
+$gitCandidates=@()
+$gitCommand=Get-Command git.exe -ErrorAction SilentlyContinue
+if($gitCommand){$gitCandidates+=$gitCommand.Source}
+$gitCandidates+=@(
+  (Join-Path $AndroidBuildRoot 'Tools\Git\cmd\git.exe'),
+  (Join-Path $AndroidBuildRoot 'PortableGit\cmd\git.exe')
+)
+$git=$gitCandidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+if(-not $git){throw 'LOG_PUBLISH=FAIL git_not_found'}
+Write-Host "EVIDENCE_GIT=PASS path=$git"
 $checkoutHead=(& $git -C $RepoCheckoutRoot rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $checkoutHead -ne $ExpectedSha){
   throw "LOG_PUBLISH=FAIL checkout_sha expected=$ExpectedSha actual=$checkoutHead"
@@ -112,7 +120,7 @@ $manifest=[ordered]@{
   local_build_root=$buildRoot
   apk_uploaded=$false
   github_artifacts_used=$false
-  evidence_branch=$EvidenceBranch
+  evidence_branch=$SourceBranch
   published_files=@($published.ToArray())
   skipped_files=@($skipped.ToArray())
 }
@@ -132,64 +140,60 @@ foreach($file in @(Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Obje
   if($text -match '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'){throw "LOG_PUBLISH=FAIL private_key_marker=$($file.FullName)"}
   if($text -match '\bgh[pousr]_[A-Za-z0-9_]{20,}\b'){throw "LOG_PUBLISH=FAIL github_token_marker=$($file.FullName)"}
 }
+Write-Host "SANITIZATION=PASS files=$($published.Count)"
 
 try{
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $worktree) | Out-Null
-
-  $previousEap=$ErrorActionPreference
-  try{
-    $ErrorActionPreference='Continue'
-    & $git -C $RepoCheckoutRoot fetch origin $EvidenceBranch *> $null
-    $fetchExit=$LASTEXITCODE
-  } finally {
-    $ErrorActionPreference=$previousEap
+  # Evidence MUST belong to the exact source HEAD tested.
+  & $git -C $RepoCheckoutRoot fetch origin $SourceBranch
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL fetch_source_branch exit=$LASTEXITCODE"}
+  $remoteSourceSha=(& $git -C $RepoCheckoutRoot rev-parse "origin/$SourceBranch").Trim()
+  if($remoteSourceSha -ne $ExpectedSha){
+    throw "STALE_TEST_RESULT expected=$ExpectedSha remote_head=$remoteSourceSha branch=$SourceBranch"
   }
-  $hasRemote=($fetchExit -eq 0)
-  if($hasRemote){
-    & $git -C $RepoCheckoutRoot worktree add -B $EvidenceBranch $worktree "origin/$EvidenceBranch"
-  } else {
-    & $git -C $RepoCheckoutRoot worktree add -B $EvidenceBranch $worktree $ExpectedSha
-  }
-  if($LASTEXITCODE -ne 0){throw "LOG_PUBLISH=FAIL worktree_add exit=$LASTEXITCODE"}
+  Write-Host "EVIDENCE_REMOTE_HEAD=PASS sha=$remoteSourceSha branch=$SourceBranch"
 
-  $dest=Join-Path $worktree "logs\android\$ExpectedSha\$RunId"
+  & $git -C $RepoCheckoutRoot checkout -B $SourceBranch $ExpectedSha
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL checkout_source_branch exit=$LASTEXITCODE"}
+
+  $timestamp=(Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+  $relativeDest="Logs/physical-adb/validations/$ExpectedSha/$timestamp"
+  $dest=Join-Path $RepoCheckoutRoot ($relativeDest.Replace('/','\'))
   New-Item -ItemType Directory -Force -Path $dest | Out-Null
   foreach($child in @(Get-ChildItem -LiteralPath $stage -Force)){
     Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force -ErrorAction Stop
   }
 
-  & $git -C $worktree config user.name 'Army Attack CI'
-  & $git -C $worktree config user.email 'actions@users.noreply.github.com'
-  & $git -C $worktree add -- "logs/android/$ExpectedSha/$RunId"
-  if($LASTEXITCODE -ne 0){throw "LOG_PUBLISH=FAIL git_add exit=$LASTEXITCODE"}
+  & $git -C $RepoCheckoutRoot config user.name 'Army Attack CI'
+  & $git -C $RepoCheckoutRoot config user.email 'actions@users.noreply.github.com'
+  & $git -C $RepoCheckoutRoot add -- $relativeDest
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL git_add exit=$LASTEXITCODE"}
 
-  & $git -C $worktree diff --cached --quiet
+  & $git -C $RepoCheckoutRoot diff --cached --quiet
   if($LASTEXITCODE -eq 0){
-    Write-Host "LOG_PUBLISH=PASS no_changes branch=$EvidenceBranch path=logs/android/$ExpectedSha/$RunId"
+    Write-Host "EVIDENCE_UPLOAD=PASS no_changes path=$relativeDest"
+    Write-Host "LOG_PUBLISH=PASS no_changes branch=$SourceBranch path=$relativeDest"
     exit 0
   }
 
-  & $git -C $worktree commit -m "logs(android): $($ExpectedSha.Substring(0,12)) run $RunId [skip ci]"
-  if($LASTEXITCODE -ne 0){throw "LOG_PUBLISH=FAIL git_commit exit=$LASTEXITCODE"}
-  $evidenceCommit=(& $git -C $worktree rev-parse HEAD).Trim()
+  & $git -C $RepoCheckoutRoot commit -m "logs(android): $($ExpectedSha.Substring(0,12)) run $RunId"
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL git_commit exit=$LASTEXITCODE"}
+  $evidenceCommit=(& $git -C $RepoCheckoutRoot rev-parse HEAD).Trim()
 
-  $pushOk=$false
-  for($attempt=1;$attempt -le 3;$attempt++){
-    & $git -C $worktree push origin "HEAD:refs/heads/$EvidenceBranch"
-    if($LASTEXITCODE -eq 0){$pushOk=$true;break}
-    Start-Sleep -Seconds (2*$attempt)
-    & $git -C $worktree fetch origin $EvidenceBranch
-    if($LASTEXITCODE -eq 0){
-      & $git -C $worktree rebase "origin/$EvidenceBranch"
-      if($LASTEXITCODE -ne 0){& $git -C $worktree rebase --abort | Out-Null}
-    }
+  # Never rebase or force-push evidence. If branch moved, fail stale.
+  $remoteBeforePush=(& $git -C $RepoCheckoutRoot ls-remote origin "refs/heads/$SourceBranch" | Out-String).Trim()
+  $remoteBeforePushSha=''
+  if($remoteBeforePush){$remoteBeforePushSha=($remoteBeforePush -split '\s+')[0]}
+  if($remoteBeforePushSha -ne $ExpectedSha){
+    throw "STALE_TEST_RESULT expected=$ExpectedSha remote_head=$remoteBeforePushSha before_evidence_push=true"
   }
-  if(-not $pushOk){throw 'LOG_PUBLISH=FAIL git_push retries_exhausted'}
 
-  Write-Host "LOG_PUBLISH=PASS branch=$EvidenceBranch commit=$evidenceCommit path=logs/android/$ExpectedSha/$RunId files=$($published.Count) stale=$stale"
+  & $git -C $RepoCheckoutRoot push origin "HEAD:refs/heads/$SourceBranch"
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_PUSH_CONFLICT branch=$SourceBranch commit=$evidenceCommit"}
+
+  Write-Host "EVIDENCE_UPLOAD=PASS branch=$SourceBranch commit=$evidenceCommit path=$relativeDest files=$($published.Count)"
+  Write-Host "LOG_PUBLISH=PASS branch=$SourceBranch commit=$evidenceCommit path=$relativeDest files=$($published.Count) stale=false"
   Write-Host "EVIDENCE_COMMIT_SHA=$evidenceCommit"
-  Write-Host "EVIDENCE_PATH=logs/android/$ExpectedSha/$RunId"
+  Write-Host "EVIDENCE_PATH=$relativeDest"
 } finally {
-  try{& $git -C $RepoCheckoutRoot worktree remove --force $worktree | Out-Null}catch{}
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

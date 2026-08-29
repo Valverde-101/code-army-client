@@ -1,0 +1,45 @@
+name: Army Attack evidence-only
+
+on:
+  push:
+    branches:
+      - chore/local-army-bootstrap-20260827
+    paths:
+      - 'Logs/**'
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-only:
+    name: EVIDENCE_ONLY
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Validate logs-only commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse HEAD^)"
+          mapfile -t changed < <(git diff --name-only "$parent" HEAD)
+          if [ "${#changed[@]}" -eq 0 ]; then
+            echo "EVIDENCE_ONLY=FAIL no_changes"
+            exit 1
+          fi
+          for path in "${changed[@]}"; do
+            case "$path" in
+              Logs/*) ;;
+              *) echo "EVIDENCE_ONLY=FAIL non_logs_path=$path"; exit 1 ;;
+            esac
+          done
+          if grep -RIE --exclude='manifest.json' -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}' Logs; then
+            echo "SANITIZATION=FAIL secret_marker"
+            exit 1
+          fi
+          echo "SANITIZATION=PASS"
+          echo "EVIDENCE_ONLY=PASS parent_tested_sha=$parent commit=${{ github.sha }}"
