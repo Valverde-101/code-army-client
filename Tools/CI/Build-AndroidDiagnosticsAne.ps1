@@ -59,6 +59,15 @@ $swcZip=[IO.Compression.ZipFile]::OpenRead($swc)
 try{
   $swcNames=@($swcZip.Entries|ForEach-Object{$_.FullName})
   if(-not ($swcNames -contains 'library.swf')){throw 'DIAGNOSTICS_ANE=FAIL swc_library_missing'}
+  $libraryEntry=@($swcZip.Entries|Where-Object{$_.FullName -eq 'library.swf'})|Select-Object -First 1
+  if(-not $libraryEntry){throw 'DIAGNOSTICS_ANE=FAIL swc_library_entry_missing'}
+  foreach($platformRoot in @($arm,$arm64)){
+    $platformLibrary=Join-Path $platformRoot 'library.swf'
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($libraryEntry,$platformLibrary,$true)
+    if(-not (Test-Path -LiteralPath $platformLibrary)){throw "DIAGNOSTICS_ANE=FAIL platform_library_missing=$platformLibrary"}
+    $platformLibrarySha=(Get-FileHash -LiteralPath $platformLibrary -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-Host "DIAGNOSTICS_ANE_LIBRARY_STAGE=PASS platform=$(Split-Path -Leaf $platformRoot) sha256=$platformLibrarySha path=$platformLibrary"
+  }
 }finally{$swcZip.Dispose()}
 $swcSha=(Get-FileHash -LiteralPath $swc -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Host "DIAGNOSTICS_ANE_SWC_VALIDATE=PASS library_swF=true sha256=$swcSha"
