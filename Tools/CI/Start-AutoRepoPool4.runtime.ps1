@@ -33,7 +33,7 @@ for($slot=1;$slot -le $Slots;$slot++){
   if(Test-Broker $slot){Write-Host "AUTOREPO_BROKER_SLOT=ALREADY_RUNNING slot=$slot";continue}
   $moduleEsc=$module.Replace("'","''")
   $rootEsc=$AndroidBuildRoot.Replace("'","''")
-  $command="Import-Module '$moduleEsc' -Force; Run-AutoRepoBroker -AndroidBuildRoot '$rootEsc' -Owner 'Valverde-101' -Slot $slot -PollSeconds 5 -ReservationSeconds 90"
+  $command="`$brokerModule=Import-Module '$moduleEsc' -Force -PassThru; & `$brokerModule { Run-AutoRepoBroker -AndroidBuildRoot '$rootEsc' -Owner 'Valverde-101' -Slot $slot -PollSeconds 5 -ReservationSeconds 90 }"
   $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
   $stdout=Join-Path $logDir ("slot-"+$slot+".out.log")
   $stderr=Join-Path $logDir ("slot-"+$slot+".err.log")
