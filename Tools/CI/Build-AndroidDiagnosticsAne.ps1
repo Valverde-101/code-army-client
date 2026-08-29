@@ -54,6 +54,14 @@ $compcArgs=@("-source-path+=$as3Root",'-include-classes=com.valverde.armyattack.
 & $compc @compcArgs
 if($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $swc)){throw "DIAGNOSTICS_ANE=FAIL compc_exit=$LASTEXITCODE"}
 Write-Host "DIAGNOSTICS_ANE_SWC=PASS path=$swc"
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$swcZip=[IO.Compression.ZipFile]::OpenRead($swc)
+try{
+  $swcNames=@($swcZip.Entries|ForEach-Object{$_.FullName})
+  if(-not ($swcNames -contains 'library.swf')){throw 'DIAGNOSTICS_ANE=FAIL swc_library_missing'}
+}finally{$swcZip.Dispose()}
+$swcSha=(Get-FileHash -LiteralPath $swc -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "DIAGNOSTICS_ANE_SWC_VALIDATE=PASS library_swF=true sha256=$swcSha"
 
 $javaFiles=@(Get-ChildItem -LiteralPath $javaRoot -Recurse -File -Filter '*.java'|Select-Object -ExpandProperty FullName)
 if($javaFiles.Count -lt 2){throw "DIAGNOSTICS_ANE=FAIL java_source_count=$($javaFiles.Count)"}

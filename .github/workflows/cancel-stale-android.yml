@@ -51,9 +51,38 @@ jobs:
           for run_id in "${stale_ids[@]}"; do
             echo "STALE_RUN_CANCEL=ATTEMPT run=$run_id"
             if gh api --method POST "repos/$REPOSITORY/actions/runs/$run_id/cancel" >/dev/null; then
-              echo "STALE_RUN_CANCEL=PASS run=$run_id"
+              echo "STALE_RUN_CANCEL=REQUESTED run=$run_id"
             else
-              echo "STALE_RUN_CANCEL=FAIL run=$run_id"
+              echo "STALE_RUN_CANCEL=REQUEST_FAILED run=$run_id"
+            fi
+          done
+
+          sleep 3
+
+          for run_id in "${stale_ids[@]}"; do
+            status="$(gh api "repos/$REPOSITORY/actions/runs/$run_id" --jq '.status')"
+            if [ "$status" != "completed" ]; then
+              echo "STALE_RUN_FORCE_CANCEL=ATTEMPT run=$run_id status=$status"
+              if gh api --method POST "repos/$REPOSITORY/actions/runs/$run_id/force-cancel" >/dev/null; then
+                echo "STALE_RUN_FORCE_CANCEL=REQUESTED run=$run_id"
+              else
+                echo "STALE_RUN_FORCE_CANCEL=FAIL run=$run_id"
+                failures=$((failures+1))
+              fi
+            else
+              echo "STALE_RUN_CANCEL=PASS run=$run_id"
+            fi
+          done
+
+          sleep 3
+
+          for run_id in "${stale_ids[@]}"; do
+            status="$(gh api "repos/$REPOSITORY/actions/runs/$run_id" --jq '.status')"
+            conclusion="$(gh api "repos/$REPOSITORY/actions/runs/$run_id" --jq '.conclusion // ""')"
+            if [ "$status" = "completed" ]; then
+              echo "STALE_RUN_FINAL=PASS run=$run_id conclusion=$conclusion"
+            else
+              echo "STALE_RUN_FINAL=FAIL run=$run_id status=$status"
               failures=$((failures+1))
             fi
           done
