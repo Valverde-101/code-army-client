@@ -25,10 +25,21 @@ $gitCandidates+=@(
 $git=$gitCandidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
 if(-not $git){throw 'LOG_PUBLISH=FAIL git_not_found'}
 Write-Host "EVIDENCE_GIT=PASS path=$git"
-$checkoutHead=(& $git -C $RepoCheckoutRoot rev-parse HEAD).Trim()
-if($LASTEXITCODE -ne 0 -or $checkoutHead -ne $ExpectedSha){
+$gitDir=Join-Path $RepoCheckoutRoot '.git'
+if(-not (Test-Path -LiteralPath $gitDir)){
+  throw "EVIDENCE_GIT_REPO=FAIL checkout_has_no_dotgit root=$RepoCheckoutRoot"
+}
+$checkoutHeadLines=@(& $git -C $RepoCheckoutRoot rev-parse HEAD 2>&1|ForEach-Object{$_.ToString()})
+$checkoutHeadExit=$LASTEXITCODE
+if($checkoutHeadExit -ne 0){
+  $checkoutHeadLines|ForEach-Object{Write-Host $_}
+  throw "EVIDENCE_GIT_REPO=FAIL rev_parse_exit=$checkoutHeadExit"
+}
+$checkoutHead=($checkoutHeadLines|Select-Object -Last 1).Trim()
+if($checkoutHead -ne $ExpectedSha){
   throw "LOG_PUBLISH=FAIL checkout_sha expected=$ExpectedSha actual=$checkoutHead"
 }
+Write-Host "EVIDENCE_GIT_REPO=PASS sha=$checkoutHead"
 
 $remoteHead=(& $git -C $RepoCheckoutRoot ls-remote origin "refs/heads/$SourceBranch" | Out-String).Trim()
 $remoteSourceSha=''

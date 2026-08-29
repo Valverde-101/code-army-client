@@ -363,6 +363,24 @@ jobs:
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 10
     steps:
+      - name: Bootstrap portable Git
+        shell: powershell
+        run: |
+          $root=$null
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){
+              $candidate=Join-Path $drive.Root 'AndroidBuild'
+              if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}
+            }
+          }
+          if(-not $root){throw 'EVIDENCE_GIT_BOOTSTRAP=FAIL androidbuild_root'}
+          $git=@(
+            (Join-Path $root 'Tools\Git\cmd\git.exe'),
+            (Join-Path $root 'PortableGit\cmd\git.exe')
+          )|Where-Object{Test-Path -LiteralPath $_}|Select-Object -First 1
+          if(-not $git){throw 'EVIDENCE_GIT_BOOTSTRAP=FAIL git_not_found'}
+          (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "EVIDENCE_GIT_BOOTSTRAP=PASS path=$git"
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_SOURCE_SHA }}
@@ -380,7 +398,6 @@ jobs:
           Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
       - name: Publish sanitized logs to repository
         id: publish_logs
-        continue-on-error: true
         shell: powershell
         run: |
           & '.\Tools\CI\Publish-AndroidEvidence.ps1' -RepoCheckoutRoot $env:GITHUB_WORKSPACE -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -RunId $env:GITHUB_RUN_ID -SourceBranch $env:SOURCE_BRANCH
