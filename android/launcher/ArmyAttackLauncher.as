@@ -11,6 +11,8 @@ package {
     import flash.events.MouseEvent;
     import flash.events.ProgressEvent;
     import flash.events.SecurityErrorEvent;
+    import flash.events.UncaughtErrorEvent;
+    import flash.filesystem.File;
     import flash.net.URLLoader;
     import flash.net.URLRequest;
     import flash.system.ApplicationDomain;
@@ -211,27 +213,68 @@ package {
 
         private function loadGame(path:String, p:Object):void {
             loader = new Loader();
+
+            // Army Attack's document class accesses stage directly from its constructor.
+            // The Loader must already belong to our Stage before the child SWF is
+            // instantiated; otherwise GameMain can fail immediately with stage == null.
+            loader.visible = false;
+            addChildAt(loader, 0);
+
             loader.contentLoaderInfo.addEventListener(ProgressEvent.PROGRESS, function(e:ProgressEvent):void {
                 if (statusText && e.bytesTotal > 0) statusText.text = "Cargando " + String(p.name) + " • " + int(e.bytesLoaded * 100 / e.bytesTotal) + "%";
             });
+            loader.contentLoaderInfo.addEventListener(Event.INIT, function(e:Event):void {
+                if (statusText) statusText.text = "Inicializando " + String(p.name) + "...";
+            });
             loader.contentLoaderInfo.addEventListener(Event.COMPLETE, function(e:Event):void {
-                while (numChildren) removeChildAt(0);
-                addChild(loader);
+                if (contains(menu)) removeChild(menu);
+                loader.visible = true;
             });
             loader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR, loadFailure);
             loader.contentLoaderInfo.addEventListener(SecurityErrorEvent.SECURITY_ERROR, loadFailure);
+            loader.contentLoaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, gameUncaughtError);
 
-            var context:LoaderContext = new LoaderContext(false, new ApplicationDomain(ApplicationDomain.currentDomain), null);
-            context.allowCodeImport = true;
-            loader.load(new URLRequest(path), context);
+            var gameFile:File = File.applicationDirectory.resolvePath(path);
+            if (!gameFile.exists) {
+                restoreMenuWithError("SWF NO ENCONTRADO: " + gameFile.url);
+                return;
+            }
+
+            if (statusText) statusText.text = "Abriendo " + String(p.name) + " • " + gameFile.url;
+            var context:LoaderContext = new LoaderContext(false, ApplicationDomain.currentDomain, null);
+            loader.load(new URLRequest(gameFile.url), context);
+        }
+
+        private function gameUncaughtError(e:UncaughtErrorEvent):void {
+            e.preventDefault();
+            var message:String;
+            if (e.error is Error) {
+                var err:Error = e.error as Error;
+                message = err.name + ": " + err.message;
+                if (err.getStackTrace()) message += " • " + err.getStackTrace();
+            } else {
+                message = String(e.error);
+            }
+            restoreMenuWithError("ERROR DEL JUEGO: " + message);
         }
 
         private function loadFailure(e:Event):void {
-            if (!contains(menu)) {
-                while (numChildren) removeChildAt(0);
-                addChild(menu);
+            restoreMenuWithError("ERROR AL CARGAR: " + e.toString());
+        }
+
+        private function restoreMenuWithError(message:String):void {
+            if (loader) {
+                try {
+                    loader.close();
+                } catch (ignored:Error) {}
+                try {
+                    loader.unloadAndStop(true);
+                } catch (ignored2:Error) {}
+                if (contains(loader)) removeChild(loader);
+                loader = null;
             }
-            if (statusText) statusText.text = "ERROR AL CARGAR: " + e.toString();
+            if (!contains(menu)) addChild(menu);
+            if (statusText) statusText.text = message;
             if (playButton) playButton.mouseEnabled = true;
         }
 
