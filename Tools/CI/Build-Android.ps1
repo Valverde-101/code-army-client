@@ -203,22 +203,31 @@ Write-Host "BINARY_SEED_FALLBACK=PASS release=v23 sha256=$fallbackSwfSha"
 
 $appContentSwf='iArmyAirOfflineSavingv23.swf'
 $canonicalSwfSha='99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4'
-$swfSha=$publishedSwfSha
-$swfSize=$publishedSwfInfo.Length
-if($swfSha -ne $canonicalSwfSha){throw "SWF_ORIGINAL=FAIL expected=$canonicalSwfSha actual=$swfSha"}
-Copy-Item -LiteralPath $publishedSwf -Destination (Join-Path $stage $appContentSwf) -Force
+$swfSourceSha=$publishedSwfSha
+$swfSourceSize=$publishedSwfInfo.Length
+if($swfSourceSha -ne $canonicalSwfSha){throw "SWF_SOURCE_ORIGINAL=FAIL expected=$canonicalSwfSha actual=$swfSourceSha"}
 $stagedSwf=Join-Path $stage $appContentSwf
-$stagedSwfSha=(Get-FileHash -LiteralPath $stagedSwf -Algorithm SHA256).Hash.ToLowerInvariant()
-if($stagedSwfSha -ne $canonicalSwfSha){throw "SWF_ORIGINAL=FAIL staged expected=$canonicalSwfSha actual=$stagedSwfSha"}
-Write-Host "SWF_ORIGINAL=PASS sha256=$canonicalSwfSha size=$swfSize bytecode_modified=false"
-Write-Host "BINARY_SEED=PASS source=published_v23_2 repository=Valverde-101/Test_army_attack source_sha=$publishedActualSha swf_sha256=$swfSha size=$swfSize"
+$patchManifestPath=Join-Path $buildRoot 'SWF-PERFORMANCE-PATCH.json'
+$patcher=Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1'
+if(-not (Test-Path -LiteralPath $patcher)){throw "SWF_PERFORMANCE_PATCH=FAIL patcher_missing=$patcher"}
+& $patcher -RepoRoot $RepoRoot -InputSwf $publishedSwf -OutputSwf $stagedSwf -ExpectedSha $ExpectedSha -ExpectedSourceSha256 $canonicalSwfSha -ManifestPath $patchManifestPath
+$stagedSwfInfo=Get-Item -LiteralPath $stagedSwf
+$swfSha=(Get-FileHash -LiteralPath $stagedSwf -Algorithm SHA256).Hash.ToLowerInvariant()
+$swfSize=$stagedSwfInfo.Length
+if($swfSha -eq $canonicalSwfSha){throw "SWF_PERFORMANCE_PATCH=FAIL patched_hash_equals_source"}
+$patchManifest=Get-Content -LiteralPath $patchManifestPath -Raw|ConvertFrom-Json
+if([string]$patchManifest.patch_version -ne 'mobile-engine-v1'){throw "SWF_PERFORMANCE_PATCH=FAIL manifest_version=$($patchManifest.patch_version)"}
+if(([string]$patchManifest.output_swf.sha256).ToLowerInvariant() -ne $swfSha){throw "SWF_PERFORMANCE_PATCH=FAIL manifest_sha=$($patchManifest.output_swf.sha256) actual=$swfSha"}
+Write-Host "SWF_SOURCE_ORIGINAL=PASS sha256=$canonicalSwfSha size=$swfSourceSize"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v1 patched_sha256=$swfSha size=$swfSize"
+Write-Host "BINARY_SEED=PASS source=published_v23_2 repository=Valverde-101/Test_army_attack source_sha=$publishedActualSha source_swf_sha256=$swfSourceSha patched_swf_sha256=$swfSha"
 
 $extensionsDir=Join-Path $buildRoot 'extensions'
 if(Test-Path -LiteralPath $extensionsDir){Remove-Item -LiteralPath $extensionsDir -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $extensionsDir|Out-Null
 $aneBuilder=Join-Path $RepoRoot 'Tools\CI\Build-AndroidDiagnosticsAne.ps1'
 if(-not (Test-Path -LiteralPath $aneBuilder)){throw "NATIVE_PERF_OVERLAY=FAIL ane_builder_missing=$aneBuilder"}
-$aneResult=@(& $aneBuilder -RepoRoot $RepoRoot -AirRoot $air.Root -AndroidSdkRoot $androidSdk -OutputDirectory $extensionsDir -RootSwfPath $publishedSwf | ForEach-Object{$_.ToString()})
+$aneResult=@(& $aneBuilder -RepoRoot $RepoRoot -AirRoot $air.Root -AndroidSdkRoot $androidSdk -OutputDirectory $extensionsDir -RootSwfPath $stagedSwf | ForEach-Object{$_.ToString()})
 $diagnosticsAne=($aneResult|Where-Object{$_ -like '*.ane'}|Select-Object -Last 1)
 if(-not $diagnosticsAne -or -not (Test-Path -LiteralPath $diagnosticsAne)){throw "NATIVE_PERF_OVERLAY=FAIL ane_missing output=$($aneResult -join ';')"}
 $diagnosticsAneSha=(Get-FileHash -LiteralPath $diagnosticsAne -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -350,12 +359,14 @@ $prov=[ordered]@{
   binary_seed_source_sha=$publishedActualSha
   binary_seed_source_path='armyattack/assets/iArmyAirOfflineSavingv23.swf'
   app_content_swf=$appContentSwf
-  swf_source_size=$swfSize
-  swf_source_sha256=$swfSha
+  swf_source_size=$swfSourceSize
+  swf_source_sha256=$swfSourceSha
   swf_size=$swfSize
   swf_sha256=$swfSha
-  swf_performance_patched=$false
-  performance_patch_version='none'
+  swf_performance_patched=$true
+  performance_patch_version='mobile-engine-v1'
+  performance_patch_manifest=$patchManifestPath
+  performance_patch_classes=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene')
   render_mode=$renderMode
   native_performance_overlay=$true
   native_performance_overlay_mode='test-low-overhead-v2'
@@ -402,7 +413,7 @@ $toolchain=[ordered]@{
 }
 $toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
 $toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
-Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=true swf_original=true native_perf_overlay=true render_mode=$renderMode"
+Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=true swf_source_original=true swf_performance_patched=true performance_patch=mobile-engine-v1 native_perf_overlay=true render_mode=$renderMode"
 Write-Host "BUILD=PASS platform=android tier=$tier"
 Write-Host "APK_GENERATED=PASS"
 Write-Host "APK_PATH=$apkPath"

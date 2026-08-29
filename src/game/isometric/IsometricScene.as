@@ -13,6 +13,7 @@
 	import flash.geom.Rectangle;
 	import flash.geom.Vector3D;
 	import flash.utils.Timer;
+	import flash.utils.Dictionary;
 	import game.actions.NeighborActionQueue;
 	import game.actions.RepairConstructionAction;
 	import game.actions.RepairDecorationAction;
@@ -117,6 +118,9 @@
 		private var mFloor: Floor;
 
 		public var mAllElements: Array;
+
+		private var mCharacterElements: Array;
+		private var mStaticElements: Array;
 
 		public var mCamera: IsoCamera;
 
@@ -280,6 +284,8 @@
 			this.mZoomActivated = false;
 			this.mObjectLoader = new ObjectLoader();
 			this.mAllElements = new Array();
+			this.mCharacterElements = new Array();
+			this.mStaticElements = new Array();
 			if (FeatureTuner.USE_ZOOM_IN_OUT) {
 				this.mContainer.addEventListener(TransformGestureEvent.GESTURE_ZOOM, this.ZoomInOut, false);
 			}
@@ -1101,6 +1107,12 @@
 
 		public function addObject(param1: Element): void {
 			this.mAllElements.push(param1);
+			if (param1 is IsometricCharacter) {
+				this.mCharacterElements.push(param1);
+			}
+			if (param1 is StaticObject) {
+				this.mStaticElements.push(param1);
+			}
 			var _loc2_: Renderable = param1 as Renderable;
 			if (_loc2_) {
 				if (!this.isObjectInLegalPosition(_loc2_)) {
@@ -1118,7 +1130,6 @@
 		}
 
 		private function updateStaticObjects(param1: int): void {
-			var _loc2_: Element = null;
 			var _loc3_: StaticObject = null;
 			var _loc4_: Boolean = false;
 			var _loc5_: EnemyInstallationObject = null;
@@ -1129,20 +1140,21 @@
 			if (this.mInfoBoxBG) {
 				this.mInfoBoxBG.visible = false;
 			}
-			for each(_loc2_ in this.mAllElements) {
-				_loc3_ = _loc2_ as StaticObject;
-				if (_loc3_) {
-					_loc4_ = _loc3_.logicUpdate(param1);
-					if (_loc3_ is EnemyInstallationObject) {
-						(_loc5_ = _loc3_ as EnemyInstallationObject).updateActions(param1);
-					}
-					if (_loc3_ is PlayerInstallationObject) {
-						(_loc6_ = _loc3_ as PlayerInstallationObject).updateActions(param1);
-					}
-					if (_loc4_) {
-						mRemoveArray.push(_loc3_);
-					}
+			var staticCount:int = int(this.mStaticElements.length);
+			var staticIndex:int = 0;
+			while (staticIndex < staticCount) {
+				_loc3_ = this.mStaticElements[staticIndex] as StaticObject;
+				_loc4_ = _loc3_.logicUpdate(param1);
+				if (_loc3_ is EnemyInstallationObject) {
+					(_loc5_ = _loc3_ as EnemyInstallationObject).updateActions(param1);
 				}
+				if (_loc3_ is PlayerInstallationObject) {
+					(_loc6_ = _loc3_ as PlayerInstallationObject).updateActions(param1);
+				}
+				if (_loc4_) {
+					mRemoveArray.push(_loc3_);
+				}
+				staticIndex++;
 			}
 			if (mRemoveArray.length > 0) {
 				for each(_loc7_ in mRemoveArray) {
@@ -1157,7 +1169,6 @@
 		}
 
 		private function updateCharacters(param1: int): void {
-			var _loc3_: Element = null;
 			var _loc6_: IsometricCharacter = null;
 			var _loc7_: IsometricCharacter = null;
 			var _loc8_: int = 0;
@@ -1172,18 +1183,17 @@
 			if (this.mInfoBoxBG) {
 				this.mInfoBoxBG.visible = false;
 			}
-			var _loc4_: int = int(this.mAllElements.length);
+			var _loc4_: int = int(this.mCharacterElements.length);
 			var _loc5_: int = 0;
 			while (_loc5_ < _loc4_) {
-				_loc3_ = this.mAllElements[_loc5_] as Element;
-				if (_loc3_ is IsometricCharacter) {
-					(_loc6_ = _loc3_ as IsometricCharacter).update(param1);
-					if (_loc6_.isReadyToBeRemoved()) {
-						this.mRemoveCharactersArray.push(_loc6_);
-					} else {
-						_loc6_.updateActions(param1);
-						_loc6_.updateMovement(param1);
-					}
+				_loc6_ = this.mCharacterElements[_loc5_] as IsometricCharacter;
+				_loc6_.update(param1);
+				if (_loc6_.isReadyToBeRemoved()) {
+					this.mRemoveCharactersArray.push(_loc6_);
+				} else {
+					// Preserve enemy/player logic cadence exactly.
+					_loc6_.updateActions(param1);
+					_loc6_.updateMovement(param1);
 				}
 				_loc5_++;
 			}
@@ -1211,30 +1221,24 @@
 		}
 
 		public function startCharacterAnimations(): void {
-			var _loc1_: Element = null;
-			var _loc4_: IsometricCharacter = null;
-			var _loc2_: int = int(this.mAllElements.length);
-			var _loc3_: int = 0;
-			while (_loc3_ < _loc2_) {
-				_loc1_ = this.mAllElements[_loc3_] as Element;
-				if (_loc1_ is IsometricCharacter) {
-					(_loc4_ = _loc1_ as IsometricCharacter).startAction();
-				}
-				_loc3_++;
+			var character:IsometricCharacter = null;
+			var count:int = int(this.mCharacterElements.length);
+			var i:int = 0;
+			while (i < count) {
+				character = this.mCharacterElements[i] as IsometricCharacter;
+				character.startAction();
+				i++;
 			}
 		}
 
 		public function stopCharacterAnimations(): void {
-			var _loc1_: Element = null;
-			var _loc4_: IsometricCharacter = null;
-			var _loc2_: int = int(this.mAllElements.length);
-			var _loc3_: int = 0;
-			while (_loc3_ < _loc2_) {
-				_loc1_ = this.mAllElements[_loc3_] as Element;
-				if (_loc1_ is IsometricCharacter) {
-					(_loc4_ = _loc1_ as IsometricCharacter).stopAction();
-				}
-				_loc3_++;
+			var character:IsometricCharacter = null;
+			var count:int = int(this.mCharacterElements.length);
+			var i:int = 0;
+			while (i < count) {
+				character = this.mCharacterElements[i] as IsometricCharacter;
+				character.stopAction();
+				i++;
 			}
 		}
 
@@ -2730,7 +2734,7 @@
 				this.mContainer.y = _loc3_;
 				this.mSceneHud.x = _loc2_;
 				this.mSceneHud.y = _loc3_;
-				this.mTilemapGraphic.updateTilemap();
+				this.mTilemapGraphic.updateCameraViewport();
 			}
 			this.mCamera.update();
 		}
@@ -2868,61 +2872,70 @@
 		}
 
 		private function sortAll(param1: Boolean = true, param2: Boolean = true): void {
-			var _loc3_: * = false;
-			var _loc4_: Sprite = null;
-			var _loc5_: Boolean = false;
-			var _loc6_: Boolean = false;
-			var _loc7_: DisplayObjectContainer = null;
-			var _loc8_: int = 0;
-			var _loc9_: Renderable = null;
-			var _loc10_: int = 0;
-			var _loc11_: int = 0;
+			var changed:Boolean = false;
+			var container:Sprite = null;
+			var parent:DisplayObjectContainer = null;
+			var element:Renderable = null;
+			var ground:Boolean = false;
+			var oldIndex:int = 0;
+			var i:int = 0;
+			var visibleLookup:Dictionary = null;
 			if (param1) {
-				this.mRelativeVisibleArea.x = this.mCamera.getCameraX();
-				this.mRelativeVisibleArea.y = this.mCamera.getCameraY();
-				_loc5_ = false;
-				_loc6_ = false;
-				_loc10_ = 0;
-				while (_loc10_ < this.mAllElements.length) {
-					if (_loc7_ = (_loc4_ = (_loc9_ = this.mAllElements[_loc10_]).getContainer()).parent) {
-						_loc6_ = _loc4_.hitTestObject(this.mAbsoluteVisibleArea);
-					} else {
-						_loc6_ = _loc4_.hitTestObject(this.mRelativeVisibleArea);
-					}
-					if (_loc9_ is Renderable) {
-						_loc6_ &&= this.isInsideVisibleArea(_loc9_.getCell());
-					}
-					_loc3_ = _loc9_.getTileSize().z == 0;
-					_loc8_ = this.mVisibleObjects.indexOf(_loc9_);
-					if (!_loc4_.visible) {
-						if (_loc7_) {
-							_loc7_.removeChild(_loc4_);
+				visibleLookup = new Dictionary(true);
+				i = 0;
+				while (i < this.mVisibleObjects.length) {
+					visibleLookup[this.mVisibleObjects[i]] = true;
+					i++;
+				}
+				i = 0;
+				while (i < this.mAllElements.length) {
+					element = this.mAllElements[i] as Renderable;
+					if (element) {
+						container = element.getContainer();
+						if (container) {
+							parent = container.parent;
+							ground = element.getTileSize().z == 0;
+							// Previous code ran hitTestObject() + area checks here,
+							// but never consumed that result. Removing it is behavior
+							// preserving and removes collision work from the hot path.
+							if (!container.visible) {
+								if (parent) {
+									parent.removeChild(container);
+								}
+								if (visibleLookup[element]) {
+									oldIndex = this.mVisibleObjects.indexOf(element);
+									if (oldIndex != -1) {
+										this.mVisibleObjects.splice(oldIndex, 1);
+									}
+									delete visibleLookup[element];
+									changed = true;
+								}
+							} else if (ground) {
+								if (!parent) {
+									this.mContainer.addChildAt(container, 0);
+								}
+							} else if (!visibleLookup[element]) {
+								this.mVisibleObjects.push(element);
+								visibleLookup[element] = true;
+								changed = true;
+							}
 						}
-						if (_loc8_ != -1) {
-							this.mVisibleObjects.splice(_loc8_, 1);
-							_loc5_ = true;
-						}
-					} else if (_loc3_) {
-						if (!_loc7_) {
-							this.mContainer.addChildAt(_loc4_, 0);
-						}
-					} else if (_loc8_ == -1) {
-						this.mVisibleObjects.push(_loc9_);
-						_loc5_ = true;
 					}
-					_loc10_++;
+					i++;
 				}
 				this.mVisibleObjectCnt = this.mVisibleObjects.length;
 			}
 			if (param2) {
-				_loc5_ ||= this.armySortObjects(this.mVisibleObjects);
+				if (this.armySortObjects(this.mVisibleObjects)) {
+					changed = true;
+				}
 			}
-			if (_loc5_) {
+			if (changed) {
 				this.mContainer.addChildAt(this.mMapGUIEffectsLayer.mGroundLayer, this.mContainer.numChildren);
-				_loc11_ = 0;
-				while (_loc11_ < this.mVisibleObjects.length) {
-					this.mContainer.addChildAt((this.mVisibleObjects[_loc11_] as Renderable).getContainer(), this.mContainer.numChildren);
-					_loc11_++;
+				i = 0;
+				while (i < this.mVisibleObjects.length) {
+					this.mContainer.addChildAt((this.mVisibleObjects[i] as Renderable).getContainer(), this.mContainer.numChildren);
+					i++;
 				}
 				this.mContainer.addChildAt(this.mMapGUIEffectsLayer.mTopLayer, this.mContainer.numChildren);
 				if (FeatureTuner.USE_SEA_WAVES_EFFECT) {
@@ -3032,7 +3045,7 @@
 							}
 						}
 					}
-					if (_loc7_.mSortIdx != _loc5_) {
+					if (_loc7_.mSortIdx != _loc6_) {
 						_loc2_ = true;
 					}
 				}
@@ -3105,6 +3118,18 @@
 			var _loc5_: int;
 			if ((_loc5_ = this.mAllElements.indexOf(param1)) >= 0) {
 				this.mAllElements.splice(_loc5_, 1);
+			}
+			if (param1 is IsometricCharacter) {
+				_loc5_ = this.mCharacterElements.indexOf(param1);
+				if (_loc5_ >= 0) {
+					this.mCharacterElements.splice(_loc5_, 1);
+				}
+			}
+			if (param1 is StaticObject) {
+				_loc5_ = this.mStaticElements.indexOf(param1);
+				if (_loc5_ >= 0) {
+					this.mStaticElements.splice(_loc5_, 1);
+				}
 			}
 			if ((_loc5_ = this.mVisibleObjects.indexOf(param1)) >= 0) {
 				this.mVisibleObjects.splice(_loc5_, 1);
@@ -4159,6 +4184,8 @@
 				this.mAllElements[_loc2_] = null;
 			}
 			this.mAllElements = null;
+			this.mCharacterElements = null;
+			this.mStaticElements = null;
 			for (_loc3_ in this.mSoundMakers) {
 				(this.mSoundMakers[_loc3_] as Renderable).destroy();
 				this.mSoundMakers[_loc3_] = null;

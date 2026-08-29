@@ -287,6 +287,14 @@
       private var mBlitCounter:int = 0;
       
       private var mVectCounter:int = 0;
+
+      // Mobile engine cache. The padded bitmap moves continuously with the
+      // camera; expensive rasterization only occurs when the cache margin is
+      // nearly exhausted or gameplay explicitly invalidates the tilemap.
+      private static const CAMERA_CACHE_MARGIN:int = 256;
+      private static const CAMERA_CACHE_REBUILD_LIMIT:Number = 0.72;
+      private var mCameraCacheAnchorX:Number = Number.NaN;
+      private var mCameraCacheAnchorY:Number = Number.NaN;
       
       public function TileMapGraphic(param1:IsometricScene)
       {
@@ -400,8 +408,9 @@
          var _loc2_:int = int(GameState.mInstance.getMainClip().stage.fullScreenHeight);
          _loc1_ = Math.max(_loc1_,Config.SCREEN_WIDTH);
          _loc2_ = Math.max(_loc2_,Config.SCREEN_HEIGHT);
-         this.mFogBmpData = new BitmapData(_loc1_,_loc2_,true,16711935);
-         this.mFieldBmpData = new BitmapData(_loc1_,_loc2_,false,255);
+         var _loc3_:int = CAMERA_CACHE_MARGIN * 2;
+         this.mFogBmpData = new BitmapData(_loc1_ + _loc3_,_loc2_ + _loc3_,true,16711935);
+         this.mFieldBmpData = new BitmapData(_loc1_ + _loc3_,_loc2_ + _loc3_,false,255);
          if(this.mFogBmp)
          {
             this.mFogBmp.bitmapData.dispose();
@@ -420,6 +429,12 @@
          }
          this.mFieldBmp = new Bitmap(this.mFieldBmpData);
          this.mFogBmp = new Bitmap(this.mFogBmpData);
+         this.mFieldBmp.x = -CAMERA_CACHE_MARGIN;
+         this.mFieldBmp.y = -CAMERA_CACHE_MARGIN;
+         this.mFogBmp.x = -CAMERA_CACHE_MARGIN;
+         this.mFogBmp.y = -CAMERA_CACHE_MARGIN;
+         this.mCameraCacheAnchorX = Number.NaN;
+         this.mCameraCacheAnchorY = Number.NaN;
       }
       
       private function initMultipleTileMapsDataStructures() : void
@@ -462,6 +477,15 @@
          var _loc8_:int = 0;
          var _loc9_:int = 0;
          this.mUid = !!Config.smUserId ? int(Config.smUserId) : int(GameState.mInstance.mServer.getUid());
+         if(Config.ENABLE_SINGLE_BITMAP_FIELD_RENDERING)
+         {
+            this.mCameraCacheAnchorX = this.mScene.mContainer.x;
+            this.mCameraCacheAnchorY = this.mScene.mContainer.y;
+            this.mFieldBmp.x = -CAMERA_CACHE_MARGIN;
+            this.mFieldBmp.y = -CAMERA_CACHE_MARGIN;
+            this.mFogBmp.x = -CAMERA_CACHE_MARGIN;
+            this.mFogBmp.y = -CAMERA_CACHE_MARGIN;
+         }
          smTempPoint.x = 0;
          smTempPoint.y = 0;
          if(Config.ENABLE_SINGLE_BITMAP_FIELD_RENDERING)
@@ -483,6 +507,17 @@
          smTempPoint.y = 0;
          smTempPoint = this.mScene.mContainer.globalToLocal(smTempPoint);
          var _loc4_:Rectangle = getVisibleArea();
+         if(Config.ENABLE_SINGLE_BITMAP_FIELD_RENDERING)
+         {
+            var cacheScale:Number = Math.max(0.01,this.mScene.mContainer.scaleX);
+            var cacheTilesX:int = Math.ceil(CAMERA_CACHE_MARGIN / (this.mScene.mGridDimX * cacheScale)) + 2;
+            var cacheTilesY:int = Math.ceil(CAMERA_CACHE_MARGIN / (this.mScene.mGridDimY * cacheScale)) + 2;
+            var cacheLeft:int = Math.max(0,int(_loc4_.left) - cacheTilesX);
+            var cacheTop:int = Math.max(0,int(_loc4_.top) - cacheTilesY);
+            var cacheRight:int = Math.min(this.mMapData.mGridWidth,int(_loc4_.right) + cacheTilesX);
+            var cacheBottom:int = Math.min(this.mMapData.mGridHeight,int(_loc4_.bottom) + cacheTilesY);
+            _loc4_ = new Rectangle(cacheLeft,cacheTop,cacheRight - cacheLeft,cacheBottom - cacheTop);
+         }
          this.drawArea(_loc4_.left,_loc4_.top,_loc4_.right,_loc4_.bottom);
          this.updateUnderCloudEnemyUnits();
          if(FeatureTuner.USE_SEA_WAVES_EFFECT)
@@ -507,6 +542,28 @@
                this.mWaveContainer.x = _loc4_.left * this.mScene.mGridDimX;
             }
          }
+      }
+      
+      public function updateCameraViewport() : Boolean
+      {
+         if(!Config.ENABLE_SINGLE_BITMAP_FIELD_RENDERING || !this.mFieldBmp || !this.mFogBmp || isNaN(this.mCameraCacheAnchorX) || isNaN(this.mCameraCacheAnchorY))
+         {
+            this.updateTilemap();
+            return true;
+         }
+         var dx:Number = this.mScene.mContainer.x - this.mCameraCacheAnchorX;
+         var dy:Number = this.mScene.mContainer.y - this.mCameraCacheAnchorY;
+         var limit:Number = CAMERA_CACHE_MARGIN * CAMERA_CACHE_REBUILD_LIMIT;
+         if(Math.abs(dx) >= limit || Math.abs(dy) >= limit)
+         {
+            this.updateTilemap();
+            return true;
+         }
+         this.mFieldBmp.x = -CAMERA_CACHE_MARGIN + dx;
+         this.mFieldBmp.y = -CAMERA_CACHE_MARGIN + dy;
+         this.mFogBmp.x = -CAMERA_CACHE_MARGIN + dx;
+         this.mFogBmp.y = -CAMERA_CACHE_MARGIN + dy;
+         return false;
       }
       
       public function createBitmaps() : void
@@ -1658,8 +1715,8 @@
          mDrawMatrix.ty = _loc7_ + _loc9_;
          if(Config.ENABLE_SINGLE_BITMAP_FIELD_RENDERING)
          {
-            smTempPoint.x = mDrawMatrix.tx;
-            smTempPoint.y = mDrawMatrix.ty;
+            smTempPoint.x = mDrawMatrix.tx + CAMERA_CACHE_MARGIN;
+            smTempPoint.y = mDrawMatrix.ty + CAMERA_CACHE_MARGIN;
             this.mTargetBitmap.bitmapData.copyPixels(_loc4_,_loc4_.rect,smTempPoint);
          }
          else
@@ -1697,8 +1754,8 @@
          var _loc6_:Number = param3 * this.mScene.mGridDimY * this.mScene.mContainer.scaleY + this.mScene.mContainer.y;
          if(Config.ENABLE_SINGLE_BITMAP_FIELD_RENDERING)
          {
-            mDrawMatrix.tx = _loc5_;
-            mDrawMatrix.ty = _loc6_;
+            mDrawMatrix.tx = _loc5_ + CAMERA_CACHE_MARGIN;
+            mDrawMatrix.ty = _loc6_ + CAMERA_CACHE_MARGIN;
             this.mTargetBitmap.bitmapData.draw(_loc4_,mDrawMatrix,null,null,null,false);
          }
          else
