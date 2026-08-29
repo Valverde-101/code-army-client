@@ -65,6 +65,15 @@ Write-Host "DIAGNOSTICS_ANE_JAVA=PASS source_count=$($javaFiles.Count)"
 $nativeJar=Join-Path $work 'armyattack-diagnostics.jar'
 & $jarTool 'cf' $nativeJar '-C' $classes '.'
 if($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $nativeJar)){throw "DIAGNOSTICS_ANE=FAIL jar_exit=$LASTEXITCODE"}
+$jarEntries=@(& $jarTool 'tf' $nativeJar 2>&1|ForEach-Object{$_.ToString()})
+if($LASTEXITCODE -ne 0){throw "DIAGNOSTICS_ANE=FAIL jar_list_exit=$LASTEXITCODE"}
+foreach($requiredClass in @(
+  'com/valverde/armyattack/diagnostics/DiagnosticsExtension.class',
+  'com/valverde/armyattack/diagnostics/DiagnosticsProvider.class'
+)){
+  if(-not ($jarEntries -contains $requiredClass)){throw "DIAGNOSTICS_ANE=FAIL native_class_missing=$requiredClass"}
+}
+Write-Host 'DIAGNOSTICS_ANE_CLASSES=PASS extension=true provider=true'
 Copy-Item -LiteralPath $nativeJar -Destination (Join-Path $arm 'armyattack-diagnostics.jar') -Force
 Copy-Item -LiteralPath $nativeJar -Destination (Join-Path $arm64 'armyattack-diagnostics.jar') -Force
 $extensionXml=Join-Path $work 'extension.xml'
@@ -92,6 +101,11 @@ $xml=@'
 </extension>
 '@
 $xml|Set-Content -LiteralPath $extensionXml -Encoding UTF8
+if($xml -match 'platform name="default"'){throw 'DIAGNOSTICS_ANE=FAIL unexpected_default_platform'}
+if($xml -notmatch 'platform name="Android-ARM"' -or $xml -notmatch 'platform name="Android-ARM64"'){
+  throw 'DIAGNOSTICS_ANE=FAIL android_platform_contract'
+}
+Write-Host 'DIAGNOSTICS_ANE_PLATFORM_CONTRACT=PASS platforms=Android-ARM,Android-ARM64 default=false'
 
 $ane=Join-Path $out 'ArmyAttackDiagnostics.ane'
 if(Test-Path -LiteralPath $ane){Remove-Item -LiteralPath $ane -Force}

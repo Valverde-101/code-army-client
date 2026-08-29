@@ -10,6 +10,7 @@ on:
       - '.github/workflows/swf-extract.yml'
       - '.github/workflows/android-candidate.yml'
       - '.github/workflows/enable-autorepo-pool4.yml'
+      - '.github/workflows/cancel-stale-android.yml'
       - 'Tools/CI/Enable-AutoRepoPool4.ps1'
       - 'Tools/CI/Start-AutoRepoPool4.runtime.ps1'
   workflow_dispatch:
