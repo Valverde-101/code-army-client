@@ -34,11 +34,9 @@ Write-Host "PUBLISHED_CONTENT=PASS sha=$publishedActualSha version=$publishedVer
 Write-Host "PUBLISHED_SWF=PASS size=$($publishedSwfInfo.Length) sha256=$publishedSwfSha"
 
 $androidSdk=Join-Path $AndroidBuildRoot 'AndroidSDK'
-$adb=Join-Path $androidSdk 'platform-tools\adb.exe'
 if(-not (Test-Path -LiteralPath $androidSdk)){throw "ANDROID_SDK=FAIL path=$androidSdk"}
-if(-not (Test-Path -LiteralPath $adb)){throw "ADB=FAIL path=$adb"}
 Write-Host "ANDROID_SDK=PASS path=$androidSdk"
-Write-Host "ADB=PASS path=$adb"
+Write-Host "ADB=SKIPPED_WITH_REASON manual_physical_validation_policy"
 $javaCandidates=@()
 if($env:JAVA_HOME){$javaCandidates+=(Join-Path $env:JAVA_HOME 'bin\java.exe')}
 $javaCandidates+=@((Join-Path $AndroidBuildRoot 'Tools\Java\jdk-21\bin\java.exe'),(Join-Path $AndroidBuildRoot 'Tools\Java\jdk-17\bin\java.exe'))
@@ -363,6 +361,8 @@ $prov=[ordered]@{
   native_performance_overlay_mode='test-low-overhead-v2'
   native_performance_overlay_sample_ms=1000
   native_performance_overlay_heavy_sample_ms=5000
+  physical_validation_method='manual'
+  adb_validation_enabled=$false
   native_performance_overlay_metrics=@('process_cpu','pss','java_heap','native_heap','gc_count','gc_time','thermal','vsync_jank')
   diagnostics_ane_sha256=$diagnosticsAneSha
   fallback_binary_seed_release='v23'

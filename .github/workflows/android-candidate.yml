@@ -302,11 +302,42 @@ jobs:
         shell: powershell
         run: |
           & '.\Tools\CI\Validate-AndroidApk.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
-      - name: Physical ADB validation when available
-        id: adb_test
+      - name: Prepare manual physical validation
+        id: manual_physical
         shell: powershell
         run: |
-          & '.\Tools\CI\Test-AndroidDevice.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+          $build=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android"
+          $apk=Get-Item -LiteralPath $env:ANDROID_APK_PATH
+          $apkSha=(Get-FileHash -LiteralPath $apk.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manual=[ordered]@{
+            schema_version=1
+            repository=$env:GITHUB_REPOSITORY
+            tested_sha=$env:EXPECTED_SOURCE_SHA
+            apk_path=$apk.FullName
+            apk_size=$apk.Length
+            apk_sha256=$apkSha
+            method='manual_physical'
+            adb_used=$false
+            status='PENDING_USER_VALIDATION'
+            required_steps=@(
+              'Install the exact APK manually on the physical Android phone',
+              'Launch Army Attack and confirm the main game loads',
+              'Open PERF and press INICIAR',
+              'Play a representative gameplay session',
+              'Press MARCAR LAG whenever a visible slowdown occurs',
+              'Press DETENER and then ZIP',
+              'Share the generated ZIP back for analysis'
+            )
+          }
+          $manualPath=Join-Path $build 'manual-physical-validation.json'
+          $manual|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $manualPath -Encoding UTF8
+          Write-Host "ADB_DEVICE=SKIPPED_WITH_REASON manual_physical_test"
+          Write-Host "INSTALL=SKIPPED_WITH_REASON user_manual_install"
+          Write-Host "START=SKIPPED_WITH_REASON user_manual_launch"
+          Write-Host "HEALTH=SKIPPED_WITH_REASON user_manual_validation"
+          Write-Host "SMOKE=SKIPPED_WITH_REASON user_manual_validation"
+          Write-Host "PHYSICAL_EVIDENCE=SKIPPED_WITH_REASON awaiting_user_manual_zip"
+          Write-Host "MANUAL_PHYSICAL_VALIDATION=PENDING path=$manualPath"
       - name: Collect Android diagnostics
         if: always()
         shell: powershell
@@ -322,9 +353,11 @@ jobs:
             "RUNNER_NAME=$env:RUNNER_NAME"
             "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
             "APK_VALIDATE_OUTCOME=${{ steps.apk_validate.outcome }}"
-            "ADB_TEST_OUTCOME=${{ steps.adb_test.outcome }}"
+            "ADB_TEST_OUTCOME=skipped_by_policy"
+            "MANUAL_PHYSICAL_OUTCOME=${{ steps.manual_physical.outcome }}"
+            "PHYSICAL_VALIDATION=PENDING_USER_MANUAL_TEST"
           )|Set-Content -LiteralPath (Join-Path $diag 'ci-diagnostics.txt') -Encoding UTF8
-          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-manifest.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md')){
+          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-manifest.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md','manual-physical-validation.json')){
             $src=Join-Path $build $name
             if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination (Join-Path $diag $name) -Force}
           }
@@ -429,6 +462,13 @@ jobs:
           Write-Host "BASE_ONLY_MODE=PASS modern_v23_2=true mods=false selector=false diagnostics_ane=true"
           Write-Host "SWF_ORIGINAL=PASS bytecode_modified=false"
           Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,INICIAR,MARCAR_LAG,DETENER,ZIP render_mode=gpu profiler=low_overhead_v2"
+          Write-Host "ADB_DEVICE=SKIPPED_WITH_REASON manual_physical_test"
+          Write-Host "INSTALL=SKIPPED_WITH_REASON user_manual_install"
+          Write-Host "START=SKIPPED_WITH_REASON user_manual_launch"
+          Write-Host "HEALTH=SKIPPED_WITH_REASON user_manual_validation"
+          Write-Host "SMOKE=SKIPPED_WITH_REASON user_manual_validation"
+          Write-Host "PHYSICAL_EVIDENCE=SKIPPED_WITH_REASON awaiting_user_manual_zip"
+          Write-Host "MANUAL_PHYSICAL_VALIDATION=PENDING_USER_VALIDATION"
           Write-Host "SANITIZATION=PASS via_publish_logs"
           Write-Host "EVIDENCE_UPLOAD=PASS via_publish_logs"
           Write-Host "FINAL_VALIDATION=PASS candidate"
