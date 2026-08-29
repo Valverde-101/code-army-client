@@ -151,7 +151,7 @@ $extensionsDir=Join-Path $outRoot 'extensions'
 New-Item -ItemType Directory -Force -Path $extensionsDir|Out-Null
 $diagnosticsAneScript=Join-Path $RepoRoot 'Tools\CI\Build-AndroidDiagnosticsAne.ps1'
 if(-not (Test-Path -LiteralPath $diagnosticsAneScript)){throw "UNIFIED_DIAGNOSTICS=FAIL build_script_missing=$diagnosticsAneScript"}
-& $diagnosticsAneScript -RepoRoot $RepoRoot -AirRoot $airRoot -AndroidSdkRoot $sdk -OutputDirectory $extensionsDir
+& $diagnosticsAneScript -RepoRoot $RepoRoot -AirRoot $airRoot -AndroidSdkRoot $sdk -OutputDirectory $extensionsDir -RootSwfPath (Join-Path $baseStage 'iArmyAirOfflineSavingv23.swf')
 $diagnosticsAne=Join-Path $extensionsDir 'ArmyAttackDiagnostics.ane'
 if(-not (Test-Path -LiteralPath $diagnosticsAne)){throw "UNIFIED_DIAGNOSTICS=FAIL ane_missing=$diagnosticsAne"}
 $diagnosticsAneSha=(Get-FileHash -LiteralPath $diagnosticsAne -Algorithm SHA256).Hash.ToLowerInvariant()

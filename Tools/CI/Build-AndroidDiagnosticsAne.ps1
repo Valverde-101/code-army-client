@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$AirRoot,
   [Parameter(Mandatory=$true)][string]$AndroidSdkRoot,
-  [Parameter(Mandatory=$true)][string]$OutputDirectory
+  [Parameter(Mandatory=$true)][string]$OutputDirectory,
+  [Parameter(Mandatory=$true)][string]$RootSwfPath
 )
 
 $ErrorActionPreference='Stop'
@@ -11,6 +12,12 @@ Set-StrictMode -Version Latest
 $repo=(Resolve-Path -LiteralPath $RepoRoot).Path
 $air=(Resolve-Path -LiteralPath $AirRoot).Path
 $sdk=(Resolve-Path -LiteralPath $AndroidSdkRoot).Path
+$rootSwf=(Resolve-Path -LiteralPath $RootSwfPath).Path
+$rootSwfBytes=[IO.File]::ReadAllBytes($rootSwf)
+if($rootSwfBytes.Length -lt 4){throw "DIAGNOSTICS_ANE=FAIL root_swf_too_small=$rootSwf"}
+$rootSwfVersion=[int]$rootSwfBytes[3]
+if($rootSwfVersion -lt 10){throw "DIAGNOSTICS_ANE=FAIL root_swf_version_invalid=$rootSwfVersion"}
+Write-Host "DIAGNOSTICS_ANE_ROOT_SWF=PASS path=$rootSwf swf_version=$rootSwfVersion"
 New-Item -ItemType Directory -Force -Path $OutputDirectory|Out-Null
 $out=(Resolve-Path -LiteralPath $OutputDirectory).Path
 
@@ -50,7 +57,7 @@ $arm64=Join-Path $work 'Android-ARM64'
 New-Item -ItemType Directory -Force -Path $work,$classes,$arm,$arm64|Out-Null
 
 $swc=Join-Path $work 'ArmyAttackDiagnostics.swc'
-$compcArgs=@("-source-path+=$as3Root",'-include-classes=com.valverde.armyattack.diagnostics.DiagnosticsMarker',"-output=$swc")
+$compcArgs=@("-source-path+=$as3Root",'-include-classes=com.valverde.armyattack.diagnostics.DiagnosticsMarker',("-swf-version="+$rootSwfVersion),"-output=$swc")
 & $compc @compcArgs
 if($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $swc)){throw "DIAGNOSTICS_ANE=FAIL compc_exit=$LASTEXITCODE"}
 Write-Host "DIAGNOSTICS_ANE_SWC=PASS path=$swc"
@@ -65,12 +72,18 @@ try{
     $platformLibrary=Join-Path $platformRoot 'library.swf'
     [IO.Compression.ZipFileExtensions]::ExtractToFile($libraryEntry,$platformLibrary,$true)
     if(-not (Test-Path -LiteralPath $platformLibrary)){throw "DIAGNOSTICS_ANE=FAIL platform_library_missing=$platformLibrary"}
+    $platformLibraryBytes=[IO.File]::ReadAllBytes($platformLibrary)
+    if($platformLibraryBytes.Length -lt 4){throw "DIAGNOSTICS_ANE=FAIL platform_library_too_small=$platformLibrary"}
+    $platformLibraryVersion=[int]$platformLibraryBytes[3]
+    if($platformLibraryVersion -ne $rootSwfVersion){
+      throw "DIAGNOSTICS_ANE=FAIL library_swf_version platform=$(Split-Path -Leaf $platformRoot) expected=$rootSwfVersion actual=$platformLibraryVersion"
+    }
     $platformLibrarySha=(Get-FileHash -LiteralPath $platformLibrary -Algorithm SHA256).Hash.ToLowerInvariant()
-    Write-Host "DIAGNOSTICS_ANE_LIBRARY_STAGE=PASS platform=$(Split-Path -Leaf $platformRoot) sha256=$platformLibrarySha path=$platformLibrary"
+    Write-Host "DIAGNOSTICS_ANE_LIBRARY_STAGE=PASS platform=$(Split-Path -Leaf $platformRoot) swf_version=$platformLibraryVersion sha256=$platformLibrarySha path=$platformLibrary"
   }
 }finally{$swcZip.Dispose()}
 $swcSha=(Get-FileHash -LiteralPath $swc -Algorithm SHA256).Hash.ToLowerInvariant()
-Write-Host "DIAGNOSTICS_ANE_SWC_VALIDATE=PASS library_swF=true sha256=$swcSha"
+Write-Host "DIAGNOSTICS_ANE_SWC_VALIDATE=PASS library_swf=true swf_version=$rootSwfVersion sha256=$swcSha"
 
 $javaFiles=@(Get-ChildItem -LiteralPath $javaRoot -Recurse -File -Filter '*.java'|Select-Object -ExpandProperty FullName)
 if($javaFiles.Count -lt 3){throw "DIAGNOSTICS_ANE=FAIL java_source_count=$($javaFiles.Count)"}
@@ -156,5 +169,5 @@ try{
 
 $sha=(Get-FileHash -LiteralPath $ane -Algorithm SHA256).Hash.ToLowerInvariant()
 $size=(Get-Item -LiteralPath $ane).Length
-Write-Host "DIAGNOSTICS_ANE=PASS path=$ane size=$size sha256=$sha fre_jar=$freJar"
+Write-Host "DIAGNOSTICS_ANE=PASS path=$ane size=$size sha256=$sha fre_jar=$freJar library_swf_version=$rootSwfVersion"
 Write-Output $ane

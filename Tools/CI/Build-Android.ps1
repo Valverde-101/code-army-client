@@ -217,7 +217,7 @@ if(Test-Path -LiteralPath $extensionsDir){Remove-Item -LiteralPath $extensionsDi
 New-Item -ItemType Directory -Force -Path $extensionsDir|Out-Null
 $aneBuilder=Join-Path $RepoRoot 'Tools\CI\Build-AndroidDiagnosticsAne.ps1'
 if(-not (Test-Path -LiteralPath $aneBuilder)){throw "NATIVE_PERF_OVERLAY=FAIL ane_builder_missing=$aneBuilder"}
-$aneResult=@(& $aneBuilder -RepoRoot $RepoRoot -AirRoot $air.Root -AndroidSdkRoot $androidSdk -OutputDirectory $extensionsDir | ForEach-Object{$_.ToString()})
+$aneResult=@(& $aneBuilder -RepoRoot $RepoRoot -AirRoot $air.Root -AndroidSdkRoot $androidSdk -OutputDirectory $extensionsDir -RootSwfPath $publishedSwf | ForEach-Object{$_.ToString()})
 $diagnosticsAne=($aneResult|Where-Object{$_ -like '*.ane'}|Select-Object -Last 1)
 if(-not $diagnosticsAne -or -not (Test-Path -LiteralPath $diagnosticsAne)){throw "NATIVE_PERF_OVERLAY=FAIL ane_missing output=$($aneResult -join ';')"}
 $diagnosticsAneSha=(Get-FileHash -LiteralPath $diagnosticsAne -Algorithm SHA256).Hash.ToLowerInvariant()
