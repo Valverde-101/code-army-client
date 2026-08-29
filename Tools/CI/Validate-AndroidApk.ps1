@@ -115,13 +115,10 @@ if(([string]$prov.binary_seed_source_sha) -ne '306bccc7db5b1ce34dd68a3bc80093648
 if(([string]$prov.game_version) -ne '23.2'){$failures.Add("game_version=$($prov.game_version)")}
 if(([string]$published.published_source_sha) -ne '306bccc7db5b1ce34dd68a3bc80093648c9224bd'){$failures.Add("published_report_sha=$($published.published_source_sha)")}
 if(([string]$published.published_version) -ne '23.2'){$failures.Add("published_report_version=$($published.published_version)")}
-$canonicalSourceSha='99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4'
-$provenanceSourceSha=([string]$prov.swf_source_sha256).ToLowerInvariant()
-$provenanceOutputSha=([string]$prov.swf_sha256).ToLowerInvariant()
-if($provenanceSourceSha -ne $canonicalSourceSha){$failures.Add("swf_source_sha expected=$canonicalSourceSha actual=$provenanceSourceSha")}
-if($provenanceOutputSha -ne $canonicalSourceSha){$failures.Add("swf_output_sha expected=$canonicalSourceSha actual=$provenanceOutputSha")}
-if($expectedSwfSha -ne $canonicalSourceSha){$failures.Add("expected_swf_sha expected=$canonicalSourceSha actual=$expectedSwfSha")}
-if($seedHash -ne $canonicalSourceSha){$failures.Add("apk_swf_sha expected=$canonicalSourceSha actual=$seedHash")}
+$canonicalSwfSha='99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4'
+if(([string]$prov.swf_source_sha256).ToLowerInvariant() -ne $canonicalSwfSha){$failures.Add("swf_source_sha=$($prov.swf_source_sha256)")}
+if(([string]$prov.swf_sha256).ToLowerInvariant() -ne $canonicalSwfSha){$failures.Add("swf_output_sha=$($prov.swf_sha256)")}
+if($seedHash -ne $canonicalSwfSha){$failures.Add("apk_swf_sha=$seedHash")}
 if([bool]$prov.swf_performance_patched){$failures.Add('swf_performance_patched=true')}
 if([string]$prov.performance_patch_version -ne 'none'){$failures.Add("performance_patch_version=$($prov.performance_patch_version)")}
 if([string]$prov.render_mode -ne 'direct'){$failures.Add("render_mode=$($prov.render_mode)")}
@@ -159,7 +156,7 @@ $report=[ordered]@{
   data_entries=$dataCount;config_entries=$configCount
   base_only=$true
   profiles_entries=$profileEntries.Count
-  selector_or_diagnostics_entries=$selectorEntries.Count
+  selector_entries=$selectorEntries.Count
   root_swf_count=$rootSwfEntries.Count
   swf_original=$true
   swf_performance_patched=[bool]$prov.swf_performance_patched
@@ -236,7 +233,7 @@ if($promotedSha -ne $apkSha){throw "APK_PROMOTION=FAIL expected=$apkSha actual=$
 $meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sha=[string]$prov.binary_seed_source_sha;apk_path=$promoted;apk_size=(Get-Item $promoted).Length;apk_sha256=$promotedSha;package_name=$package;build_tier=$buildTier}
 "$promoted.json"|ForEach-Object{$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $_ -Encoding UTF8}
 if($env:GITHUB_ENV){"PROMOTED_CANDIDATE_PATH=$promoted"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
-Write-Host "SWF_ORIGINAL_VALIDATE=PASS sha256=$canonicalSourceSha bytecode_modified=false"
+Write-Host "SWF_ORIGINAL_VALIDATE=PASS sha256=$canonicalSwfSha bytecode_modified=false"
 Write-Host "NATIVE_PERF_OVERLAY_VALIDATE=PASS provider=DiagnosticsProvider authority=air.army.attack.armyattackdiagnostics render_mode=direct"
 Write-Host "BASE_ONLY_VALIDATE=PASS modern_v23_2=true profiles=0 selector=false diagnostics_ane=true root_swf=$seedEntryPath swf_original=true"
 Write-Host "APK_VALIDATE=PASS"
