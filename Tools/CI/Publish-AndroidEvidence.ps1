@@ -110,8 +110,8 @@ $androidRootEvidence=@(
   'ArmyAttack-android-app.xml',
   'BUILD-PROVENANCE.json',
   'TOOLCHAIN.json',
-  'PERFORMANCE-PATCH.json',
   'apk-badging.txt',
+  'apk-manifest.txt',
   'apk-permissions.txt',
   'apk-signature.txt',
   'apk-info.json',
@@ -161,7 +161,10 @@ foreach($entry in @($published.ToArray())){
 }
 $maxPublishedFiles=250
 if($published.Count -gt $maxPublishedFiles){throw "LOG_PUBLISH=FAIL evidence_file_count count=$($published.Count) max=$maxPublishedFiles"}
-$totalEvidenceBytes=[int64](($published|Measure-Object -Property bytes -Sum).Sum)
+$totalEvidenceBytes=[int64]0
+foreach($entry in @($published.ToArray())){
+  $totalEvidenceBytes += [int64]$entry.bytes
+}
 $maxEvidenceBytes=25MB
 if($totalEvidenceBytes -gt $maxEvidenceBytes){throw "LOG_PUBLISH=FAIL evidence_bytes bytes=$totalEvidenceBytes max=$maxEvidenceBytes"}
 Write-Host "EVIDENCE_SCOPE=PASS files=$($published.Count) bytes=$totalEvidenceBytes max_files=$maxPublishedFiles max_bytes=$maxEvidenceBytes"

@@ -14,6 +14,9 @@ import java.io.FileNotFoundException;
 public final class DiagnosticsProvider extends ContentProvider {
     @Override
     public boolean onCreate() {
+        if (getContext() != null) {
+            PerformanceOverlay.bootstrap(getContext());
+        }
         return true;
     }
 

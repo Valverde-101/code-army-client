@@ -29,7 +29,7 @@ foreach($line in $lines){
 }
 if($bad.Count -gt 0){throw "ADB_DEVICE=FAIL bad_state=$($bad -join ';')"}
 if($devices.Count -eq 0){
-  foreach($gate in @('ADB_DEVICE','INSTALL','START','HEALTH','SMOKE','CRASH_CHECK','ANR_CHECK','PHYSICAL_EVIDENCE')){
+  foreach($gate in @('ADB_DEVICE','INSTALL','START','HEALTH','SMOKE','CRASH_CHECK','ANR_CHECK','PERF_OVERLAY','PHYSICAL_EVIDENCE')){
     Write-Host "$gate=SKIPPED_WITH_REASON no_authorized_device"
   }
   exit 0
@@ -85,6 +85,19 @@ try{
   $activity | Set-Content (Join-Path $evidence 'activity.txt') -Encoding UTF8
   $logcat=(& $adb -s $serial logcat -d -v threadtime | Out-String)
   $logcat | Set-Content (Join-Path $evidence 'logcat.txt') -Encoding UTF8
+
+  $uiRemote='/sdcard/armyattack-window-dump.xml'
+  $uiDumpOut=(& $adb -s $serial shell uiautomator dump $uiRemote 2>&1 | Out-String)
+  $uiDumpExit=$LASTEXITCODE
+  if($uiDumpExit -eq 0){
+    $uiXml=(& $adb -s $serial shell cat $uiRemote | Out-String)
+    $uiXml | Set-Content (Join-Path $evidence 'window_dump.xml') -Encoding UTF8
+    & $adb -s $serial shell rm -f $uiRemote | Out-Null
+    if($uiXml -notmatch 'content-desc="army_perf_toggle"'){throw 'PERF_OVERLAY=FAIL toggle_not_found'}
+    Write-Host 'PERF_OVERLAY=PASS accessibility_id=army_perf_toggle'
+  }else{
+    Write-Host "PERF_OVERLAY=SKIPPED_WITH_REASON ui_dump_unavailable exit=$uiDumpExit output=$uiDumpOut"
+  }
 
   if($window -notmatch $packageRegex -and $activity -notmatch $packageRegex){throw 'HEALTH=FAIL app_not_foreground_or_visible'}
   Write-Host 'HEALTH=PASS criterion=pid_and_window_or_activity_present_after_45s'

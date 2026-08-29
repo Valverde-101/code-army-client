@@ -73,7 +73,7 @@ $swcSha=(Get-FileHash -LiteralPath $swc -Algorithm SHA256).Hash.ToLowerInvariant
 Write-Host "DIAGNOSTICS_ANE_SWC_VALIDATE=PASS library_swF=true sha256=$swcSha"
 
 $javaFiles=@(Get-ChildItem -LiteralPath $javaRoot -Recurse -File -Filter '*.java'|Select-Object -ExpandProperty FullName)
-if($javaFiles.Count -lt 2){throw "DIAGNOSTICS_ANE=FAIL java_source_count=$($javaFiles.Count)"}
+if($javaFiles.Count -lt 3){throw "DIAGNOSTICS_ANE=FAIL java_source_count=$($javaFiles.Count)"}
 $classPath=$freJar+';'+$androidJar
 & $javac '-source' '8' '-target' '8' '-encoding' 'UTF-8' '-classpath' $classPath '-d' $classes @javaFiles
 if($LASTEXITCODE -ne 0){throw "DIAGNOSTICS_ANE=FAIL javac_exit=$LASTEXITCODE"}
@@ -86,12 +86,13 @@ $jarEntries=@(& $jarTool 'tf' $nativeJar 2>&1|ForEach-Object{$_.ToString()})
 if($LASTEXITCODE -ne 0){throw "DIAGNOSTICS_ANE=FAIL jar_list_exit=$LASTEXITCODE"}
 foreach($requiredClass in @(
   'com/valverde/armyattack/diagnostics/DiagnosticsExtension.class',
-  'com/valverde/armyattack/diagnostics/DiagnosticsProvider.class'
+  'com/valverde/armyattack/diagnostics/DiagnosticsProvider.class',
+  'com/valverde/armyattack/diagnostics/PerformanceOverlay.class'
 )){
   if(-not ($jarEntries -contains $requiredClass)){throw "DIAGNOSTICS_ANE=FAIL native_class_missing=$requiredClass"}
 }
 $nativeJarSha=(Get-FileHash -LiteralPath $nativeJar -Algorithm SHA256).Hash.ToLowerInvariant()
-Write-Host "DIAGNOSTICS_ANE_CLASSES=PASS extension=true provider=true jar_sha256=$nativeJarSha"
+Write-Host "DIAGNOSTICS_ANE_CLASSES=PASS extension=true provider=true performance_overlay=true jar_sha256=$nativeJarSha"
 Copy-Item -LiteralPath $nativeJar -Destination (Join-Path $arm 'armyattack-diagnostics.jar') -Force
 Copy-Item -LiteralPath $nativeJar -Destination (Join-Path $arm64 'armyattack-diagnostics.jar') -Force
 $extensionXml=Join-Path $work 'extension.xml'

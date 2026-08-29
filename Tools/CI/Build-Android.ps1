@@ -201,23 +201,225 @@ if($fallbackSwfSha -ne $fallbackExpectedSwfSha){throw "BINARY_SEED_FALLBACK=FAIL
 Write-Host "BINARY_SEED_FALLBACK=PASS release=v23 sha256=$fallbackSwfSha"
 
 $appContentSwf='iArmyAirOfflineSavingv23.swf'
+$canonicalSwfSha='99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4'
 $sourceSwfSha=$publishedSwfSha
 $sourceSwfSize=$publishedSwfInfo.Length
-$performanceRoot=Join-Path $buildRoot 'performance'
-$performanceSwf=Join-Path $performanceRoot $appContentSwf
-$performanceReport=Join-Path $buildRoot 'PERFORMANCE-PATCH.json'
-$performanceScript=Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1'
-if(-not (Test-Path -LiteralPath $performanceScript)){throw "PERF_PATCH=FAIL script_missing=$performanceScript"}
-New-Item -ItemType Directory -Force -Path $performanceRoot|Out-Null
-& $performanceScript -RepoRoot $RepoRoot -SourceSwf $publishedSwf -OutputSwf $performanceSwf -ReportPath $performanceReport
-if(-not (Test-Path -LiteralPath $performanceSwf)){throw "PERF_PATCH=FAIL output_missing=$performanceSwf"}
-if(-not (Test-Path -LiteralPath $performanceReport)){throw "PERF_PATCH=FAIL report_missing=$performanceReport"}
-$swfSha=(Get-FileHash -LiteralPath $performanceSwf -Algorithm SHA256).Hash.ToLowerInvariant()
-$swfSize=(Get-Item -LiteralPath $performanceSwf).Length
-if($swfSha -eq $sourceSwfSha){throw "PERF_PATCH=FAIL patched_hash_matches_source sha256=$swfSha"}
-Copy-Item -LiteralPath $performanceSwf -Destination (Join-Path $stage $appContentSwf) -Force
-Write-Host "BINARY_SEED=PASS source=published_v23_2 repository=Valverde-101/Test_army_attack source_sha=$publishedActualSha source_swf_sha256=$sourceSwfSha patched_swf_sha256=$swfSha size=$swfSize"
-Write-Host "ANDROID_PERFORMANCE_PATCH=PASS version=android-perf-v1 report=$performanceReport"
+if($sourceSwfSha -ne $canonicalSwfSha){throw "SWF_ORIGINAL=FAIL expected=$canonicalSwfSha actual=$sourceSwfSha"}
+$swfSha=$sourceSwfSha
+$swfSize=$sourceSwfSize
+Copy-Item -LiteralPath $publishedSwf -Destination (Join-Path $stage $appContentSwf) -Force
+$stagedSwf=Join-Path $stage $appContentSwf
+$stagedSwfSha=(Get-FileHash -LiteralPath $stagedSwf -Algorithm SHA256).Hash.ToLowerInvariant()
+if($stagedSwfSha -ne $canonicalSwfSha){throw "SWF_ORIGINAL=FAIL staged_sha expected=$canonicalSwfSha actual=$stagedSwfSha"}
+Write-Host "SWF_ORIGINAL=PASS sha256=$canonicalSwfSha size=$swfSize bytecode_modified=false"
+Write-Host "BINARY_SEED=PASS source=published_v23_2 repository=Valverde-101/Test_army_attack source_sha=$publishedActualSha swf_sha256=$swfSha size=$swfSize"
+
+$extensionsDir=Join-Path $buildRoot 'extensions'
+if(Test-Path -LiteralPath $extensionsDir){Remove-Item -LiteralPath $extensionsDir -Recurse -Force}
+New-Item -ItemType Directory -Force -Path $extensionsDir|Out-Null
+$aneBuilder=Join-Path $RepoRoot 'Tools\CI\Build-AndroidDiagnosticsAne.ps1'
+if(-not (Test-Path -LiteralPath $aneBuilder)){throw "NATIVE_PERF_OVERLAY=FAIL ane_builder_missing=$aneBuilder"}
+$aneOutput=@(& $aneBuilder -RepoRoot $RepoRoot -AirRoot $air.Root -AndroidSdkRoot $androidSdk -OutputDirectory $extensionsDir | ForEach-Object{$_.ToString()})
+$diagnosticsAne=$aneOutput|Where-Object{$_ -match '\.ane
+
+foreach($name in @('data','config')){
+  $base=Join-Path $sourceRoot $name
+  $dest=Join-Path $stage $name
+  Copy-Item -LiteralPath $base -Destination $dest -Recurse -Force
+
+  $publishedBase=Join-Path $publishedGameRoot $name
+  if(-not (Test-Path -LiteralPath $publishedBase)){throw "PUBLISHED_CONTENT=FAIL missing_component=$name"}
+  foreach($child in @(Get-ChildItem -LiteralPath $publishedBase -Force)){
+    Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force
+  }
+  Write-Host "ANDROID_CONTENT_OVERLAY=PASS source=published_v23_2 component=$name"
+
+  $owned=Join-Path (Join-Path $RepoRoot 'src') $name
+  foreach($child in @(Get-ChildItem -LiteralPath $owned -Force)){
+    Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force
+  }
+  Write-Host "ANDROID_CONTENT_OVERLAY=PASS source=principal_repo component=$name"
+}
+Copy-Item -LiteralPath (Join-Path $RepoRoot 'src\AppIconsForPublish') -Destination (Join-Path $stage 'AppIconsForPublish') -Recurse -Force
+$objectiveIcons=Join-Path $stage 'data\icons\mission_icons\objective_icons'
+$invalidSeedAssets=@(Get-ChildItem -LiteralPath $objectiveIcons -File -Filter '*obrazovky (397).png' -ErrorAction SilentlyContinue)
+if($invalidSeedAssets.Count -gt 1){throw "ANDROID_STAGE_SANITIZE=FAIL ambiguous_invalid_asset count=$($invalidSeedAssets.Count)"}
+if($invalidSeedAssets.Count -eq 1){
+  $asset=$invalidSeedAssets[0]
+  $needle=$asset.Name
+  $refs=Get-ChildItem -LiteralPath $stage -Recurse -File -Include '*.json','*.xml','*.csv','*.txt','*.as' -ErrorAction SilentlyContinue | Select-String -SimpleMatch $needle -List -ErrorAction SilentlyContinue
+  if($refs){throw "ANDROID_STAGE_SANITIZE=FAIL referenced_invalid_asset name=$needle refs=$($refs.Path -join ',')"}
+  Write-Host "ANDROID_STAGE_SANITIZE=PASS removed_unreferenced_invalid_asset path=$($asset.FullName) size=$($asset.Length)"
+  Remove-Item -LiteralPath $asset.FullName -Force
+}
+$namespace=$airNamespace
+$descriptor=Join-Path $buildRoot 'ArmyAttack-android-app.xml'
+$xml=@"
+<?xml version="1.0" encoding="utf-8"?>
+<application xmlns="http://ns.adobe.com/air/application/$namespace">
+  <id>army.attack</id>
+  <versionNumber>23.2.0</versionNumber>
+  <versionLabel>23.2-android-$($ExpectedSha.Substring(0,8))</versionLabel>
+  <filename>ArmyAttack</filename>
+  <name>Army Attack</name>
+  <initialWindow>
+    <content>$appContentSwf</content>
+    <visible>true</visible>
+    <fullScreen>true</fullScreen>
+    <aspectRatio>landscape</aspectRatio>
+    <renderMode>direct</renderMode>
+    <autoOrients>false</autoOrients>
+  </initialWindow>
+  <extensions>
+    <extensionID>com.valverde.armyattack.diagnostics</extensionID>
+  </extensions>
+  <icon>
+    <image36x36>AppIconsForPublish/icon36.png</image36x36>
+    <image48x48>AppIconsForPublish/icon48.png</image48x48>
+    <image72x72>AppIconsForPublish/icon72.png</image72x72>
+    <image96x96>AppIconsForPublish/icon96.png</image96x96>
+    <image144x144>AppIconsForPublish/icon144.png</image144x144>
+    <image192x192>AppIconsForPublish/icon192.png</image192x192>
+  </icon>
+  <android>
+    <manifestAdditions><![CDATA[
+      <manifest>
+        <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="$targetApi"/>
+        <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
+        <application android:hardwareAccelerated="true" android:usesCleartextTraffic="false">
+          <provider android:name="com.valverde.armyattack.diagnostics.DiagnosticsProvider" android:authorities="air.army.attack.armyattackdiagnostics" android:exported="false" android:grantUriPermissions="true"/>
+          <meta-data android:name="armyattack.tested_sha" android:value="$ExpectedSha"/>
+          <meta-data android:name="armyattack.render_mode" android:value="direct"/>
+          <meta-data android:name="armyattack.perf_overlay" android:value="true"/>
+        </application>
+      </manifest>
+    ]]></manifestAdditions>
+  </android>
+</application>
+"@
+$xml|Set-Content -LiteralPath $descriptor -Encoding UTF8
+Write-Host "ANDROID_DESCRIPTOR=PASS namespace=$namespace permissions=none discord_ane=excluded render_mode=direct native_perf_overlay=true"
+$cert=Join-Path $buildRoot 'android-ci-signing.p12'
+$certPass='ArmyAttackLocalCI'
+if(Test-Path $cert){Remove-Item $cert -Force}
+$tier=if($air.Major -eq 50){'HARMAN_AIR50_ARM64'}elseif($air.Major -ge 51){'MODERN_ARM64'}else{'LEGACY_AIR32_TEST'}
+$apkName=if($harmanAndroid){'ArmyAttack-android-arm64.apk'}else{'ArmyAttack-android-legacy.apk'}
+$apkPath=Join-Path $buildRoot $apkName
+$stdout=Join-Path $buildRoot 'adt-android.out.log';$stderr=Join-Path $buildRoot 'adt-android.err.log'
+try{
+  $certArgs=@('-certificate','-cn','ArmyAttackAndroidCI','-ou','Dev','-o','ValverdeLocalBuild','-c','PE','2048-RSA',$cert,$certPass)
+  $p=Start-Process -FilePath $air.Adt -ArgumentList $certArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait
+  if($p.ExitCode -ne 0 -or -not (Test-Path $cert)){throw "ANDROID_CERT=FAIL exit=$($p.ExitCode)"}
+  Write-Host "ANDROID_CERT=PASS"
+  if(Test-Path $apkPath){Remove-Item $apkPath -Force}
+  $packageArgs=@('-package','-target','apk-captive-runtime')
+  if($harmanAndroid){$packageArgs+=@('-arch','armv8')}
+  $packageArgs+=@('-storetype','pkcs12','-keystore',$cert,'-storepass',$certPass,$apkPath,$descriptor,'-extdir',$extensionsDir,'-C',$stage,'.')
+  if($harmanAndroid){$packageArgs+=@('-platformsdk',$packageAndroidSdk)}
+  $p2=Start-Process -FilePath $air.Adt -ArgumentList $packageArgs -WorkingDirectory $buildRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  if($p2.ExitCode -ne 0 -or -not (Test-Path $apkPath)){
+    Write-Host "ANDROID_PACKAGE=FAIL exit=$($p2.ExitCode) tier=$tier stdout=$stdout stderr=$stderr"
+    if(Test-Path $stdout){Get-Content $stdout|Select-Object -Last 80|ForEach-Object{Write-Host $_}}
+    if(Test-Path $stderr){Get-Content $stderr|Select-Object -Last 80|ForEach-Object{Write-Host $_}}
+    throw 'BUILD=FAIL android_package'
+  }
+}finally{
+  Remove-Item -LiteralPath $cert -Force -ErrorAction SilentlyContinue
+  Write-Host "ANDROID_CERT_CLEANUP=PASS"
+}
+$apk=Get-Item $apkPath;$apkSha=(Get-FileHash $apkPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$prov=[ordered]@{
+  repository='Valverde-101/code-army-client'
+  tested_sha=$ExpectedSha
+  build_tier=$tier
+  air_sdk=$air.Version
+  air_sdk_root=$air.Root
+  air_namespace=$namespace
+  java_home=$env:JAVA_HOME
+  java_major=$javaMajor
+  android_sdk=$androidSdk
+  packaging_android_sdk=$packageAndroidSdk
+  target_android_api=$targetApi
+  target_abi=$targetAbi
+  game_version='23.2'
+  binary_seed='published_v23_2'
+  binary_seed_source_repository='Valverde-101/Test_army_attack'
+  binary_seed_source_sha=$publishedActualSha
+  binary_seed_source_path='armyattack/assets/iArmyAirOfflineSavingv23.swf'
+  app_content_swf=$appContentSwf
+  swf_source_size=$sourceSwfSize
+  swf_source_sha256=$sourceSwfSha
+  swf_size=$swfSize
+  swf_sha256=$swfSha
+  swf_performance_patched=$false
+  performance_patch_version='none'
+  render_mode='direct'
+  native_performance_overlay=$true
+  native_performance_overlay_mode='test'
+  native_performance_overlay_metrics=@('process_cpu','pss','java_heap','native_heap','gc_count','gc_time','thermal','vsync_jank')
+  diagnostics_ane_packaged=$true
+  diagnostics_ane_path=$diagnosticsAne
+  diagnostics_ane_sha256=$diagnosticsAneSha
+  fallback_binary_seed_release='v23'
+  fallback_binary_seed_source_sha='324c29b6c9e0e32f61183bf52725662a2bd8aab9'
+  fallback_swf_sha256=$fallbackSwfSha
+  overlays=@(
+    'verified-v23-release:data,config',
+    'vendor/Test_army_attack@306bccc7:armyattack/data,armyattack/config',
+    'src/data,src/config'
+  )
+  content_mode='base-only-modern-v23.2'
+  mods_source_path='vendor/Test_army_attack/mods'
+  mods_packaged_by_default=$false
+  selector_packaged=$false
+  diagnostics_ane_packaged=$true
+  descriptor=$descriptor
+  removed_permissions=@('WRITE_EXTERNAL_STORAGE','MANAGE_EXTERNAL_STORAGE')
+  excluded_extensions=@('fi.joniaromaa.adobeair.discordrpc')
+  apk_path=$apkPath
+  apk_size=$apk.Length
+  apk_sha256=$apkSha
+}
+$provPath=Join-Path $buildRoot 'BUILD-PROVENANCE.json'
+$prov|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $provPath -Encoding UTF8
+$toolchain=[ordered]@{
+  tested_sha=$ExpectedSha
+  java_home=$env:JAVA_HOME
+  java_major=$javaMajor
+  air_sdk=$air.Version
+  air_sdk_root=$air.Root
+  air_namespace=$namespace
+  android_sdk=$androidSdk
+  packaging_android_sdk=$packageAndroidSdk
+  android_api=$targetApi
+  android_build_tools=$targetBuildTools
+  target_abi=$targetAbi
+}
+$toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
+$toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
+Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=true swf_original=true native_perf_overlay=true render_mode=direct"
+Write-Host "BUILD=PASS platform=android tier=$tier"
+Write-Host "APK_GENERATED=PASS"
+Write-Host "APK_PATH=$apkPath"
+Write-Host "APK_SIZE=$($apk.Length)"
+Write-Host "APK_SHA256=$apkSha"
+Write-Host "SWF_SOURCE_SHA256=$sourceSwfSha"
+Write-Host "SWF_SHA256=$swfSha"
+Write-Host "SWF_SIZE=$swfSize"
+Write-Host "PERFORMANCE_PATCH_VERSION=none"
+Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,INICIAR,MARCAR_LAG,DETENER,ZIP render_mode=direct ane_sha256=$diagnosticsAneSha"
+Write-Host "PUBLISHED_SOURCE_SHA=$publishedActualSha"
+Write-Host "GAME_VERSION=$publishedVersion"
+Write-Host "AIR_VERSION=$($air.Version)"
+$playReady=if($harmanAndroid){'CANDIDATE'}else{'NO_LEGACY_TOOLCHAIN'}
+Write-Host "PLAY_READY=$playReady"
+Write-Host "PROVENANCE_MANIFEST=$provPath"
+Write-Host "TOOLCHAIN_MANIFEST=$toolchainPath"
+}|Select-Object -Last 1
+if(-not $diagnosticsAne -or -not (Test-Path -LiteralPath $diagnosticsAne)){throw "NATIVE_PERF_OVERLAY=FAIL ane_missing output=$($aneOutput -join ';')"}
+$diagnosticsAneSha=(Get-FileHash -LiteralPath $diagnosticsAne -Algorithm SHA256).Hash.ToLowerInvariant()
+$diagnosticsAneSize=(Get-Item -LiteralPath $diagnosticsAne).Length
+Write-Host "NATIVE_PERF_OVERLAY_ANE=PASS path=$diagnosticsAne sha256=$diagnosticsAneSha size=$diagnosticsAneSize"
 
 foreach($name in @('data','config')){
   $base=Join-Path $sourceRoot $name
