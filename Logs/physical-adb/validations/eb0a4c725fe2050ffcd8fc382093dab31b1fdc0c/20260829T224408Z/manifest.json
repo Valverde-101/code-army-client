@@ -1,0 +1,164 @@
+﻿{
+    "schema_version":  1,
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "eb0a4c725fe2050ffcd8fc382093dab31b1fdc0c",
+    "source_branch":  "chore/local-army-bootstrap-20260827",
+    "remote_source_sha":  "eb0a4c725fe2050ffcd8fc382093dab31b1fdc0c",
+    "stale_test_result":  false,
+    "run_id":  "33279128448",
+    "runner_name":  "PC-WILLTHOM-AUTO-REPO-2",
+    "local_build_root":  "V:\\AndroidBuild\\Builds\\code-army-client\\eb0a4c725fe2050ffcd8fc382093dab31b1fdc0c",
+    "apk_uploaded":  false,
+    "github_artifacts_used":  false,
+    "evidence_branch":  "chore/local-army-bootstrap-20260827",
+    "published_files":  [
+                            {
+                                "path":  "android/adt-android.out.log",
+                                "bytes":  92,
+                                "sha256":  "6a4b08582fa06bc21615cccc1557cdfd68a3d8acbfe71f56638ee0c5211bee9b"
+                            },
+                            {
+                                "path":  "android/adt-android.err.log",
+                                "bytes":  5,
+                                "sha256":  "f01a374e9c81e3db89b3a42940c4d6a5447684986a1296e42bf13f196eed6295"
+                            },
+                            {
+                                "path":  "android/ArmyAttack-android-app.xml",
+                                "bytes":  1973,
+                                "sha256":  "7d750e8256561cb204525ec65ae17ce8b9a013140508c938d7c36ec08c98edd2"
+                            },
+                            {
+                                "path":  "android/BUILD-PROVENANCE.json",
+                                "bytes":  4272,
+                                "sha256":  "6b15c28d0f4cfc91b49cf49254e44c9c5d1ab527a0fc0236a48e3aefd3ea9be1"
+                            },
+                            {
+                                "path":  "android/TOOLCHAIN.json",
+                                "bytes":  618,
+                                "sha256":  "a454f075b1ab67d648844eead2146bc954b8d7de7093fa41307563d6bfcae383"
+                            },
+                            {
+                                "path":  "android/apk-badging.txt",
+                                "bytes":  2097,
+                                "sha256":  "71b31f5a080a5216adf033e2d5ba90f1c914e91bfa297d561f6f0ba3630326f7"
+                            },
+                            {
+                                "path":  "android/apk-manifest.txt",
+                                "bytes":  6509,
+                                "sha256":  "07adac3819861885835e693658ce5b94e16e019270fe3d022b43f38c1f58afc8"
+                            },
+                            {
+                                "path":  "android/apk-permissions.txt",
+                                "bytes":  31,
+                                "sha256":  "46782805bf17d2665156d45499afef81a59dbdc7feaa2aa612667fcb4ca92b30"
+                            },
+                            {
+                                "path":  "android/apk-signature.txt",
+                                "bytes":  1211,
+                                "sha256":  "f7745732bc907444a4b42c0d2b9f65380653040ce61a8ef4d59929dcbf5efa47"
+                            },
+                            {
+                                "path":  "android/apk-info.json",
+                                "bytes":  1861,
+                                "sha256":  "5eb247ab34ccb8a4649c39a6dc4d947eb53eb4220f77fc1e6d755fd9ca367c40"
+                            },
+                            {
+                                "path":  "android/summary.json",
+                                "bytes":  424,
+                                "sha256":  "5dfcf48d389f1021e8f61eeb625fc3f05b81f51ed30a162bc295d55bf2eb3db3"
+                            },
+                            {
+                                "path":  "android/REPORT.md",
+                                "bytes":  899,
+                                "sha256":  "76aa9801399a1f3ef5d7c5275da55a4f87b8400ff9d4a76f5e2bdf1fef8dc0a2"
+                            },
+                            {
+                                "path":  "android/diagnostics/adt-android.err.log",
+                                "bytes":  5,
+                                "sha256":  "f01a374e9c81e3db89b3a42940c4d6a5447684986a1296e42bf13f196eed6295"
+                            },
+                            {
+                                "path":  "android/diagnostics/adt-android.out.log",
+                                "bytes":  92,
+                                "sha256":  "6a4b08582fa06bc21615cccc1557cdfd68a3d8acbfe71f56638ee0c5211bee9b"
+                            },
+                            {
+                                "path":  "android/diagnostics/apk-badging.txt",
+                                "bytes":  2097,
+                                "sha256":  "71b31f5a080a5216adf033e2d5ba90f1c914e91bfa297d561f6f0ba3630326f7"
+                            },
+                            {
+                                "path":  "android/diagnostics/apk-info.json",
+                                "bytes":  1861,
+                                "sha256":  "5eb247ab34ccb8a4649c39a6dc4d947eb53eb4220f77fc1e6d755fd9ca367c40"
+                            },
+                            {
+                                "path":  "android/diagnostics/apk-manifest.txt",
+                                "bytes":  6509,
+                                "sha256":  "07adac3819861885835e693658ce5b94e16e019270fe3d022b43f38c1f58afc8"
+                            },
+                            {
+                                "path":  "android/diagnostics/apk-permissions.txt",
+                                "bytes":  31,
+                                "sha256":  "46782805bf17d2665156d45499afef81a59dbdc7feaa2aa612667fcb4ca92b30"
+                            },
+                            {
+                                "path":  "android/diagnostics/apk-signature.txt",
+                                "bytes":  1211,
+                                "sha256":  "f7745732bc907444a4b42c0d2b9f65380653040ce61a8ef4d59929dcbf5efa47"
+                            },
+                            {
+                                "path":  "android/diagnostics/ArmyAttack-android-app.xml",
+                                "bytes":  1973,
+                                "sha256":  "7d750e8256561cb204525ec65ae17ce8b9a013140508c938d7c36ec08c98edd2"
+                            },
+                            {
+                                "path":  "android/diagnostics/BUILD-PROVENANCE.json",
+                                "bytes":  4272,
+                                "sha256":  "6b15c28d0f4cfc91b49cf49254e44c9c5d1ab527a0fc0236a48e3aefd3ea9be1"
+                            },
+                            {
+                                "path":  "android/diagnostics/ci-diagnostics.txt",
+                                "bytes":  339,
+                                "sha256":  "e386ded30dccb13f4d1dec10897ca86a9cc486ba2c0b0606503d77b2ed48e4bd"
+                            },
+                            {
+                                "path":  "android/diagnostics/manual-physical-validation.json",
+                                "bytes":  1091,
+                                "sha256":  "9614e11d3208eaf97c4d45e89b8f8e0187d9ba7f461faa9bcd08f6534bc3491e"
+                            },
+                            {
+                                "path":  "android/diagnostics/REPORT.md",
+                                "bytes":  899,
+                                "sha256":  "76aa9801399a1f3ef5d7c5275da55a4f87b8400ff9d4a76f5e2bdf1fef8dc0a2"
+                            },
+                            {
+                                "path":  "android/diagnostics/summary.json",
+                                "bytes":  424,
+                                "sha256":  "5dfcf48d389f1021e8f61eeb625fc3f05b81f51ed30a162bc295d55bf2eb3db3"
+                            },
+                            {
+                                "path":  "android/diagnostics/SWF-PERFORMANCE-PATCH.json",
+                                "bytes":  2706,
+                                "sha256":  "1050404a0548762a469fd535ea5275602d95d89811622df27087b7f60562d8eb"
+                            },
+                            {
+                                "path":  "android/diagnostics/TOOLCHAIN.json",
+                                "bytes":  618,
+                                "sha256":  "a454f075b1ab67d648844eead2146bc954b8d7de7093fa41307563d6bfcae383"
+                            },
+                            {
+                                "path":  "reference-v21.1/aapt-badging.txt",
+                                "bytes":  1190,
+                                "sha256":  "1f5870d3e902980d951feb340c58deb8767b8066b7852e3c8be9c37ef4d59613"
+                            },
+                            {
+                                "path":  "reference-v21.1/reference.json",
+                                "bytes":  1016,
+                                "sha256":  "6d4c16800b058abe0e40f3d6a7e2866ab12ad8631e7d5e030dddc50b7dc20f4c"
+                            }
+                        ],
+    "skipped_files":  [
+
+                      ]
+}
