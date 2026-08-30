@@ -4,8 +4,10 @@
 	import flash.events.MouseEvent;
 	import game.gui.StylizedHeaderClip;
 	import game.gui.TooltipMap;
+	import game.environment.EnvEffectManager;
 	import game.gui.button.ArmyButton;
 	import game.missions.MissionManager;
+	import game.sound.ArmySoundManager;
 	import game.states.GameState;
 	import game.utils.OfflineSave;
 
@@ -210,13 +212,37 @@
 			}
 		}
 
+		private function switchOfflineArea(param1: String): void {
+			var game: GameState = GameState.mInstance;
+			var savedMap: * = null;
+			if (!game || !param1 || param1.length == 0 || param1 == game.mCurrentMapId) {
+				return;
+			}
+			OfflineSave.saveOldMap();
+			game.mLoadingStatesOver = false;
+			game.mCurrentMapId = param1;
+			game.mCurrentMapGraphicsId = Math.max(GameState.GRAPHICS_MAP_ID_LIST.indexOf(param1), 0);
+			savedMap = OfflineSave.mMaps[param1];
+			if (savedMap && savedMap["map_data"]) {
+				savedMap["map_name"] = param1;
+				savedMap["map_data"]["map_id"] = param1;
+			}
+			EnvEffectManager.destroy();
+			OfflineSave.switchMap();
+			game.mCurrentMusic = game.getMapMusic();
+			ArmySoundManager.loadMusic(game.mCurrentMusic);
+			game.startMusic();
+			EnvEffectManager.init();
+			game.mLoadingStatesOver = true;
+		}
+
 		private function goToArea(param1: String): void {
 			if (!param1 || param1.length == 0) {
 				return;
 			}
 			mDoneCallback((this as Object).constructor);
 			if (Config.OFFLINE_MODE) {
-				OfflineSave.switchToMap(param1);
+				this.switchOfflineArea(param1);
 			} else {
 				GameState.mInstance.executeSwitchMap(param1, null);
 			}

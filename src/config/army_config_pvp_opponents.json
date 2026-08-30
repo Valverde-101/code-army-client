@@ -1,100 +1,12 @@
 {
   "pvp_opponents": [
-    {
-      "facebook_id": "offline-001",
-      "player_name": "Scary Chris",
-      "score": 0,
-      "level": 1,
-      "wins": 0,
-      "avatar": "scary_chris.png"
-    },
-    {
-      "facebook_id": "offline-002",
-      "player_name": "Rookie Ramos",
-      "score": 525,
-      "level": 5,
-      "wins": 2,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-003",
-      "player_name": "Iron Vega",
-      "score": 2250,
-      "level": 10,
-      "wins": 7,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-004",
-      "player_name": "Desert Fox",
-      "score": 5670,
-      "level": 15,
-      "wins": 13,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-005",
-      "player_name": "Steel Torres",
-      "score": 10530,
-      "level": 20,
-      "wins": 21,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-006",
-      "player_name": "Red Hammer",
-      "score": 26805,
-      "level": 30,
-      "wins": 39,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-007",
-      "player_name": "Black Falcon",
-      "score": 72965,
-      "level": 45,
-      "wins": 68,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-008",
-      "player_name": "Hunter Zero",
-      "score": 140825,
-      "level": 60,
-      "wins": 104,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-009",
-      "player_name": "Butcher Nine",
-      "score": 233450,
-      "level": 75,
-      "wins": 151,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-010",
-      "player_name": "Warlord X",
-      "score": 351900,
-      "level": 90,
-      "wins": 213,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-011",
-      "player_name": "Destroyer",
-      "score": 499420,
-      "level": 105,
-      "wins": 287,
-      "avatar": "default_avatar.png"
-    },
-    {
-      "facebook_id": "offline-012",
-      "player_name": "Annihilator",
-      "score": 676755,
-      "level": 120,
-      "wins": 374,
-      "avatar": "default_avatar.png"
-    }
+    { "facebook_id": "offline-001", "player_name": "Scary Chris", "score": 0, "level": 1, "wins": 0, "avatar": "scary_chris.png" },
+    { "facebook_id": "offline-002", "player_name": "Rookie Ramos", "score": 75, "level": 2, "wins": 1, "avatar": "default_avatar.png" },
+    { "facebook_id": "offline-003", "player_name": "Iron Vega", "score": 300, "level": 4, "wins": 3, "avatar": "default_avatar.png" },
+    { "facebook_id": "offline-004", "player_name": "Desert Fox", "score": 750, "level": 6, "wins": 6, "avatar": "default_avatar.png" },
+    { "facebook_id": "offline-005", "player_name": "Steel Torres", "score": 1425, "level": 8, "wins": 10, "avatar": "default_avatar.png" },
+    { "facebook_id": "offline-006", "player_name": "Red Hammer", "score": 2250, "level": 10, "wins": 15, "avatar": "default_avatar.png" },
+    { "facebook_id": "offline-007", "player_name": "Black Falcon", "score": 3420, "level": 12, "wins": 22, "avatar": "default_avatar.png" },
+    { "facebook_id": "offline-008", "player_name": "Warlord X", "score": 5670, "level": 15, "wins": 30, "avatar": "default_avatar.png" }
   ]
 }

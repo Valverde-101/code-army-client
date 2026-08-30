@@ -135,6 +135,29 @@
          this.mScrollSlider.addEventListener(MouseEvent.MOUSE_MOVE,this.mouseMove,false,0,true);
       }
       
+      private function getOfflineOpponents() : Array
+      {
+         var result:Array = new Array();
+         var seen:Object = new Object();
+         var rows:Array = GameState.mPvPOpponentsConfig["pvp_opponents"] as Array;
+         var row:Object = null;
+         var id:String = null;
+         if(!rows)
+         {
+            return result;
+         }
+         for each(row in rows)
+         {
+            id = String(row.facebook_id);
+            if(id.length > 0 && !seen[id])
+            {
+               seen[id] = true;
+               result.push(new PvPOpponent(id,int(row.score),int(row.level),int(row.wins),String(row.player_name),String(row.avatar)));
+            }
+         }
+         return result;
+      }
+      
       public function Activate(param1:Function, param2:Function) : void
       {
          var _loc5_:TextField = null;
@@ -152,12 +175,15 @@
             _loc6_++;
          }
          this.mAllTabs = new Array();
-         //this.mAllTabs.push(FriendsCollection.smFriends.getPlayingFriendsExcludingTutor());
-         this.mAllTabs.push(PvPOpponentCollection.smCollection.mOpponents);
-         this.mAllTabs.push(PvPOpponentCollection.smCollection.mRecentAttacks);
-         //(this.mAllTabs[TAB_ALLIES] as Array).sort(this.sortOpponents);
+         if(Config.OFFLINE_MODE)
+         {
+            this.mAllTabs.push(this.getOfflineOpponents());
+         }
+         else
+         {
+            this.mAllTabs.push(PvPOpponentCollection.smCollection.mOpponents);
+         }
          (this.mAllTabs[TAB_PLAYERS] as Array).sort(this.sortOpponents);
-         //(this.mAllTabs[TAB_RECENT] as Array).sort(this.sortOpponents);
          this.setTab(TAB_PLAYERS);
          doOpeningTransition();
       }

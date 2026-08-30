@@ -377,7 +377,7 @@ jobs:
             "MANUAL_PHYSICAL_OUTCOME=${{ steps.manual_physical.outcome }}"
             "PHYSICAL_VALIDATION=PENDING_USER_MANUAL_TEST"
           )|Set-Content -LiteralPath (Join-Path $diag 'ci-diagnostics.txt') -Encoding UTF8
-          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-manifest.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md','manual-physical-validation.json','SWF-PERFORMANCE-PATCH.json','ffdec-performance-tilemap.log','ffdec-performance-scene.log','ffdec-feature-offline-save.log','ffdec-feature-worldmap.log','ffdec-performance-dumpas3.log')){
+          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-manifest.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md','manual-physical-validation.json','SWF-PERFORMANCE-PATCH.json','ffdec-performance-tilemap.log','ffdec-performance-scene.log','ffdec-feature-worldmap.log','ffdec-feature-pvp-matchup.log','ffdec-performance-dumpas3.log')){
             $src=Join-Path $build $name
             if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination (Join-Path $diag $name) -Force}
           }
@@ -481,7 +481,7 @@ jobs:
           if('${{ steps.publish_logs.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL evidence_upload'}
           Write-Host "BASE_ONLY_MODE=PASS modern_v23_2=true mods=false selector=false diagnostics_ane=true"
           Write-Host "SWF_SOURCE_ORIGINAL=PASS canonical_v23_2=true"
-          Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.4-offline-systems classes=TileMapGraphic,IsometricScene,OfflineSave,WorldMapWindow canonical_global_classes=preserved enemy_ai_cadence=unchanged"
+          Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.5-root-recovery classes=TileMapGraphic,IsometricScene,WorldMapWindow,PvPMatchUpDialog canonical_offlinesave=true canonical_global_classes=preserved enemy_ai_cadence=unchanged"
           Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,INICIAR,MARCAR_LAG,DETENER,ZIP render_mode=gpu profiler=low_overhead_v2"
           Write-Host "ADB_DEVICE=SKIPPED_WITH_REASON manual_physical_test"
           Write-Host "INSTALL=SKIPPED_WITH_REASON user_manual_install"

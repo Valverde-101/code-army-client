@@ -186,6 +186,23 @@ public final class PerformanceOverlay {
         File rootDir = new File(activity.getFilesDir(), "perf-diagnostics");
         if (!rootDir.exists()) rootDir.mkdirs();
         latestJson = new File(rootDir, "latest.json");
+        recoverLatestSession(rootDir);
+    }
+
+    private void recoverLatestSession(File rootDir) {
+        File[] dirs = rootDir.listFiles();
+        if (dirs == null) return;
+        File newest = null;
+        for (File dir : dirs) {
+            if (dir != null && dir.isDirectory() && dir.getName().startsWith("session-")) {
+                if (newest == null || dir.lastModified() > newest.lastModified()) newest = dir;
+            }
+        }
+        if (newest != null) {
+            sessionDir = newest;
+            sessionCsv = new File(newest, "performance.csv");
+            sessionId = newest.getName().substring("session-".length());
+        }
     }
 
     private void attach() {
@@ -234,7 +251,9 @@ public final class PerformanceOverlay {
         row2.addView(zip, weighted());
         panel.addView(row2);
 
-        statusView = text("Profiler detenido. Toca INICIAR antes de jugar.", 12f, Color.rgb(170, 220, 170));
+        statusView = text(sessionDir != null
+                ? "Sesión anterior recuperada. Puedes pulsar ZIP tras reiniciar la app."
+                : "Profiler detenido. Toca INICIAR antes de jugar.", 12f, Color.rgb(170, 220, 170));
         statusView.setPadding(0, dp(8), 0, 0);
         panel.addView(statusView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
