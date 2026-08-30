@@ -78,12 +78,52 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
   }
   Write-Host "SWF_CLASS_PATCH=PASS class=$ClassName log=$log"
 }
+function Convert-GameStateSourceForFFDec([string]$Source,[string]$Destination){
+  $sourceLines=Get-Content -LiteralPath $Source
+  $result=New-Object System.Collections.Generic.List[string]
+  $configMode=$null
+  $configIndent=$null
+  foreach($line in $sourceLines){
+    if($null -eq $configMode){
+      if($line -match '^(\s*)CONFIG::(BUILD_FOR_MOBILE_AIR|BUILD_FOR_AIR|NOT_BUILD_FOR_AIR)\s*\{\s*$'){
+        $configIndent=$matches[1]
+        $configMode=$matches[2]
+        continue
+      }
+      $result.Add($line)
+      continue
+    }
+    if($line -eq ($configIndent + '}')){
+      $configMode=$null
+      $configIndent=$null
+      continue
+    }
+    if($configMode -eq 'BUILD_FOR_MOBILE_AIR'){
+      $result.Add($line)
+    }
+  }
+  if($null -ne $configMode){throw "SWF_PERF_PATCH=FAIL unterminated_config_block source=$Source mode=$configMode"}
+  $text=$result -join [Environment]::NewLine
+  $text=$text -replace '(?m)^(\s*)import flash\.permissions\.PermissionStatus\s*$', '$1import flash.permissions.PermissionStatus;'
+  if($text -match 'CONFIG::'){throw "SWF_PERF_PATCH=FAIL config_directive_survived source=$Source"}
+  Set-Content -LiteralPath $Destination -Value $text -Encoding UTF8
+  Write-Host "FFDEC_SOURCE_PREPROCESS=PASS class=game.states.GameState target=BUILD_FOR_MOBILE_AIR path=$Destination"
+}
+
 Remove-Item -LiteralPath $OutputSwf -Force -ErrorAction SilentlyContinue
 $current=$InputSwf
 $tempFiles=New-Object System.Collections.Generic.List[string]
+$tempSources=New-Object System.Collections.Generic.List[string]
 for($i=0;$i -lt $patchSpecs.Count;$i++){
   $spec=$patchSpecs[$i]
   $source=Join-Path $RepoRoot $spec.Source
+  if($spec.Class -eq 'game.states.GameState'){
+    $ffdecSource=Join-Path $outDir 'GameState.mobile.ffdec.as'
+    Remove-Item -LiteralPath $ffdecSource -Force -ErrorAction SilentlyContinue
+    Convert-GameStateSourceForFFDec -Source $source -Destination $ffdecSource
+    $source=$ffdecSource
+    $tempSources.Add($ffdecSource)
+  }
   $next=if($i -eq $patchSpecs.Count-1){$OutputSwf}else{Join-Path $outDir ("swf-runtime-patch-{0:D2}.tmp.swf" -f $i)}
   Remove-Item -LiteralPath $next -Force -ErrorAction SilentlyContinue
   Invoke-FFDecReplace -In $current -Out $next -ClassName $spec.Class -Source $source -LogName $spec.Log
@@ -91,6 +131,7 @@ for($i=0;$i -lt $patchSpecs.Count;$i++){
   $current=$next
 }
 foreach($tmp in $tempFiles){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
+foreach($tmpSource in $tempSources){Remove-Item -LiteralPath $tmpSource -Force -ErrorAction SilentlyContinue}
 
 $outputInfo=Get-Item -LiteralPath $OutputSwf
 $outputSha=(Get-FileHash -LiteralPath $OutputSwf -Algorithm SHA256).Hash.ToLowerInvariant()
