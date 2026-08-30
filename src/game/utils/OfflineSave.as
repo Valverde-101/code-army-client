@@ -21,6 +21,8 @@
 	import com.dchoc.utils.Cookie;
 	import game.characters.EnemyUnit;
 	import game.characters.PlayerUnit;
+	import game.environment.EnvEffectManager;
+	import game.net.PvPOpponentCollection;
 
 	public class OfflineSave {
 
@@ -298,6 +300,50 @@
 			mMissions = generateMissionJson();
 		}
 
+		public static function switchToMap(map_id: String): void {
+			var game: GameState = GameState.mInstance;
+			if (!game || !map_id || map_id.length == 0 || map_id == game.mCurrentMapId) {
+				return;
+			}
+
+			saveOldMap();
+			game.mLoadingStatesOver = false;
+			game.mCurrentMapId = map_id;
+			game.mCurrentMapGraphicsId = Math.max(GameState.GRAPHICS_MAP_ID_LIST.indexOf(map_id), 0);
+			game.mPlayerProfile.mInventory.getAreas();
+			EnvEffectManager.destroy();
+
+			if (mMaps[map_id]) {
+				loadMap(mMaps[map_id]);
+			} else {
+				game.initMap(null, map_id);
+				game.initObjects(null);
+			}
+
+			game.updateGrid();
+			game.mScene.mFog.init();
+			MissionManager.initialize();
+			game.mMissionIconsManager.reset();
+
+			var missionCall: * = new ServerCall("GetMapData", null, null, null);
+			missionCall["mData"] = mMissions;
+			MissionManager.setupFromServer(missionCall);
+			MissionManager.findNewActiveMissions();
+
+			if (map_id == "Desert") {
+				game.mHUD.changeWaterVisibility(true);
+			} else if (map_id == "Home") {
+				game.mHUD.changeWaterVisibility(false);
+			}
+
+			game.changeState(GameState.STATE_PLAY);
+			game.mCurrentMusic = game.getMapMusic();
+			ArmySoundManager.loadMusic(game.mCurrentMusic);
+			game.startMusic();
+			EnvEffectManager.init();
+			game.mLoadingStatesOver = true;
+		}
+
 		public static function switchMap(): void {
 			var map_id: String = GameState.mInstance.mCurrentMapId;
 			GameState.mInstance.mLoadingStatesOver = false;
@@ -305,7 +351,6 @@
 			//GameState.mInstance.loadingFirstFinished();
 			GameState.mInstance.mPlayerProfile.mInventory.getAreas();
 			GameState.mInstance.changeState(0);
-			GameState.mInstance.mMapData.destroy();
 			var fakeservercall: * = new ServerCall("GetMapData", null, null, null);
 			fakeservercall["mData"] = mMissions;
 			if (mMaps[map_id]) {
@@ -313,8 +358,8 @@
 				GameState.mInstance.initObjects(null);
 				loadMap(mMaps[map_id]);
 			} else {
-				GameState.mInstance.initObjects(null);
 				GameState.mInstance.initMap(null, map_id);
+				GameState.mInstance.initObjects(null);
 			}
 			GameState.mInstance.updateGrid();
 			GameState.mInstance.mScene.mFog.init();
@@ -475,6 +520,10 @@
 			return player_unit_count
 		}
 
+		private static function resetPvPOpponents(): void {
+			PvPOpponentCollection.smCollection = new PvPOpponentCollection();
+		}
+
 		public static function startEmptyPvPProgress(): void {
 			var fakedata: * = {};
 
@@ -494,6 +543,7 @@
 			saveOldMap()
 			fakedata["player_unit_count"] = calculateGlobalUnits(mMaps);
 
+			resetPvPOpponents();
 			GameState.mInstance.mPlayerProfile.setupPvPData(fakedata);
 			GameState.mInstance.mPlayerProfile.setupGlobalUnitCounts(fakedata);
 		}
@@ -581,6 +631,7 @@
 
 			fakedata["player_unit_count"] = calculateGlobalUnits(savedata["maps"]);
 
+			resetPvPOpponents();
 			GameState.mInstance.mPlayerProfile.setupPvPData(fakedata);
 			GameState.mInstance.mPlayerProfile.setupGlobalUnitCounts(fakedata);
 

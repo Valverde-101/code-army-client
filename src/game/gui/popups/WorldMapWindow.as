@@ -7,6 +7,7 @@
 	import game.gui.button.ArmyButton;
 	import game.missions.MissionManager;
 	import game.states.GameState;
+	import game.utils.OfflineSave;
 
 	public class WorldMapWindow extends PopUpWindow {
 
@@ -214,7 +215,11 @@
 				return;
 			}
 			mDoneCallback((this as Object).constructor);
-			GameState.mInstance.executeSwitchMap(param1, null);
+			if (Config.OFFLINE_MODE) {
+				OfflineSave.switchToMap(param1);
+			} else {
+				GameState.mInstance.executeSwitchMap(param1, null);
+			}
 		}
 
 		private function closeClicked(param1: MouseEvent): void {

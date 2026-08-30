@@ -2668,7 +2668,8 @@
 			}
 			param1.stopImmediatePropagation();
 			if (button.name == "Button_Pvp") {
-				OfflineSave.startEmptyPvPProgress();
+				// GameState performs the one-time offline bootstrap only when PvP data is absent.
+				// Do not reset score/wins/opponents on every button press.
 				this.mGame.openPvPMatchUpDialog();
 				return;
 			}
