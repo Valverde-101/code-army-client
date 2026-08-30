@@ -66,6 +66,8 @@ package game.characters
       
       private var mIsPlaying:Boolean = false;
       
+      private var mDirectionTargets:Array;
+      
       public function AnimationController(param1:Renderable)
       {
          super();
@@ -83,6 +85,7 @@ package game.characters
          var _loc11_:String = null;
          var _loc2_:DCResourceManager = DCResourceManager.getInstance();
          this.mAnimations = new Array();
+         this.mDirectionTargets = new Array();
          this.mFiles = param1;
          this.mLoadingCallbackEventTypes = new Object();
          var _loc7_:int = int(param1.length);
@@ -141,6 +144,7 @@ package game.characters
                   if((_loc7_ = _loc2_.getSWFClass(_loc4_,_loc3_)) != null)
                   {
                      (_loc8_ = this.mAnimations[_loc6_] as MovieClip).addChild(new _loc7_());
+                     this.mDirectionTargets[_loc6_] = null;
                      _loc8_.visible = true;
                   }
                }
@@ -195,108 +199,69 @@ package game.characters
          }
       }
       
-      public function setDirection(param1:int) : void
+      private function resolveDirectionTarget(param1:int) : DisplayObject
       {
-         var _loc2_:MovieClip = null;
-         var _loc3_:int = 0;
-         var _loc4_:Boolean = false;
-         var _loc5_:int = 0;
-         var _loc6_:MovieClip = null;
-         var _loc7_:int = 0;
-         var _loc8_:MovieClip = null;
-         var _loc9_:int = 0;
-         var _loc10_:int = 0;
-         var _loc11_:int = 0;
-         if(param1 != this.mCurrentDirection)
+         var animation:MovieClip = this.mAnimations[param1] as MovieClip;
+         var child:MovieClip = null;
+         var nested:MovieClip = null;
+         var i:int = 0;
+         var j:int = 0;
+         if(!animation)
          {
-            switch(param1)
-            {
-               case DIR_RIGHT:
-                  _loc3_ = 0;
-                  while(_loc3_ < this.mAnimations.length)
-                  {
-                     if(_loc3_ != CHARACTER_ANIMATION_DYING)
-                     {
-                        _loc2_ = this.mAnimations[_loc3_] as MovieClip;
-                        _loc4_ = false;
-                        _loc5_ = 0;
-                        while(_loc5_ < _loc2_.numChildren)
-                        {
-                           _loc6_ = _loc2_.getChildAt(_loc5_) as MovieClip;
-                           _loc7_ = 0;
-                           while(_loc7_ < _loc6_.numChildren)
-                           {
-                              if(_loc8_ = _loc6_.getChildAt(_loc7_) as MovieClip)
-                              {
-                                 if(_loc8_.name == "Unit_Container")
-                                 {
-                                    _loc8_.scaleX = -_loc8_.scaleX;
-                                    _loc4_ = true;
-                                    break;
-                                 }
-                              }
-                              if(_loc4_)
-                              {
-                                 break;
-                              }
-                              _loc7_++;
-                           }
-                           _loc5_++;
-                        }
-                        if(!_loc4_)
-                        {
-                           _loc2_.scaleX = -_loc2_.scaleX;
-                        }
-                     }
-                     _loc3_++;
-                  }
-                  break;
-               case DIR_LEFT:
-                  _loc9_ = 0;
-                  while(_loc9_ < this.mAnimations.length)
-                  {
-                     if(_loc9_ != CHARACTER_ANIMATION_DYING)
-                     {
-                        _loc2_ = this.mAnimations[_loc9_] as MovieClip;
-                        _loc4_ = false;
-                        _loc10_ = 0;
-                        while(_loc10_ < _loc2_.numChildren)
-                        {
-                           _loc6_ = _loc2_.getChildAt(_loc10_) as MovieClip;
-                           _loc11_ = 0;
-                           while(_loc11_ < _loc6_.numChildren)
-                           {
-                              if(_loc8_ = _loc6_.getChildAt(_loc11_) as MovieClip)
-                              {
-                                 if(_loc8_.name == "Unit_Container")
-                                 {
-                                    _loc8_.scaleX = -_loc8_.scaleX;
-                                    _loc4_ = true;
-                                    break;
-                                 }
-                              }
-                              _loc11_++;
-                           }
-                           if(_loc4_)
-                           {
-                              break;
-                           }
-                           _loc10_++;
-                        }
-                        if(!_loc4_)
-                        {
-                           _loc2_.scaleX = -_loc2_.scaleX;
-                        }
-                     }
-                     _loc9_++;
-                  }
-                  break;
-               case DIR_UP:
-            }
-            this.mCurrentDirection = param1;
+            return null;
          }
+         if(this.mDirectionTargets[param1])
+         {
+            return this.mDirectionTargets[param1] as DisplayObject;
+         }
+         while(i < animation.numChildren)
+         {
+            child = animation.getChildAt(i) as MovieClip;
+            if(child)
+            {
+               j = 0;
+               while(j < child.numChildren)
+               {
+                  nested = child.getChildAt(j) as MovieClip;
+                  if(nested && nested.name == "Unit_Container")
+                  {
+                     this.mDirectionTargets[param1] = nested;
+                     return nested;
+                  }
+                  j++;
+               }
+            }
+            i++;
+         }
+         this.mDirectionTargets[param1] = animation;
+         return animation;
       }
       
+      public function setDirection(param1:int) : void
+      {
+         var target:DisplayObject = null;
+         var i:int = 0;
+         if(param1 == this.mCurrentDirection)
+         {
+            return;
+         }
+         if(param1 == DIR_RIGHT || param1 == DIR_LEFT)
+         {
+            while(i < this.mAnimations.length)
+            {
+               if(i != CHARACTER_ANIMATION_DYING)
+               {
+                  target = this.resolveDirectionTarget(i);
+                  if(target)
+                  {
+                     target.scaleX = -target.scaleX;
+                  }
+               }
+               i++;
+            }
+         }
+         this.mCurrentDirection = param1;
+      }
       public function setSize(param1:int, param2:int) : void
       {
          (this.mAnimations[this.mCurrentAnimation] as MovieClip).width = param1;
@@ -523,6 +488,7 @@ package game.characters
             this.mAnimations[_loc2_] = null;
          }
          this.mAnimations = null;
+         this.mDirectionTargets = null;
          _loc3_ = null;
       }
    }

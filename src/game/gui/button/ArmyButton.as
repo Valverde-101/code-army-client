@@ -7,6 +7,9 @@ package game.gui.button
    import flash.events.MouseEvent;
    import flash.text.TextField;
    import game.sound.ArmySoundManager;
+   import game.missions.MissionManager;
+   import game.states.GameState;
+   import game.utils.OfflineSave;
    
    public class ArmyButton extends DCButton
    {
@@ -32,6 +35,24 @@ package game.gui.button
          this.resizeNeeded = true;
       }
       
+      override public function setVisible(param1:Boolean) : void
+      {
+         if(Config.OFFLINE_MODE && FeatureTuner.USE_PVP_MATCH && mButton && mButton.name == "Button_Pvp")
+         {
+            param1 = true;
+         }
+         super.setVisible(param1);
+      }
+      
+      override public function setEnabled(param1:Boolean) : void
+      {
+         if(Config.OFFLINE_MODE && Config.USE_WORLD_MAP && mButton && mButton.name == "Button_Map")
+         {
+            param1 = true;
+         }
+         super.setEnabled(param1);
+      }
+
       public function setSounds(param1:String, param2:String = null) : void
       {
          this.mClickSound = param1;
@@ -50,6 +71,11 @@ package game.gui.button
       override protected function buttonClicked(param1:MouseEvent) : void
       {
          super.buttonClicked(param1);
+         if(Config.OFFLINE_MODE && FeatureTuner.USE_PVP_MATCH && mButton && mButton.name == "Button_Pvp" && !MissionManager.isTutorialCompleted())
+         {
+            OfflineSave.startEmptyPvPProgress();
+            GameState.mInstance.openPvPMatchUpDialog();
+         }
          if(this.mClickSound)
          {
             ArmySoundManager.getInstance().playSound(this.mClickSound);

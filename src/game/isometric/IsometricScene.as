@@ -331,16 +331,43 @@
 			this.mZoomActivated = true;
 			this.setZoomInOut(param1.scaleX);
 		}
-		private function setZoomInOut(param1: Number): void {
-			if (!PopUpManager.isModalPopupActive()) {
-				if (param1 < 1) {
-					GameState.mInstance.getHud().buttonZoomOutPressed(null);
-				} else if (param1 > 1) {
-					GameState.mInstance.getHud().buttonZoomInPressed(null);
-				}
+		private function getNearestZoomIndex(): int {
+			var levels:Array = GameState.mInstance.mZoomLevels;
+			if (!levels || levels.length == 0) {
+				return 0;
 			}
+			var bestIndex:int = 0;
+			var bestDistance:Number = Number.MAX_VALUE;
+			var i:int = 0;
+			var scale:Number = 1;
+			var distance:Number = 0;
+			while (i < levels.length) {
+				scale = Number(levels[levels.length - 1 - i]) / 100;
+				distance = Math.abs(scale - this.mContainer.scaleX);
+				if (distance < bestDistance) {
+					bestDistance = distance;
+					bestIndex = i;
+				}
+				i++;
+			}
+			return bestIndex;
 		}
 
+		private function setZoomInOut(param1: Number): void {
+			if (PopUpManager.isModalPopupActive()) {
+				return;
+			}
+			var levels:Array = GameState.mInstance.mZoomLevels;
+			if (!levels || levels.length < 2) {
+				return;
+			}
+			var zoomIndex:int = this.getNearestZoomIndex();
+			if (param1 < 0.98 && zoomIndex < levels.length - 1) {
+				GameState.mInstance.setZoomIndex(zoomIndex + 1);
+			} else if (param1 > 1.02 && zoomIndex > 0) {
+				GameState.mInstance.setZoomIndex(zoomIndex - 1);
+			}
+		}
 		public function startToolTipTimer(): void {
 			if (this.mAppearTimer) {
 				this.mAppearTimer.removeEventListener(TimerEvent.TIMER, this.appearTimerTick);
