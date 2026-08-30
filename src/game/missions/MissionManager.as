@@ -70,7 +70,7 @@
 		mCompletedMissions = new Array();
 		mCompletedCOsWithMissions = new Array();
 		mCompletedMissionsGlobal = new Array();
-		smNodes = new Array();
+		smNodes = new Array;
 	  }
       
       private static function sortMissions(param1:Mission, param2:Mission) : int
@@ -366,10 +366,6 @@
       
       public static function isMapButtonEnabled() : Boolean
       {
-         if(Config.OFFLINE_MODE && Config.USE_WORLD_MAP)
-         {
-            return true;
-         }
          if(GameState.mInstance.visitingFriend())
          {
             return false;
@@ -414,10 +410,6 @@
       {
          var _loc2_:String = null;
          var _loc3_:* = null;
-         if(Config.OFFLINE_MODE && (param1 == "Home" || param1 == "Desert"))
-         {
-            return false;
-         }
          if(Config.CHEAT_OPEN_ALL_MAPS)
          {
             return false;

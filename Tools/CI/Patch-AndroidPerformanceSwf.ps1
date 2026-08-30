@@ -38,16 +38,19 @@ if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.js
 $tmp1=Join-Path $outDir 'swf-perf-tilemap.tmp.swf'
 $tmp2=Join-Path $outDir 'swf-perf-scene.tmp.swf'
 $tmp3=Join-Path $outDir 'swf-feature-config.tmp.swf'
-$tmp4=Join-Path $outDir 'swf-feature-missions.tmp.swf'
-$tmp5=Join-Path $outDir 'swf-feature-button.tmp.swf'
-$tmp6=Join-Path $outDir 'swf-perf-animation.tmp.swf'
-$tmp7=Join-Path $outDir 'swf-perf-environment.tmp.swf'
-foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$tmp5,$tmp6,$tmp7,$OutputSwf)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
+$tmp4=Join-Path $outDir 'swf-feature-button.tmp.swf'
+$tmp5=Join-Path $outDir 'swf-perf-animation.tmp.swf'
+$tmp6=Join-Path $outDir 'swf-perf-environment.tmp.swf'
+foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$tmp5,$tmp6,$OutputSwf)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
+
+$logRoot=Split-Path -Parent $ManifestPath
+if(-not $logRoot){$logRoot=$outDir}
+New-Item -ItemType Directory -Force -Path $logRoot|Out-Null
 
 function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string]$Source,[string]$LogName){
   if(-not (Test-Path -LiteralPath $Source)){throw "SWF_PERF_PATCH=FAIL source_missing=$Source"}
   $args=@('-cli','-air','-onerror','abort','-replace',$In,$Out,$ClassName,$Source)
-  $logRoot=Split-Path -Parent $ManifestPath`n  $log=Join-Path $logRoot $LogName
+  $log=Join-Path $logRoot $LogName
   $previousErrorActionPreference=$ErrorActionPreference
   try{
     $ErrorActionPreference='Continue'
@@ -68,28 +71,26 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
 $tileSource=Join-Path $RepoRoot 'src\game\battlefield\TileMapGraphic.as'
 $sceneSource=Join-Path $RepoRoot 'src\game\isometric\IsometricScene.as'
 $configSource=Join-Path $RepoRoot 'src\Config.as'
-$missionSource=Join-Path $RepoRoot 'src\game\missions\MissionManager.as'
 $buttonSource=Join-Path $RepoRoot 'src\game\gui\button\ArmyButton.as'
 $animationSource=Join-Path $RepoRoot 'src\game\characters\AnimationController.as'
 $environmentSource=Join-Path $RepoRoot 'src\game\environment\EnvEffectManager.as'
 
-# Preserve canonical v23.2 visuals/audio/linkage; replace only FFDec-compilable AS3 classes.
+# Large legacy classes keep their original SWF bytecode. Only these parser-clean classes are replaced.
 Invoke-FFDecReplace -In $InputSwf -Out $tmp1 -ClassName 'game.battlefield.TileMapGraphic' -Source $tileSource -LogName 'ffdec-performance-tilemap.log'
 Invoke-FFDecReplace -In $tmp1 -Out $tmp2 -ClassName 'game.isometric.IsometricScene' -Source $sceneSource -LogName 'ffdec-performance-scene.log'
 Invoke-FFDecReplace -In $tmp2 -Out $tmp3 -ClassName 'Config' -Source $configSource -LogName 'ffdec-feature-config.log'
-Invoke-FFDecReplace -In $tmp3 -Out $tmp4 -ClassName 'game.missions.MissionManager' -Source $missionSource -LogName 'ffdec-feature-missions.log'
-Invoke-FFDecReplace -In $tmp4 -Out $tmp5 -ClassName 'game.gui.button.ArmyButton' -Source $buttonSource -LogName 'ffdec-feature-button.log'
-Invoke-FFDecReplace -In $tmp5 -Out $tmp6 -ClassName 'game.characters.AnimationController' -Source $animationSource -LogName 'ffdec-performance-animation.log'
-Invoke-FFDecReplace -In $tmp6 -Out $tmp7 -ClassName 'game.environment.EnvEffectManager' -Source $environmentSource -LogName 'ffdec-performance-environment.log'
-Move-Item -LiteralPath $tmp7 -Destination $OutputSwf -Force
-foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$tmp5,$tmp6)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
+Invoke-FFDecReplace -In $tmp3 -Out $tmp4 -ClassName 'game.gui.button.ArmyButton' -Source $buttonSource -LogName 'ffdec-feature-button.log'
+Invoke-FFDecReplace -In $tmp4 -Out $tmp5 -ClassName 'game.characters.AnimationController' -Source $animationSource -LogName 'ffdec-performance-animation.log'
+Invoke-FFDecReplace -In $tmp5 -Out $tmp6 -ClassName 'game.environment.EnvEffectManager' -Source $environmentSource -LogName 'ffdec-performance-environment.log'
+Move-Item -LiteralPath $tmp6 -Destination $OutputSwf -Force
+foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$tmp5)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
 
 $outputInfo=Get-Item -LiteralPath $OutputSwf
 $outputSha=(Get-FileHash -LiteralPath $OutputSwf -Algorithm SHA256).Hash.ToLowerInvariant()
 if($outputSha -eq $inputSha){throw 'SWF_PERF_PATCH=FAIL output_equals_source'}
 if($outputInfo.Length -lt 10000000){throw "SWF_PERF_PATCH=FAIL suspicious_size=$($outputInfo.Length)"}
 
-$dumpLog=Join-Path $outDir 'ffdec-performance-dumpas3.log'
+$dumpLog=Join-Path $logRoot 'ffdec-performance-dumpas3.log'
 $dumpArgs=@('-cli','-dumpAS3',$OutputSwf)
 if($java){$dump=@(& $java.Source '-jar' $ffdec.FullName @dumpArgs 2>&1|ForEach-Object{$_.ToString()})}
 else{$dump=@(& $ffdec.FullName @dumpArgs 2>&1|ForEach-Object{$_.ToString()})}
@@ -97,7 +98,7 @@ $dumpExit=$LASTEXITCODE
 $dump|Set-Content -LiteralPath $dumpLog -Encoding UTF8
 if($dumpExit -ne 0){throw "SWF_PERF_PATCH=FAIL dump_exit=$dumpExit"}
 $dumpText=$dump -join "`n"
-foreach($className in @('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','Config','game.missions.MissionManager','game.gui.button.ArmyButton','game.characters.AnimationController','game.environment.EnvEffectManager')){
+foreach($className in @('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','Config','game.gui.button.ArmyButton','game.characters.AnimationController','game.environment.EnvEffectManager')){
   if($dumpText -notmatch [regex]::Escape($className)){throw "SWF_PERF_PATCH=FAIL class_missing_after_patch=$className"}
 }
 
@@ -105,14 +106,13 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3'
+  patch_version='mobile-engine-v3.1'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@(
     [ordered]@{name='game.battlefield.TileMapGraphic';source='src/game/battlefield/TileMapGraphic.as';sha256=(Get-FileHash $tileSource -Algorithm SHA256).Hash.ToLowerInvariant()},
     [ordered]@{name='game.isometric.IsometricScene';source='src/game/isometric/IsometricScene.as';sha256=(Get-FileHash $sceneSource -Algorithm SHA256).Hash.ToLowerInvariant()},
     [ordered]@{name='Config';source='src/Config.as';sha256=(Get-FileHash $configSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.missions.MissionManager';source='src/game/missions/MissionManager.as';sha256=(Get-FileHash $missionSource -Algorithm SHA256).Hash.ToLowerInvariant()},
     [ordered]@{name='game.gui.button.ArmyButton';source='src/game/gui/button/ArmyButton.as';sha256=(Get-FileHash $buttonSource -Algorithm SHA256).Hash.ToLowerInvariant()},
     [ordered]@{name='game.characters.AnimationController';source='src/game/characters/AnimationController.as';sha256=(Get-FileHash $animationSource -Algorithm SHA256).Hash.ToLowerInvariant()},
     [ordered]@{name='game.environment.EnvEffectManager';source='src/game/environment/EnvEffectManager.as';sha256=(Get-FileHash $environmentSource -Algorithm SHA256).Hash.ToLowerInvariant()}
@@ -140,7 +140,7 @@ $manifest=[ordered]@{
     'persistent_visible_membership_dictionary',
     'android_pinch_zoom_enabled',
     'offline_pvp_entry_enabled',
-    'offline_world_map_home_desert_enabled',
+    'offline_world_map_home_desert_uses_existing_binary_bypass',
     'offline_pvp_button_restored_without_gamehud_recompile',
     'pinch_zoom_bypasses_tutorial_gate',
     'animation_direction_target_cache',
@@ -149,5 +149,5 @@ $manifest=[ordered]@{
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3 source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.1 source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

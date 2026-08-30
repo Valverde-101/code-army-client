@@ -1,29 +1,43 @@
-# Android mobile-engine-v3
+# Android mobile-engine-v3.1
 
 ## Root-cause correction
-FFDec cannot parse the historical conditional-compile blocks in GameHUD/GameState directly. The Android binary patch therefore preserves those original compiled classes instead of recompiling them.
 
-## Binary-patched classes
+The canonical v23.2 SWF is still used as the asset/linkage source.
+
+Large historical classes that contain legacy conditional-compilation syntax are deliberately preserved as their original compiled bytecode:
+- GameHUD
+- GameState
+- MissionManager
+- WorldMapWindow
+
+They are not recompiled by FFDec.
+
+## Recompiled classes
+
+Only these FFDec-parseable classes are replaced:
 - TileMapGraphic
 - IsometricScene
 - Config
-- MissionManager
 - ArmyButton
 - AnimationController
 - EnvEffectManager
 
-## Offline features
-- The existing PvP HUD button cannot be hidden in offline mode.
-- Offline PvP can be entered even while the old tutorial gate is active.
-- The world-map button is enabled offline.
-- Home and Desert are unlocked offline through the existing OfflineSave map-switch path.
-- Pinch zoom selects GameState zoom levels directly and no longer depends on the HUD tutorial check.
+## Offline behavior
+
+The existing GameHUD and WorldMapWindow bytecode already contains explicit offline paths for the map button and Home/Desert availability. No MissionManager replacement is required.
+
+ArmyButton only supplies the PvP tutorial-gate fallback while preserving the original GameHUD handler.
+
+Pinch zoom selects the existing GameState zoom levels directly, avoiding the old tutorial-dependent HUD zoom path.
 
 ## Performance
-- Retains the padded tilemap camera cache, dirty sorting, offscreen display-list culling, persistent visible lookup and cached pointer cell.
-- Caches the nested MovieClip used for left/right unit direction changes, removing repeated deep display-tree scans.
-- Fixes cloud effects being inserted into the river/tile effect collection instead of their own collection.
 
-Enemy AI cadence, combat cadence, pathfinding, projectiles and visible effect quality are intentionally unchanged.
+Retains:
+- padded tilemap camera cache
+- dirty-driven depth sorting
+- offscreen display-list culling
+- cached pointer-cell and throttled hover UI
+- cached animation flip target
+- corrected environment-cloud collection
 
-Physical Android validation remains pending until the exact generated APK is manually tested.
+Enemy AI, combat, pathfinding, projectile cadence, fog and visual effects are not intentionally reduced.
