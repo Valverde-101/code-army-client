@@ -583,8 +583,9 @@
 			this.mHudButtonShop = Utils.createBasicButton(this.mIngameHUDClip_BOTTOM, "Button_shop", this.buttonShopPressed);
 			this.mHudButtonSave = Utils.createBasicButton(this.mIngameHUDClip_BOTTOM, "Button_save", this.buttonSavePressed);
 			this.mButtonMap = Utils.createBasicButton(this.mIngameHUDClip_BOTTOM, 'Button_Map', this.buttonMapPressed);
+			this.mButtonMap.setVisible(Config.USE_WORLD_MAP);
 			this.mButtonPvp = Utils.createBasicButton(this.mIngameHUDClip_BOTTOM, 'Button_Pvp', this.buttonPvpPressed);
-			this.mButtonPvp.setVisible(false); // Disable pvp button for now
+			this.mButtonPvp.setVisible(FeatureTuner.USE_PVP_MATCH);
 
 
 			this.mRightPlaceButtonClip = this.mIngameHUDClip.getChildByName("right_button") as MovieClip;
@@ -2432,7 +2433,7 @@
 		}
 
 		public function updateMapButtonEnablation(): void {
-			var _loc1_: Boolean = MissionManager.isMapButtonEnabled();
+			var _loc1_: Boolean = Config.OFFLINE_MODE && Config.USE_WORLD_MAP ? true : MissionManager.isMapButtonEnabled();
 			this.mButtonMap.setEnabled(_loc1_);
 			smTooltipTIDLinkage['Button_Map'] = _loc1_ ? GameState.getText('HUD_MAP_TOOLTIP') : GameState.getText('HUD_MAP_LOCKED_TOOLTIP');
 		}

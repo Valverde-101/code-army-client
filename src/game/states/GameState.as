@@ -1251,56 +1251,21 @@
 		}
 
 		public function openPvPMatchUpDialog(): void {
-			if (FeatureTuner.USE_PVP_MATCH) {
-				if (this.mPlayerProfile.mGlobalUnitCounts == null) {
-					this.startLoading();
-					//this.mServer.serverCallService(ServiceIDs.GET_PVP_DATA, true);
-					/*
-					var fakedata:* = {};
-				
-					var pvp_data:* = {};
-					pvp_data["score"] = 0;
-					pvp_data["wins"] = 0;
-					fakedata["pvp_data"] = pvp_data;
-
-					fakedata["allies"] = new Array();
-				
-				
-					var possible_opponents:Array = [];
-				    var test_opponent:* = {};
-					test_opponent["facebook_id"] = "1";
-				    test_opponent["player_name"] = "Scary Chris";
-					test_opponent["score"] = 0;
-					test_opponent["level"] = 1;
-					test_opponent["wins"] = 0;
-				    test_opponent["avatar"] = "scary_chris.png"; // Loads from the data/avatars folder, empty string = default avatar
-					possible_opponents.push(test_opponent)
-					fakedata["possible_opponents"] = possible_opponents
-				
-					fakedata["recent_attacks"] = new Array();
-				
-					var player_unit_count:Array = [];
-				    var player_unit:* = {};
-					player_unit["item_id"] = "Infantry";
-					player_unit["item_count"] = 4;
-					player_unit_count.push(player_unit)
-					fakedata["player_unit_count"] = player_unit_count;
-					*/
-
-					//this.mPlayerProfile.setupPvPData(fakedata);
-					//this.mPlayerProfile.setupGlobalUnitCounts(fakedata);
-
-					this.openPvPMatchUpDialog();
-				} else if (this.getHud()) {
-					if (this.mPvPMatch.mOpponent) {
-						this.openPvPCombatSetupDialog();
-					} else {
-						this.getHud().openPvPMatchUpDialog();
-					}
-				}
+			if (!FeatureTuner.USE_PVP_MATCH || !this.mPlayerProfile || !this.mPvPMatch) {
+				return;
+			}
+			if (Config.OFFLINE_MODE && this.mPlayerProfile.mGlobalUnitCounts == null) {
+				OfflineSave.startEmptyPvPProgress();
+			}
+			if (this.mPlayerProfile.mGlobalUnitCounts == null || !this.getHud()) {
+				return;
+			}
+			if (this.mPvPMatch.mOpponent) {
+				this.openPvPCombatSetupDialog();
+			} else {
+				this.getHud().openPvPMatchUpDialog();
 			}
 		}
-
 		public function openPvPDebriefing(param1: Boolean): void {
 			var _loc2_: String = null;
 			var _loc3_: Object = null;
@@ -1315,7 +1280,9 @@
 					"badass_points": this.mPvPMatch.mIngameBadassXp,
 					"pvp_reward_items": _loc2_
 				};
-				this.mServer.serverCallServiceWithParameters(ServiceIDs.END_PVP_MATCH, _loc3_, false);
+				if (!Config.OFFLINE_MODE) {
+					this.mServer.serverCallServiceWithParameters(ServiceIDs.END_PVP_MATCH, _loc3_, false);
+				}
 				if (Config.DEBUG_MODE) {}
 				if (this.getHud()) {
 					this.getHud().openPvPDebriefingDialog();

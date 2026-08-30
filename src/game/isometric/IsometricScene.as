@@ -9,6 +9,8 @@
 	import flash.events.MouseEvent;
 	import flash.events.TimerEvent;
 	import flash.events.TransformGestureEvent;
+	import flash.ui.Multitouch;
+	import flash.ui.MultitouchInputMode;
 	import flash.geom.Point;
 	import flash.geom.Rectangle;
 	import flash.geom.Vector3D;
@@ -123,7 +125,10 @@
 		private var mStaticElements: Array;
 		private var mLastSortX: Dictionary;
 		private var mLastSortY: Dictionary;
+		private var mVisibleLookup: Dictionary;
 		private var mSortDirty: Boolean = true;
+		private var mViewportDirty: Boolean = true;
+		private static const VIEWPORT_CULL_MARGIN: Number = 384;
 
 		public var mCamera: IsoCamera;
 
@@ -291,9 +296,15 @@
 			this.mStaticElements = new Array();
 			this.mLastSortX = new Dictionary(true);
 			this.mLastSortY = new Dictionary(true);
+			this.mVisibleLookup = new Dictionary(true);
 			this.mSortDirty = true;
+			this.mViewportDirty = true;
 			if (FeatureTuner.USE_ZOOM_IN_OUT) {
-				this.mContainer.addEventListener(TransformGestureEvent.GESTURE_ZOOM, this.ZoomInOut, false);
+				try {
+					Multitouch.inputMode = MultitouchInputMode.GESTURE;
+				} catch (error: Error) {
+				}
+				this.mContainer.addEventListener(TransformGestureEvent.GESTURE_ZOOM, this.ZoomInOut, false, 0, true);
 			}
 			this.mContainer.addEventListener(MouseEvent.MOUSE_MOVE, this.mouseMove);
 			this.mContainer.addEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown);
@@ -303,14 +314,12 @@
 		}
 
 		private function ZoomInOut(param1: TransformGestureEvent): void {
-			if (this.mGame.getStageHeight() > 725) {
-				this.mZoomActivated = true;
-				this.setZoomInOut(param1.scaleX);
-			} else {
-				this.mContainer.removeEventListener(TransformGestureEvent.GESTURE_ZOOM, this.ZoomInOut);
+			if (!FeatureTuner.USE_ZOOM_IN_OUT) {
+				return;
 			}
+			this.mZoomActivated = true;
+			this.setZoomInOut(param1.scaleX);
 		}
-
 		private function setZoomInOut(param1: Number): void {
 			if (!PopUpManager.isModalPopupActive()) {
 				if (param1 < 1) {
@@ -2603,10 +2612,9 @@
 				}
 			}
 			if (!Config.DISABLE_SORT) {
-				// Camera panning no longer forces a full object membership scan.
-				// Camera movement does not change object visibility/order semantics;
-				// the regular 25-frame gate and active placement still cover changes.
-				this.sortAll(_loc3_ || Boolean(this.mObjectBeingMoved), _loc3_);
+				var viewportRefresh:Boolean = this.mSwitch % 5 == 4;
+				this.sortAll(viewportRefresh || this.mViewportDirty || Boolean(this.mObjectBeingMoved), _loc3_ || Boolean(this.mObjectBeingMoved));
+				this.mViewportDirty = false;
 			}
 			if (_loc4_ != this.mPreviousCell) {
 				this.mPreviousCell = _loc4_;
@@ -2745,6 +2753,7 @@
 				this.mContainer.y = _loc3_;
 				this.mSceneHud.x = _loc2_;
 				this.mSceneHud.y = _loc3_;
+				this.mViewportDirty = true;
 				this.mTilemapGraphic.updateCameraViewport();
 			}
 			this.mCamera.update();
@@ -2882,22 +2891,29 @@
 			return true;
 		}
 
+		private function isRenderableInViewport(param1: Renderable): Boolean {
+			var clip: DisplayObjectContainer = param1.getContainer();
+			if (!clip) {
+				return false;
+			}
+			var screenX: Number = this.mContainer.x + clip.x * this.mContainer.scaleX;
+			var screenY: Number = this.mContainer.y + clip.y * this.mContainer.scaleY;
+			return screenX >= -VIEWPORT_CULL_MARGIN &&
+				screenX <= this.mGame.getStageWidth() + VIEWPORT_CULL_MARGIN &&
+				screenY >= -VIEWPORT_CULL_MARGIN &&
+				screenY <= this.mGame.getStageHeight() + VIEWPORT_CULL_MARGIN;
+		}
+
 		private function sortAll(param1: Boolean = true, param2: Boolean = true): void {
 			var changed:Boolean = false;
 			var container:Sprite = null;
 			var parent:DisplayObjectContainer = null;
 			var element:Renderable = null;
 			var ground:Boolean = false;
+			var shouldDisplay:Boolean = false;
 			var oldIndex:int = 0;
 			var i:int = 0;
-			var visibleLookup:Dictionary = null;
 			if (param1) {
-				visibleLookup = new Dictionary(true);
-				i = 0;
-				while (i < this.mVisibleObjects.length) {
-					visibleLookup[this.mVisibleObjects[i]] = true;
-					i++;
-				}
 				i = 0;
 				while (i < this.mAllElements.length) {
 					element = this.mAllElements[i] as Renderable;
@@ -2906,28 +2922,26 @@
 						if (container) {
 							parent = container.parent;
 							ground = element.getTileSize().z == 0;
-							// Previous code ran hitTestObject() + area checks here,
-							// but never consumed that result. Removing it is behavior
-							// preserving and removes collision work from the hot path.
-							if (!container.visible) {
+							shouldDisplay = container.visible && (ground || this.isRenderableInViewport(element));
+							if (!shouldDisplay) {
 								if (parent) {
 									parent.removeChild(container);
 								}
-								if (visibleLookup[element]) {
+								if (this.mVisibleLookup[element]) {
 									oldIndex = this.mVisibleObjects.indexOf(element);
 									if (oldIndex != -1) {
 										this.mVisibleObjects.splice(oldIndex, 1);
 									}
-									delete visibleLookup[element];
+									delete this.mVisibleLookup[element];
 									changed = true;
 								}
 							} else if (ground) {
 								if (!parent) {
 									this.mContainer.addChildAt(container, 0);
 								}
-							} else if (!visibleLookup[element]) {
+							} else if (!this.mVisibleLookup[element]) {
 								this.mVisibleObjects.push(element);
-								visibleLookup[element] = true;
+								this.mVisibleLookup[element] = true;
 								changed = true;
 							}
 						}
@@ -2936,7 +2950,7 @@
 				}
 				this.mVisibleObjectCnt = this.mVisibleObjects.length;
 			}
-			if (param2) {
+			if (param2 || changed) {
 				if (this.armySortObjects(this.mVisibleObjects)) {
 					changed = true;
 				}
@@ -2954,7 +2968,6 @@
 				}
 			}
 		}
-
 		public function setScale(param1: Number): void {
 			var _loc2_: Renderable = null;
 			var _loc3_: int = int(this.mAllElements.length);
@@ -2975,6 +2988,7 @@
 			this.mRelativeVisibleArea.graphics.drawRect(-this.mGame.getStageWidth() / this.mContainer.scaleX / 2, -this.mGame.getStageHeight() / this.mContainer.scaleX / 2, this.mGame.getStageWidth() / this.mContainer.scaleX, this.mGame.getStageHeight() / this.mContainer.scaleX);
 			this.mTilemapGraphic.createBitmaps();
 			this.mTilemapGraphic.updateTilemap();
+			this.mViewportDirty = true;
 			if (!Config.DISABLE_SORT) {
 				this.sortAll();
 			}
@@ -3170,6 +3184,7 @@
 			if ((_loc5_ = this.mVisibleObjects.indexOf(param1)) >= 0) {
 				this.mVisibleObjects.splice(_loc5_, 1);
 			}
+			delete this.mVisibleLookup[param1];
 			if (_loc4_ != this.mObjectBeingMoved) {
 				if (param3) {
 					if (param1 is PlayerBuildingObject) {

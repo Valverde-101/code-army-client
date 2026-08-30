@@ -54,7 +54,7 @@
 					_loc4_.y = _loc6_.y;
 					_loc4_.visible = true;
 				}
-				this.setAreaAvailability(_loc5_, !MissionManager.isMapLocked(WORLD_MAP_ID_LIST[_loc5_]));
+				this.setAreaAvailability(_loc5_, this.isAreaAvailable(_loc5_));
 				_loc5_++;
 			}
 			this.setAreaAvailability(2, false);
@@ -107,6 +107,13 @@
 		}
 		*/
 
+		private function isAreaAvailable(param1: int): Boolean {
+			if (Config.OFFLINE_MODE && (param1 == 0 || param1 == 1)) {
+				return true;
+			}
+			return !MissionManager.isMapLocked(WORLD_MAP_ID_LIST[param1]);
+		}
+
 		private function setupIcon(param1: MovieClip): void {
 			param1.setMouseEnabled(false);
 			param1.setMouseChildren(false);
@@ -125,7 +132,7 @@
 		private function mouseOver(param1: MouseEvent): void {
 			var _loc3_: MovieClip = null;
 			var _loc2_: int = this.getAreaIndex(param1.target);
-			if (!MissionManager.isMapLocked(WORLD_MAP_ID_LIST[_loc2_])) {
+			if (this.isAreaAvailable(_loc2_)) {
 				_loc3_ = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 				(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = false;
 				(_loc3_.getChildByName("Background_Over") as MovieClip).visible = true;
@@ -134,7 +141,7 @@
 				(_loc3_.getChildByName("Background_Disabled") as MovieClip).visible = false;
 			}
 			if (!this.mTooltip.visible) {
-				if (MissionManager.isMapLocked(WORLD_MAP_ID_LIST[_loc2_])) {
+				if (!this.isAreaAvailable(_loc2_)) {
 					this.mTooltip.setText(this.mCampaignTexts[_loc2_ * 3], this.mCampaignTexts[_loc2_ * 3 + 2]);
 				} else {
 					this.mTooltip.setText(this.mCampaignTexts[_loc2_ * 3], this.mCampaignTexts[_loc2_ * 3 + 1]);
@@ -146,7 +153,7 @@
 		private function mouseOut(param1: MouseEvent): void {
 			var _loc3_: MovieClip = null;
 			var _loc2_: int = this.getAreaIndex(param1.target);
-			if (!MissionManager.isMapLocked(WORLD_MAP_ID_LIST[_loc2_])) {
+			if (this.isAreaAvailable(_loc2_)) {
 				_loc3_ = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 				(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = true;
 				(_loc3_.getChildByName("Background_Over") as MovieClip).visible = false;
@@ -203,6 +210,9 @@
 		}
 
 		private function goToArea(param1: String): void {
+			if (!param1 || param1.length == 0) {
+				return;
+			}
 			mDoneCallback((this as Object).constructor);
 			GameState.mInstance.executeSwitchMap(param1, null);
 		}

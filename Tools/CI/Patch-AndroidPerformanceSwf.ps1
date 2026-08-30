@@ -37,7 +37,11 @@ New-Item -ItemType Directory -Force -Path $outDir|Out-Null
 if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.json'}
 $tmp1=Join-Path $outDir 'swf-perf-tilemap.tmp.swf'
 $tmp2=Join-Path $outDir 'swf-perf-scene.tmp.swf'
-foreach($p in @($tmp1,$tmp2,$OutputSwf)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
+$tmp3=Join-Path $outDir 'swf-feature-config.tmp.swf'
+$tmp4=Join-Path $outDir 'swf-feature-hud.tmp.swf'
+$tmp5=Join-Path $outDir 'swf-feature-state.tmp.swf'
+$tmp6=Join-Path $outDir 'swf-feature-worldmap.tmp.swf'
+foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$tmp5,$tmp6,$OutputSwf)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
 
 function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string]$Source,[string]$LogName){
   if(-not (Test-Path -LiteralPath $Source)){throw "SWF_PERF_PATCH=FAIL source_missing=$Source"}
@@ -56,11 +60,19 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
 
 $tileSource=Join-Path $RepoRoot 'src\game\battlefield\TileMapGraphic.as'
 $sceneSource=Join-Path $RepoRoot 'src\game\isometric\IsometricScene.as'
-# Patch dependency first so IsometricScene can compile against updateCameraViewport().
+$configSource=Join-Path $RepoRoot 'src\Config.as'
+$hudSource=Join-Path $RepoRoot 'src\game\gui\GameHUD.as'
+$stateSource=Join-Path $RepoRoot 'src\game\states\GameState.as'
+$worldMapSource=Join-Path $RepoRoot 'src\game\gui\popups\WorldMapWindow.as'
+# Patch dependency first, then restore Android/offline feature entry points while preserving canonical assets/linkage.
 Invoke-FFDecReplace -In $InputSwf -Out $tmp1 -ClassName 'game.battlefield.TileMapGraphic' -Source $tileSource -LogName 'ffdec-performance-tilemap.log'
 Invoke-FFDecReplace -In $tmp1 -Out $tmp2 -ClassName 'game.isometric.IsometricScene' -Source $sceneSource -LogName 'ffdec-performance-scene.log'
-Move-Item -LiteralPath $tmp2 -Destination $OutputSwf -Force
-Remove-Item -LiteralPath $tmp1 -Force -ErrorAction SilentlyContinue
+Invoke-FFDecReplace -In $tmp2 -Out $tmp3 -ClassName 'Config' -Source $configSource -LogName 'ffdec-feature-config.log'
+Invoke-FFDecReplace -In $tmp3 -Out $tmp4 -ClassName 'game.gui.GameHUD' -Source $hudSource -LogName 'ffdec-feature-hud.log'
+Invoke-FFDecReplace -In $tmp4 -Out $tmp5 -ClassName 'game.states.GameState' -Source $stateSource -LogName 'ffdec-feature-state.log'
+Invoke-FFDecReplace -In $tmp5 -Out $tmp6 -ClassName 'game.gui.popups.WorldMapWindow' -Source $worldMapSource -LogName 'ffdec-feature-worldmap.log'
+Move-Item -LiteralPath $tmp6 -Destination $OutputSwf -Force
+foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$tmp5)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
 
 $outputInfo=Get-Item -LiteralPath $OutputSwf
 $outputSha=(Get-FileHash -LiteralPath $OutputSwf -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -75,7 +87,7 @@ $dumpExit=$LASTEXITCODE
 $dump|Set-Content -LiteralPath $dumpLog -Encoding UTF8
 if($dumpExit -ne 0){throw "SWF_PERF_PATCH=FAIL dump_exit=$dumpExit"}
 $dumpText=$dump -join "`n"
-foreach($className in @('game.battlefield.TileMapGraphic','game.isometric.IsometricScene')){
+foreach($className in @('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','Config','game.gui.GameHUD','game.states.GameState','game.gui.popups.WorldMapWindow')){
   if($dumpText -notmatch [regex]::Escape($className)){throw "SWF_PERF_PATCH=FAIL class_missing_after_patch=$className"}
 }
 
@@ -88,7 +100,11 @@ $manifest=[ordered]@{
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@(
     [ordered]@{name='game.battlefield.TileMapGraphic';source='src/game/battlefield/TileMapGraphic.as';sha256=(Get-FileHash $tileSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.isometric.IsometricScene';source='src/game/isometric/IsometricScene.as';sha256=(Get-FileHash $sceneSource -Algorithm SHA256).Hash.ToLowerInvariant()}
+    [ordered]@{name='game.isometric.IsometricScene';source='src/game/isometric/IsometricScene.as';sha256=(Get-FileHash $sceneSource -Algorithm SHA256).Hash.ToLowerInvariant()},
+    [ordered]@{name='Config';source='src/Config.as';sha256=(Get-FileHash $configSource -Algorithm SHA256).Hash.ToLowerInvariant()},
+    [ordered]@{name='game.gui.GameHUD';source='src/game/gui/GameHUD.as';sha256=(Get-FileHash $hudSource -Algorithm SHA256).Hash.ToLowerInvariant()},
+    [ordered]@{name='game.states.GameState';source='src/game/states/GameState.as';sha256=(Get-FileHash $stateSource -Algorithm SHA256).Hash.ToLowerInvariant()},
+    [ordered]@{name='game.gui.popups.WorldMapWindow';source='src/game/gui/popups/WorldMapWindow.as';sha256=(Get-FileHash $worldMapSource -Algorithm SHA256).Hash.ToLowerInvariant()}
   )
   guarantees=@(
     'enemy_character_update_cadence_unchanged',
@@ -98,6 +114,7 @@ $manifest=[ordered]@{
     'audio_assets_preserved_from_source_swf',
     'animate_linkage_preserved_from_source_swf'
   )
+  feature_patch_version='offline-features-v1'
   optimizations=@(
     'padded_tilemap_camera_cache_256px',
     'tilemap_rebuild_threshold_72pct',
@@ -107,7 +124,12 @@ $manifest=[ordered]@{
     'indexed_static_object_hot_loop',
     'skip_global_membership_scan_while_camera_pans',
     'skip_sort_when_object_positions_are_unchanged',
-    'reuse_existing_mouse_cell_result'
+    'reuse_existing_mouse_cell_result',
+    'viewport_cull_offscreen_renderables_384px',
+    'persistent_visible_membership_dictionary',
+    'android_pinch_zoom_enabled',
+    'offline_pvp_entry_enabled',
+    'offline_world_map_home_desert_enabled'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }

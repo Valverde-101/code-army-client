@@ -22,7 +22,7 @@
       
       public static const EDITING_MODE:Boolean = false;
       
-      public static const USE_WORLD_MAP:Boolean = false;
+      public static const USE_WORLD_MAP:Boolean = true;
       
       public static const USE_LIVE_BUILD:Boolean = false;
       
