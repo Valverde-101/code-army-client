@@ -1,0 +1,14 @@
+﻿{
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "288f590689ed98da441c974414d51240a066bc12",
+    "apk_sha256":  "3c9b567ffd341adbcddcf0c9b04b8bf50526cee150de4ea22f7686cbe9c45e36",
+    "apk_validated":  true,
+    "build_tier":  "HARMAN_AIR50_ARM64",
+    "game_version":  "23.2",
+    "render_mode":  "gpu",
+    "expected_render_mode":  "gpu",
+    "failures":  [
+
+                 ]
+}
+
