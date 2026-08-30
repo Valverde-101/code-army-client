@@ -1,5 +1,6 @@
 ﻿package game.isometric {
 	import com.dchoc.graphics.DCResourceManager;
+	import com.dchoc.GUI.DCWindow;
 	import flash.display.DisplayObject;
 	import flash.display.DisplayObjectContainer;
 	import flash.display.MovieClip;
@@ -38,6 +39,7 @@
 	import game.gui.CursorManager;
 	import game.gui.HUDInterface;
 	import game.gui.popups.PopUpManager;
+	import game.gui.popups.WorldMapWindow;
 	import game.isometric.camera.IsoCamera;
 	import game.isometric.characters.IsometricCharacter;
 	import game.isometric.elements.DisplayContainer;
@@ -63,6 +65,7 @@
 	import game.sound.ArmySoundManager;
 	import game.states.GameState;
 	import game.utils.EffectController;
+	import game.utils.OfflineSave;
 
 	public class IsometricScene {
 
@@ -129,6 +132,11 @@
 		private var mSortDirty: Boolean = true;
 		private var mViewportDirty: Boolean = true;
 		private static const VIEWPORT_CULL_MARGIN: Number = 384;
+		private static const OFFLINE_WORLD_MAP_RESOURCE: String = "swf/map";
+
+		private var mOfflineFeatureHudBottom: MovieClip;
+		private var mOfflineFeatureButtonsHooked: Boolean = false;
+		private var mOfflineWorldMapLoading: Boolean = false;
 
 		public var mCamera: IsoCamera;
 
@@ -2601,6 +2609,121 @@
 			}
 		}
 
+
+		private function ensureOfflineFeatureButtons(): void {
+			var hud: Object = null;
+			var bottom: MovieClip = null;
+			var pvpButton: DisplayObject = null;
+			var mapButton: DisplayObject = null;
+			if (!Config.OFFLINE_MODE || !this.mGame || !this.mGame.getHud()) {
+				return;
+			}
+			hud = this.mGame.getHud() as Object;
+			try {
+				bottom = hud["getHUDClipBottom"]() as MovieClip;
+			} catch (error: Error) {
+				return;
+			}
+			if (!bottom) {
+				return;
+			}
+			if (this.mOfflineFeatureHudBottom != bottom) {
+				if (this.mOfflineFeatureHudBottom && this.mOfflineFeatureButtonsHooked) {
+					this.mOfflineFeatureHudBottom.removeEventListener(MouseEvent.MOUSE_DOWN, this.offlineFeatureMouseDown, true);
+				}
+				this.mOfflineFeatureHudBottom = bottom;
+				this.mOfflineFeatureButtonsHooked = false;
+			}
+			pvpButton = bottom.getChildByName("Button_Pvp");
+			mapButton = bottom.getChildByName("Button_Map");
+			if (pvpButton) {
+				pvpButton.visible = true;
+				pvpButton.mouseEnabled = true;
+			}
+			if (mapButton) {
+				mapButton.visible = true;
+				mapButton.mouseEnabled = true;
+			}
+			if (!this.mOfflineFeatureButtonsHooked && (pvpButton || mapButton)) {
+				bottom.addEventListener(MouseEvent.MOUSE_DOWN, this.offlineFeatureMouseDown, true, 1000, true);
+				this.mOfflineFeatureButtonsHooked = true;
+			}
+		}
+
+		private function getOfflineFeatureButton(param1: DisplayObject): DisplayObject {
+			var current: DisplayObject = param1;
+			while (current && current != this.mOfflineFeatureHudBottom) {
+				if (current.name == "Button_Pvp" || current.name == "Button_Map") {
+					return current;
+				}
+				current = current.parent;
+			}
+			return null;
+		}
+
+		private function offlineFeatureMouseDown(param1: MouseEvent): void {
+			var button: DisplayObject = this.getOfflineFeatureButton(param1.target as DisplayObject);
+			if (!button || !Config.OFFLINE_MODE) {
+				return;
+			}
+			param1.stopImmediatePropagation();
+			if (button.name == "Button_Pvp") {
+				OfflineSave.startEmptyPvPProgress();
+				this.mGame.openPvPMatchUpDialog();
+				return;
+			}
+			if (button.name == "Button_Map") {
+				this.openOfflineWorldMap();
+			}
+		}
+
+		private function openOfflineWorldMap(): void {
+			var resources: DCResourceManager = DCResourceManager.getInstance();
+			var eventName: String = null;
+			if (resources.isLoaded(OFFLINE_WORLD_MAP_RESOURCE)) {
+				this.showOfflineWorldMap();
+				return;
+			}
+			if (this.mOfflineWorldMapLoading) {
+				return;
+			}
+			this.mOfflineWorldMapLoading = true;
+			eventName = OFFLINE_WORLD_MAP_RESOURCE + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
+			resources.addEventListener(eventName, this.offlineWorldMapLoaded, false, 0, true);
+			if (!resources.isAddedToLoadingList(OFFLINE_WORLD_MAP_RESOURCE)) {
+				resources.load(Config.DIR_DATA + OFFLINE_WORLD_MAP_RESOURCE + ".swf", OFFLINE_WORLD_MAP_RESOURCE, null, false);
+			}
+		}
+
+		private function offlineWorldMapLoaded(param1: Event): void {
+			DCResourceManager.getInstance().removeEventListener(param1.type, this.offlineWorldMapLoaded);
+			this.mOfflineWorldMapLoading = false;
+			this.showOfflineWorldMap();
+		}
+
+		private function showOfflineWorldMap(): void {
+			var popup: WorldMapWindow = null;
+			if (!this.mGame || PopUpManager.isPopUpCreated(WorldMapWindow)) {
+				return;
+			}
+			popup = PopUpManager.getPopUp(WorldMapWindow) as WorldMapWindow;
+			if (!popup) {
+				return;
+			}
+			popup.open(this.mGame.getMainClip(), true);
+			popup.Activate(this.closeOfflineWorldMap);
+		}
+
+		private function closeOfflineWorldMap(param1: Class): void {
+			var popup: DCWindow = PopUpManager.getPopUp(param1) as DCWindow;
+			if (!popup) {
+				return;
+			}
+			popup.close();
+			PopUpManager.releasePopUp(param1);
+			MissionManager.increaseCounter("Close", popup, 1);
+		}
+
 		public function update(param1: int): void {
 			var _loc2_: int = 0;
 			var _loc5_: GridCell = null;
@@ -2611,6 +2734,9 @@
 			var _loc11_: int = 0;
 			var _loc12_: int = 0;
 			var _loc13_: int = 0;
+			if (Config.OFFLINE_MODE && (!this.mOfflineFeatureButtonsHooked || this.mSwitch % 25 == 0)) {
+				this.ensureOfflineFeatureButtons();
+			}
 			if (PopUpManager.isModalPopupActive()) {
 				return;
 			}
@@ -4254,6 +4380,15 @@
 		}
 
 		public function destroy(): void {
+			if (this.mOfflineFeatureHudBottom && this.mOfflineFeatureButtonsHooked) {
+				this.mOfflineFeatureHudBottom.removeEventListener(MouseEvent.MOUSE_DOWN, this.offlineFeatureMouseDown, true);
+			}
+			if (this.mOfflineWorldMapLoading) {
+				DCResourceManager.getInstance().removeEventListener(OFFLINE_WORLD_MAP_RESOURCE + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE, this.offlineWorldMapLoaded);
+			}
+			this.mOfflineFeatureHudBottom = null;
+			this.mOfflineFeatureButtonsHooked = false;
+			this.mOfflineWorldMapLoading = false;
 			var _loc1_: Renderable = null;
 			var _loc2_: String = null;
 			var _loc3_: String = null;

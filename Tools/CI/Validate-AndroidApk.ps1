@@ -123,7 +123,7 @@ if($seedHash -ne ([string]$prov.swf_sha256).ToLowerInvariant()){$failures.Add("a
 if(-not [bool]$prov.swf_performance_patched){$failures.Add('swf_performance_patched=false')}
 if([string]$prov.performance_patch_version -ne 'mobile-engine-v3.3-features-safe'){$failures.Add("performance_patch_version=$($prov.performance_patch_version)")}
 $patchClasses=@($prov.performance_patch_classes)
-$allowedPatchClasses=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.gui.GameHUD','game.gui.popups.WorldMapWindow')
+$allowedPatchClasses=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.gui.popups.WorldMapWindow')
 foreach($requiredPatchClass in $allowedPatchClasses){
   if($patchClasses -notcontains $requiredPatchClass){$failures.Add("performance_patch_class_missing=$requiredPatchClass")}
 }
