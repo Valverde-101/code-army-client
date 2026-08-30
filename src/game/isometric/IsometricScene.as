@@ -3145,6 +3145,9 @@
 			}
 		}
 		public function setScale(param1: Number): void {
+			if (Math.abs(this.mContainer.scaleX - param1) < 0.0001) {
+				return;
+			}
 			var _loc2_: Renderable = null;
 			var _loc3_: int = int(this.mAllElements.length);
 			var _loc4_: int = 0;
@@ -4426,6 +4429,12 @@
 			this.mStaticElements = null;
 			this.mLastSortX = null;
 			this.mLastSortY = null;
+			if (this.mVisibleObjects) {
+				this.mVisibleObjects.length = 0;
+			}
+			this.mVisibleObjects = null;
+			this.mVisibleLookup = null;
+			this.mCachedMouseCell = null;
 			for (_loc3_ in this.mSoundMakers) {
 				(this.mSoundMakers[_loc3_] as Renderable).destroy();
 				this.mSoundMakers[_loc3_] = null;

@@ -207,6 +207,9 @@ $swfSourceSha=$publishedSwfSha
 $swfSourceSize=$publishedSwfInfo.Length
 if($swfSourceSha -ne $canonicalSwfSha){throw "SWF_SOURCE_ORIGINAL=FAIL expected=$canonicalSwfSha actual=$swfSourceSha"}
 $stagedSwf=Join-Path $stage $appContentSwf
+$runtimeRegression=Join-Path $RepoRoot 'Tools\CI\Test-AndroidRuntimePatch.ps1'
+if(-not (Test-Path -LiteralPath $runtimeRegression)){throw "REGRESSION=FAIL runtime_patch_test_missing=$runtimeRegression"}
+& $runtimeRegression -RepoRoot $RepoRoot
 $patchManifestPath=Join-Path $buildRoot 'SWF-PERFORMANCE-PATCH.json'
 $patcher=Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1'
 if(-not (Test-Path -LiteralPath $patcher)){throw "SWF_PERFORMANCE_PATCH=FAIL patcher_missing=$patcher"}
@@ -216,10 +219,10 @@ $swfSha=(Get-FileHash -LiteralPath $stagedSwf -Algorithm SHA256).Hash.ToLowerInv
 $swfSize=$stagedSwfInfo.Length
 if($swfSha -eq $canonicalSwfSha){throw "SWF_PERFORMANCE_PATCH=FAIL patched_hash_equals_source"}
 $patchManifest=Get-Content -LiteralPath $patchManifestPath -Raw|ConvertFrom-Json
-if([string]$patchManifest.patch_version -ne 'mobile-engine-v3.5-root-recovery'){throw "SWF_PERFORMANCE_PATCH=FAIL manifest_version=$($patchManifest.patch_version)"}
+if([string]$patchManifest.patch_version -ne 'mobile-engine-v3.6-pvp-map-memory'){throw "SWF_PERFORMANCE_PATCH=FAIL manifest_version=$($patchManifest.patch_version)"}
 if(([string]$patchManifest.output_swf.sha256).ToLowerInvariant() -ne $swfSha){throw "SWF_PERFORMANCE_PATCH=FAIL manifest_sha=$($patchManifest.output_swf.sha256) actual=$swfSha"}
 Write-Host "SWF_SOURCE_ORIGINAL=PASS sha256=$canonicalSwfSha size=$swfSourceSize"
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.5-root-recovery patched_sha256=$swfSha size=$swfSize"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.6-pvp-map-memory patched_sha256=$swfSha size=$swfSize"
 Write-Host "BINARY_SEED=PASS source=published_v23_2 repository=Valverde-101/Test_army_attack source_sha=$publishedActualSha source_swf_sha256=$swfSourceSha patched_swf_sha256=$swfSha"
 
 $extensionsDir=Join-Path $buildRoot 'extensions'
@@ -381,9 +384,9 @@ $prov=[ordered]@{
   swf_size=$swfSize
   swf_sha256=$swfSha
   swf_performance_patched=$true
-  performance_patch_version='mobile-engine-v3.5-root-recovery'
+  performance_patch_version='mobile-engine-v3.6-pvp-map-memory'
   performance_patch_manifest=$patchManifestPath
-  performance_patch_classes=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.gui.popups.WorldMapWindow','game.gui.pvp.PvPMatchUpDialog')
+  performance_patch_classes=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.utils.OfflineSave','game.states.GameState','game.net.PvPMatch','game.gui.popups.WorldMapWindow','game.gui.pvp.PvPMatchUpDialog','game.gui.pvp.PvPCombatSetupDialog')
   render_mode=$renderMode
   native_performance_overlay=$true
   native_performance_overlay_mode='test-low-overhead-v2'
@@ -430,7 +433,7 @@ $toolchain=[ordered]@{
 }
 $toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
 $toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
-Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=true swf_source_original=true swf_performance_patched=true performance_patch=mobile-engine-v3.5-root-recovery native_perf_overlay=true render_mode=$renderMode"
+Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=true swf_source_original=true swf_performance_patched=true performance_patch=mobile-engine-v3.6-pvp-map-memory native_perf_overlay=true render_mode=$renderMode"
 Write-Host "BUILD=PASS platform=android tier=$tier"
 Write-Host "APK_GENERATED=PASS"
 Write-Host "APK_PATH=$apkPath"

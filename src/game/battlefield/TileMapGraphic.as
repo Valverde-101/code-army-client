@@ -10,6 +10,7 @@
    import flash.geom.Matrix;
    import flash.geom.Point;
    import flash.geom.Rectangle;
+   import flash.utils.Dictionary;
    import game.characters.EnemyUnit;
    import game.gameElements.PermanentHFEObject;
    import game.isometric.GridCell;
@@ -566,8 +567,30 @@
          return false;
       }
       
+      private function disposeCachedTileBitmaps() : void
+      {
+         var key:String = null;
+         var data:BitmapData = null;
+         var disposed:Dictionary = new Dictionary(true);
+         if(!this.mBitmaps)
+         {
+            return;
+         }
+         for(key in this.mBitmaps)
+         {
+            data = this.mBitmaps[key] as BitmapData;
+            if(data && data != this.EMPTY_BITMAPDATA && !disposed[data])
+            {
+               data.dispose();
+               disposed[data] = true;
+            }
+            this.mBitmaps[key] = null;
+         }
+      }
+      
       public function createBitmaps() : void
       {
+         this.disposeCachedTileBitmaps();
          this.mDOs = new Array();
          this.mBitmaps = new Array();
          this.mBitmapOffsets = new Array();

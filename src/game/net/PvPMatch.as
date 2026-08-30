@@ -94,23 +94,31 @@
          var _loc4_:int = 0;
          var _loc5_:Object = null;
          var _loc6_:int = 0;
-         var _loc7_:Item = null;
+         var _loc7_:EnemyUnitItem = null;
          this.mOpponentUnits = new Array();
-         var _loc1_:int = (this.mOpponent.mBadassLevel / 5 as int) * 5;
+         if(!this.mOpponent)
+         {
+            return;
+         }
+         var _loc1_:int = int(Math.max(0,Math.min(50,this.mOpponent.mBadassLevel)) / 5) * 5;
          var _loc2_:int = 0;
-         while(_loc2_ < 4 || this.mOpponentUnits.length < 2)
+         while(_loc2_ < 24 && this.mOpponentUnits.length < 4)
          {
             _loc3_ = Math.random() * 100;
             _loc4_ = 1;
             while(_loc4_ <= 11)
             {
-               if((Boolean(_loc5_ = GameState.mConfig.PvPEnemyList[_loc4_])) && _loc5_["Level" + _loc1_] != null)
+               _loc5_ = GameState.mConfig.PvPEnemyList[_loc4_];
+               if(Boolean(_loc5_) && _loc5_["Level" + _loc1_] != null)
                {
                   _loc6_ = int(_loc5_["Level" + _loc1_]);
                   if(_loc3_ < _loc6_)
                   {
-                     _loc7_ = ItemManager.getItem(_loc5_.Unit.ID,_loc5_.Unit.Type);
-                     this.mOpponentUnits.push(_loc7_);
+                     _loc7_ = ItemManager.getItem(_loc5_.Unit.ID,_loc5_.Unit.Type) as EnemyUnitItem;
+                     if(_loc7_)
+                     {
+                        this.mOpponentUnits.push(_loc7_);
+                     }
                      break;
                   }
                   _loc3_ -= _loc6_;
@@ -118,6 +126,17 @@
                _loc4_++;
             }
             _loc2_++;
+         }
+         var fallbackIds:Array = ["PvPInfantry","PvPAPC","PvPArtillery","PvPRocketBattery"];
+         var fallbackIndex:int = 0;
+         while(this.mOpponentUnits.length < 2 && fallbackIndex < fallbackIds.length)
+         {
+            _loc7_ = ItemManager.getItem(fallbackIds[fallbackIndex],"PvPEnemyUnit") as EnemyUnitItem;
+            if(_loc7_)
+            {
+               this.mOpponentUnits.push(_loc7_);
+            }
+            fallbackIndex++;
          }
       }
       
@@ -146,14 +165,26 @@
          for each(_loc3_ in GameState.mConfig.MapSetup)
          {
             _loc1_ = _loc3_.ID as String;
-            if(_loc1_.indexOf("pvp") >= 0)
+            if(_loc1_ && _loc1_.indexOf("pvp") >= 0)
             {
                _loc2_.push(_loc1_);
             }
          }
-         //_loc1_ = String(_loc2_[Math.random() * _loc2_.length as int]);
-	     _loc1_ = String(_loc2_["0"]);
-         _loc4_ = (_loc4_ = GameState.mConfig.MapSetup[_loc1_].TilemapFileName as String).substring(0,_loc4_.lastIndexOf("."));
+         if(_loc2_.length == 0)
+         {
+            return null;
+         }
+         _loc1_ = String(_loc2_[int(Math.random() * _loc2_.length)]);
+         if(!GameState.mConfig.MapSetup[_loc1_])
+         {
+            return null;
+         }
+         _loc4_ = GameState.mConfig.MapSetup[_loc1_].TilemapFileName as String;
+         if(!_loc4_ || _loc4_.length == 0)
+         {
+            return null;
+         }
+         _loc4_ = _loc4_.substring(0,_loc4_.lastIndexOf("."));
          if(!(_loc5_ = DCResourceManager.getInstance()).isAddedToLoadingList(_loc4_))
          {
             _loc5_.load(Config.DIR_CONFIG + _loc4_ + ".csv",_loc4_,null,true);

@@ -24,7 +24,6 @@
    import game.net.PvPOpponentCollection;
    import game.player.GamePlayerProfile;
    import game.states.GameState;
-   import game.environment.EnvEffectManager;
    
    public class PvPCombatSetupDialog extends PopUpWindow
    {
@@ -264,6 +263,7 @@
       private function backClicked(param1:MouseEvent) : void
       {
          this.closeDialog();
+         GameState.mInstance.mPvPMatch.mOpponent = null;
          this.mMatchUpCallback();
       }
       
@@ -295,8 +295,6 @@
                _loc5_.mSupplyCost = _loc3_;
                PvPOpponentCollection.smCollection.removeRecentAttack(_loc5_.mOpponent.mFacebookID);
                this.closeDialog();
-			   EnvEffectManager.destroy();
-			   GameState.mInstance.mScene.mFog.destroy();
                this.mStartPvPCallback();
             }
          }
@@ -309,8 +307,8 @@
       
       private function closeClicked(param1:MouseEvent) : void
       {
+         GameState.mInstance.mPvPMatch.mOpponent = null;
          this.closeDialog();
-         GameState.mInstance.endPvP();
       }
       
       protected function closeDialog(param1:Boolean = true) : void
@@ -472,13 +470,16 @@
          var _loc2_:Number = 0;
          for each(_loc3_ in smSelectedUnits)
          {
-            _loc1_ += _loc3_.getDefaultActorPriority();
+            _loc1_ += Math.max(0,_loc3_.getDefaultActorPriority());
          }
          for each(_loc4_ in this.mOpponentUnits)
          {
-            _loc2_ += _loc4_.getDefaultActorPriority();
+            _loc2_ += Math.max(0,_loc4_.getDefaultActorPriority());
          }
-         (_loc5_ = this.mInfoPanel.getChildByName("Text_Chances") as TextField).text = "" + (_loc1_ - _loc2_);
+         var total:Number = _loc1_ + _loc2_;
+         var chance:int = total > 0 ? Math.round(100 * _loc1_ / total) : 50;
+         chance = Math.max(0,Math.min(100,chance));
+         (_loc5_ = this.mInfoPanel.getChildByName("Text_Chances") as TextField).text = chance.toString() + "%";
       }
    }
 }

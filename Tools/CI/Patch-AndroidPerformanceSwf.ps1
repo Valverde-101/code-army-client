@@ -47,16 +47,19 @@ if($ffdec.Extension -eq '.jar'){
 $outDir=Split-Path -Parent $OutputSwf
 New-Item -ItemType Directory -Force -Path $outDir|Out-Null
 if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.json'}
-$tmp1=Join-Path $outDir 'swf-perf-tilemap.tmp.swf'
-$tmp2=Join-Path $outDir 'swf-perf-scene.tmp.swf'
-$tmp3=Join-Path $outDir 'swf-feature-worldmap.tmp.swf'
-$tmp4=Join-Path $outDir 'swf-feature-pvp-matchup.tmp.swf'
-foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$OutputSwf)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
-
+$patchSpecs=@(
+  [ordered]@{Class='game.battlefield.TileMapGraphic';Source='src\game\battlefield\TileMapGraphic.as';Log='ffdec-performance-tilemap.log'},
+  [ordered]@{Class='game.isometric.IsometricScene';Source='src\game\isometric\IsometricScene.as';Log='ffdec-performance-scene.log'},
+  [ordered]@{Class='game.utils.OfflineSave';Source='src\game\utils\OfflineSave.as';Log='ffdec-feature-offlinesave.log'},
+  [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
+  [ordered]@{Class='game.net.PvPMatch';Source='src\game\net\PvPMatch.as';Log='ffdec-feature-pvp-match.log'},
+  [ordered]@{Class='game.gui.popups.WorldMapWindow';Source='src\game\gui\popups\WorldMapWindow.as';Log='ffdec-feature-worldmap.log'},
+  [ordered]@{Class='game.gui.pvp.PvPMatchUpDialog';Source='src\game\gui\pvp\PvPMatchUpDialog.as';Log='ffdec-feature-pvp-matchup.log'},
+  [ordered]@{Class='game.gui.pvp.PvPCombatSetupDialog';Source='src\game\gui\pvp\PvPCombatSetupDialog.as';Log='ffdec-feature-pvp-combat.log'}
+)
 $logRoot=Split-Path -Parent $ManifestPath
 if(-not $logRoot){$logRoot=$outDir}
 New-Item -ItemType Directory -Force -Path $logRoot|Out-Null
-
 function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string]$Source,[string]$LogName){
   if(-not (Test-Path -LiteralPath $Source)){throw "SWF_PERF_PATCH=FAIL source_missing=$Source"}
   $args=@('-cli','-air','-onerror','abort','-replace',$In,$Out,$ClassName,$Source)
@@ -67,9 +70,7 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
     if($java){$lines=@(& $java.Source '-jar' $ffdec.FullName @args 2>&1|ForEach-Object{$_.ToString()})}
     else{$lines=@(& $ffdec.FullName @args 2>&1|ForEach-Object{$_.ToString()})}
     $exit=$LASTEXITCODE
-  }finally{
-    $ErrorActionPreference=$previousErrorActionPreference
-  }
+  }finally{$ErrorActionPreference=$previousErrorActionPreference}
   $lines|Set-Content -LiteralPath $log -Encoding UTF8
   if($exit -ne 0 -or -not (Test-Path -LiteralPath $Out)){
     $lines|Select-Object -Last 120|ForEach-Object{Write-Host $_}
@@ -77,21 +78,19 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
   }
   Write-Host "SWF_CLASS_PATCH=PASS class=$ClassName log=$log"
 }
-
-$tileSource=Join-Path $RepoRoot 'src\game\battlefield\TileMapGraphic.as'
-$sceneSource=Join-Path $RepoRoot 'src\game\isometric\IsometricScene.as'
-$worldMapSource=Join-Path $RepoRoot 'src\game\gui\popups\WorldMapWindow.as'
-$pvpMatchupSource=Join-Path $RepoRoot 'src\game\gui\pvp\PvPMatchUpDialog.as'
-
-# Runtime-stability policy:
-# Keep canonical Config, GameState, GameHUD, ArmyButton, OfflineSave, animation and audio-adjacent bytecode.
-# Recompile only the two rendering hot paths and two isolated feature UIs.
-Invoke-FFDecReplace -In $InputSwf -Out $tmp1 -ClassName 'game.battlefield.TileMapGraphic' -Source $tileSource -LogName 'ffdec-performance-tilemap.log'
-Invoke-FFDecReplace -In $tmp1 -Out $tmp2 -ClassName 'game.isometric.IsometricScene' -Source $sceneSource -LogName 'ffdec-performance-scene.log'
-Invoke-FFDecReplace -In $tmp2 -Out $tmp3 -ClassName 'game.gui.popups.WorldMapWindow' -Source $worldMapSource -LogName 'ffdec-feature-worldmap.log'
-Invoke-FFDecReplace -In $tmp3 -Out $tmp4 -ClassName 'game.gui.pvp.PvPMatchUpDialog' -Source $pvpMatchupSource -LogName 'ffdec-feature-pvp-matchup.log'
-Move-Item -LiteralPath $tmp4 -Destination $OutputSwf -Force
-foreach($p in @($tmp1,$tmp2,$tmp3)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
+Remove-Item -LiteralPath $OutputSwf -Force -ErrorAction SilentlyContinue
+$current=$InputSwf
+$tempFiles=New-Object System.Collections.Generic.List[string]
+for($i=0;$i -lt $patchSpecs.Count;$i++){
+  $spec=$patchSpecs[$i]
+  $source=Join-Path $RepoRoot $spec.Source
+  $next=if($i -eq $patchSpecs.Count-1){$OutputSwf}else{Join-Path $outDir ("swf-runtime-patch-{0:D2}.tmp.swf" -f $i)}
+  Remove-Item -LiteralPath $next -Force -ErrorAction SilentlyContinue
+  Invoke-FFDecReplace -In $current -Out $next -ClassName $spec.Class -Source $source -LogName $spec.Log
+  if($current -ne $InputSwf -and $current -ne $OutputSwf){$tempFiles.Add($current)}
+  $current=$next
+}
+foreach($tmp in $tempFiles){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}
 
 $outputInfo=Get-Item -LiteralPath $OutputSwf
 $outputSha=(Get-FileHash -LiteralPath $OutputSwf -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -106,7 +105,8 @@ $dumpExit=$LASTEXITCODE
 $dump|Set-Content -LiteralPath $dumpLog -Encoding UTF8
 if($dumpExit -ne 0){throw "SWF_PERF_PATCH=FAIL dump_exit=$dumpExit"}
 $dumpText=$dump -join "`n"
-foreach($className in @('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.gui.popups.WorldMapWindow','game.gui.pvp.PvPMatchUpDialog')){
+foreach($spec in $patchSpecs){
+  $className=[string]$spec.Class
   if($dumpText -notmatch [regex]::Escape($className)){throw "SWF_PERF_PATCH=FAIL class_missing_after_patch=$className"}
 }
 
@@ -114,15 +114,13 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.5-root-recovery'
+  patch_version='mobile-engine-v3.6-pvp-map-memory'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
-  classes=@(
-    [ordered]@{name='game.battlefield.TileMapGraphic';source='src/game/battlefield/TileMapGraphic.as';sha256=(Get-FileHash $tileSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.isometric.IsometricScene';source='src/game/isometric/IsometricScene.as';sha256=(Get-FileHash $sceneSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.gui.popups.WorldMapWindow';source='src/game/gui/popups/WorldMapWindow.as';sha256=(Get-FileHash $worldMapSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.gui.pvp.PvPMatchUpDialog';source='src/game/gui/pvp/PvPMatchUpDialog.as';sha256=(Get-FileHash $pvpMatchupSource -Algorithm SHA256).Hash.ToLowerInvariant()}
-  )
+  classes=@($patchSpecs|ForEach-Object{
+    $source=Join-Path $RepoRoot $_.Source
+    [ordered]@{name=[string]$_.Class;source=([string]$_.Source).Replace('\','/');sha256=(Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant()}
+  })
   guarantees=@(
     'enemy_character_update_cadence_unchanged',
     'enemy_actions_update_cadence_unchanged',
@@ -134,6 +132,7 @@ $manifest=[ordered]@{
   feature_patch_version='offline-systems-v5-root-recovery'
   optimizations=@(
     'padded_tilemap_camera_cache_256px',
+    'deterministic_tile_bitmap_cache_disposal_before_zoom_rebuild',
     'tilemap_rebuild_threshold_72pct',
     'remove_unused_sort_hit_tests',
     'fix_sort_order_change_index_comparison',
@@ -150,14 +149,18 @@ $manifest=[ordered]@{
     'offline_pvp_bootstrap_before_match_dialog',
     'offline_world_map_button_visible',
     'offline_world_map_home_desert_enabled',
-    'offline_world_map_single_pass_switch',
+    'offline_world_map_single_canonical_switch_path',
+    'offline_saved_map_id_normalization',
+    'pvp_transient_map_single_build',
+    'pvp_returns_to_origin_map',
+    'pvp_three_visible_opponent_slots_owned',
+    'pvp_chance_bounded_percentage',
+    'pvp_enemy_randomization_bounded_attempts',
     'offline_pvp_state_not_reset_on_button_press',
     'offline_pvp_dialog_excludes_global_recent_data',
     'offline_pvp_opponents_bounded_to_valid_ranks',
     'offline_pvp_booster_store_populated',
     'canonical_config_bytecode_preserved',
-    'canonical_gamestate_bytecode_preserved',
-    'canonical_offlinesave_bytecode_preserved',
     'canonical_gamehud_bytecode_preserved',
     'canonical_armybutton_bytecode_preserved',
     'canonical_animationcontroller_bytecode_preserved',
@@ -168,5 +171,5 @@ $manifest=[ordered]@{
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.5-root-recovery source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.6-pvp-map-memory source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

@@ -23,7 +23,7 @@
    {
 	  // Allies + recent tab have been hidden, refer to earlier version for the original code
       
-      private static const PANEL_COUNT:int = 1;
+      private static const PANEL_COUNT:int = 3;
       
       private static const TAB_BUTTON_SPACING:int = 3;
       
@@ -142,6 +142,11 @@
          var rows:Array = GameState.mPvPOpponentsConfig["pvp_opponents"] as Array;
          var row:Object = null;
          var id:String = null;
+         var level:int = 1;
+         var wins:int = 0;
+         var score:int = 0;
+         var name:String = null;
+         var avatar:String = null;
          if(!rows)
          {
             return result;
@@ -152,7 +157,12 @@
             if(id.length > 0 && !seen[id])
             {
                seen[id] = true;
-               result.push(new PvPOpponent(id,int(row.score),int(row.level),int(row.wins),String(row.player_name),String(row.avatar)));
+               level = Math.max(1,Math.min(150,int(row.level)));
+               wins = Math.max(0,int(row.wins));
+               score = Math.max(0,int(row.score));
+               name = row.player_name == null ? "Opponent" : String(row.player_name);
+               avatar = row.avatar == null ? "" : String(row.avatar);
+               result.push(new PvPOpponent(id,score,level,wins,name,avatar));
             }
          }
          return result;
@@ -203,8 +213,11 @@
       
       private function closeClicked(param1:MouseEvent) : void
       {
+         if(GameState.mInstance.mPvPMatch)
+         {
+            GameState.mInstance.mPvPMatch.mOpponent = null;
+         }
          this.closeDialog();
-         GameState.mInstance.endPvP();
       }
       
       protected function closeDialog(param1:Boolean = true) : void
@@ -301,6 +314,11 @@
       
       private function setScrollSlider() : void
       {
+         if(this.mPageMax <= 1)
+         {
+            this.mScrollSlider.x = this.mScrollSliderDefaultX;
+            return;
+         }
          var _loc1_:int = this.mScrollbarBg.width - this.mScrollSlider.width;
          this.mScrollSlider.x = this.mScrollSliderDefaultX + _loc1_ * this.mPage / (this.mPageMax - 1);
       }

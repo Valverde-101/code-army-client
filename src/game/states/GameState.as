@@ -255,6 +255,8 @@
 
 		public var mCurrentPlayerMapId: String;
 
+		private var mPvPReturnMapId: String = "Home";
+
 		public var mServer: MyServer;
 
 		private var mItemToBePlaced: MapItem;
@@ -2870,43 +2872,59 @@
 			var _loc2_: String = null;
 			var _loc3_: String = null;
 			var _loc4_: Object = null;
-			if (FeatureTuner.USE_PVP_MATCH) {
-				_loc1_ = this.mPvPMatch.randomizeMap();
-				this.executeSwitchMap(_loc1_, null, true);
-				this.startLoading();
-				_loc2_ = this.mPvPMatch.getAttackUnitsString();
-				_loc3_ = this.mPvPMatch.getDefensiveUnitsString();
-				if (_loc2_ != null) {
-					_loc4_ = {
-						"opponent_user_id": this.mPvPMatch.mOpponent.mFacebookID,
-						"attack_units": _loc2_,
-						"defensive_units": _loc3_
-					};
-					// Modified for offline game
-					//this.mServer.serverCallServiceWithParameters(ServiceIDs.START_PVP_MATCH, _loc4_, true);
-					var fakeservercall: * = new ServerCall(ServiceIDs.START_PVP_MATCH, null, null, null);
-					fakeservercall["mData"] = {
-						"timestamp": 0
-					}
-					as Object;
-					this.mPlayerProfile.addEnergy(-this.mPvPMatch.mEnergyCost, false);
-					this.mPlayerProfile.addSupplies(-this.mPvPMatch.mSupplyCost);
-					this.handleStartPvPMatch(fakeservercall);
-				}
+			if (!FeatureTuner.USE_PVP_MATCH || !this.mPvPMatch || !this.mPvPMatch.mOpponent) {
+				return;
+			}
+			this.mPvPReturnMapId = this.mCurrentMapId && this.mCurrentMapId.indexOf("pvp_") == -1 ? this.mCurrentMapId : "Home";
+			_loc1_ = this.mPvPMatch.randomizeMap();
+			if (!_loc1_ || _loc1_.length == 0) {
+				return;
+			}
+			this.executeSwitchMap(_loc1_, null, true);
+			this.startLoading();
+			_loc2_ = this.mPvPMatch.getAttackUnitsString();
+			_loc3_ = this.mPvPMatch.getDefensiveUnitsString();
+			if (_loc2_ == null || _loc2_.length == 0) {
+				this.stopLoading();
+				this.executeSwitchMap(this.mPvPReturnMapId, null);
+				return;
+			}
+			_loc4_ = {"opponent_user_id": this.mPvPMatch.mOpponent.mFacebookID,"attack_units": _loc2_,"defensive_units": _loc3_};
+			if (Config.OFFLINE_MODE) {
+				var fakeservercall: * = new ServerCall(ServiceIDs.START_PVP_MATCH, null, null, null);
+				fakeservercall["mData"] = {"timestamp": new Date().valueOf()} as Object;
+				this.mPlayerProfile.addEnergy(-this.mPvPMatch.mEnergyCost, false);
+				this.mPlayerProfile.addSupplies(-this.mPvPMatch.mSupplyCost);
+				this.handleStartPvPMatch(fakeservercall);
+			} else {
+				this.mServer.serverCallServiceWithParameters(ServiceIDs.START_PVP_MATCH, _loc4_, true);
 			}
 		}
 
 		public function endPvP(): void {
 			var _loc1_: int = 0;
-			if (FeatureTuner.USE_PVP_MATCH) {
-				if (this.mPvPHUD) {
-					this.changeFromPvPHUD();
-				}
-				_loc1_ = this.mZoomIndex;
-				this.executeSwitchMap("Home");
-				this.setZoomIndex(_loc1_);
-				this.mPvPMatch.mAI = null;
+			var _loc2_: String = null;
+			if (!FeatureTuner.USE_PVP_MATCH || !this.mPvPMatch) {
+				return;
 			}
+			if (this.mPvPHUD) {
+				this.changeFromPvPHUD();
+			}
+			_loc1_ = this.mZoomIndex;
+			_loc2_ = this.mPvPReturnMapId;
+			if (!_loc2_ || _loc2_.length == 0 || _loc2_.indexOf("pvp_") == 0) {
+				_loc2_ = "Home";
+			}
+			if (this.mCurrentMapId != _loc2_) {
+				this.executeSwitchMap(_loc2_, null);
+			}
+			this.setZoomIndex(_loc1_);
+			this.mPvPMatch.mAI = null;
+			this.mPvPMatch.mOpponent = null;
+			this.mPvPMatch.mPlayerUnits = null;
+			this.mPvPMatch.mOpponentUnits = null;
+			this.mPvPMatch.mActivatedBooster = null;
+			this.mPvPReturnMapId = "Home";
 		}
 
 		private function handleStartPvPMatch(param1: ServerCall): void {
@@ -2914,7 +2932,6 @@
 			if (FeatureTuner.USE_PVP_MATCH) {
 				this.changeState(GameState.STATE_PVP);
 				_loc2_ = this.mZoomIndex;
-				this.mScene.reCalculateCameraMargins();
 				this.initMap(null, this.mCurrentMapId);
 				this.mScene.updateGridInformation();
 				this.mPvPMatch.initMatch(param1.mData);
@@ -3204,67 +3221,65 @@
 		}
 
 		public function executeSwitchMap(param1: String, param2: Friend = null, param3: Boolean = false): void {
-			OfflineSave.saveOldMap();
 			var _loc4_: Object = null;
+			if (!param1 || param1.length == 0) {
+				return;
+			}
 			if ((this.mVisitingFriend == param2 || this.mVisitingFriend == null && param2 == null) && param1 == this.mCurrentMapId) {
 				return;
 			}
-			if (param2) {
-				if (this.mVisitingFriend == null) {
-					this.mCurrentPlayerMapId = this.mCurrentMapId;
-				}
+			OfflineSave.saveOldMap();
+			if (param2 && this.mVisitingFriend == null) {
+				this.mCurrentPlayerMapId = this.mCurrentMapId;
 			}
 			this.mCurrentMapId = param1;
 			this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(param1), 0);
-
 			if (Boolean(param2) && !param3) {
 				this.mPlayerProfile.setNeighborActions(0);
 			}
-			if (!param3) {
-				if (Config.OFFLINE_MODE) {
-					if (param2) {
-						this.mVisitingFriend = param2;
-						this.mPlayerProfile.setNeighborActions(5);
-						this.changeState(STATE_VISITING_NEIGHBOUR);
-						MissionManager.increaseCounter("VisitNeighbor", null, 1);
-						this.mHUD.openVisitingRewardTextBox();
-						this.addVisitNeighborRewards();
-					} else {
-						this.startLoading();
-						this.mScene.reCalculateCameraMargins();
-						this.initMap(null, param1);
-						this.initObjects(null);
-						this.updateGrid();
-						this.addNeighborAvatars();
-						this.mScene.mFog.init();
-						EnvEffectManager.init();
-						this.changeState(STATE_PLAY);
-						this.stopLoading();
-					}
+			if (param3) {
+				this.mVisitingFriend = param2;
+				return;
+			}
+			if (Config.OFFLINE_MODE) {
+				if (param2) {
+					this.mVisitingFriend = param2;
+					this.mPlayerProfile.setNeighborActions(5);
+					this.changeState(STATE_VISITING_NEIGHBOUR);
+					MissionManager.increaseCounter("VisitNeighbor", null, 1);
+					this.mHUD.openVisitingRewardTextBox();
+					this.addVisitNeighborRewards();
+					OfflineSave.switchMap();
 				} else {
+					this.mVisitingFriend = null;
 					this.startLoading();
-					this.changeState(STATE_LOADING_NEIGHBOUR);
-					if (param2) {
-						if (param2.mIsTutor) {
-							this.mServer.serverCallService(ServiceIDs.GET_TUTOR_DATA, true);
-							if (Config.DEBUG_MODE) {}
-						} else {
-							_loc4_ = {
-								"neighbor_user_id": param2.mUserID
-							};
-							this.mServer.serverCallServiceWithParameters(ServiceIDs.GET_NEIGHBOR_DATA, _loc4_, true);
-						}
-					} else {
-						this.mNeighborActionQueues = null;
-						_loc4_ = {
-							"map_id": param1
-						};
-						this.mServer.serverCallServiceWithParameters(ServiceIDs.GET_MAP_DATA, _loc4_, true);
-					}
+					EnvEffectManager.destroy();
+					OfflineSave.switchMap();
+					this.addNeighborAvatars();
+					this.mCurrentMusic = this.getMapMusic();
+					ArmySoundManager.loadMusic(this.mCurrentMusic);
+					this.startMusic();
+					EnvEffectManager.init();
+					this.changeState(STATE_PLAY);
+					this.stopLoading();
 				}
+				return;
+			}
+			this.startLoading();
+			this.changeState(STATE_LOADING_NEIGHBOUR);
+			if (param2) {
+				if (param2.mIsTutor) {
+					this.mServer.serverCallService(ServiceIDs.GET_TUTOR_DATA, true);
+				} else {
+					_loc4_ = {"neighbor_user_id": param2.mUserID};
+					this.mServer.serverCallServiceWithParameters(ServiceIDs.GET_NEIGHBOR_DATA, _loc4_, true);
+				}
+			} else {
+				this.mNeighborActionQueues = null;
+				_loc4_ = {"map_id": param1};
+				this.mServer.serverCallServiceWithParameters(ServiceIDs.GET_MAP_DATA, _loc4_, true);
 			}
 			this.mVisitingFriend = param2;
-			OfflineSave.switchMap();
 		}
 
 		public function executeReturnHome(): void {

@@ -18,6 +18,7 @@
 	import game.missions.MissionManager;
 	import game.gameElements.Production;
 	import game.net.ServerCall;
+	import game.net.PvPOpponentCollection;
 	import com.dchoc.utils.Cookie;
 	import game.characters.EnemyUnit;
 	import game.characters.PlayerUnit;
@@ -300,35 +301,36 @@
 
 		public static function switchMap(): void {
 			var map_id: String = GameState.mInstance.mCurrentMapId;
+			var savedMap: * = null;
 			GameState.mInstance.mLoadingStatesOver = false;
 			GameState.mInstance.mCurrentMapGraphicsId = Math.max(GameState.GRAPHICS_MAP_ID_LIST.indexOf(map_id), 0);
-			//GameState.mInstance.loadingFirstFinished();
 			GameState.mInstance.mPlayerProfile.mInventory.getAreas();
 			GameState.mInstance.changeState(0);
-			GameState.mInstance.mMapData.destroy();
 			var fakeservercall: * = new ServerCall("GetMapData", null, null, null);
 			fakeservercall["mData"] = mMissions;
 			if (mMaps[map_id]) {
+				savedMap = mMaps[map_id];
+				savedMap["map_name"] = map_id;
+				if (savedMap["map_data"]) {
+					savedMap["map_data"]["map_id"] = map_id;
+				}
 				fakeservercall["mData"]["missions_incomplete"] = mMissions["missions_incomplete"];
-				GameState.mInstance.initObjects(null);
-				loadMap(mMaps[map_id]);
+				loadMap(savedMap);
 			} else {
-				GameState.mInstance.initObjects(null);
 				GameState.mInstance.initMap(null, map_id);
 			}
 			GameState.mInstance.updateGrid();
 			GameState.mInstance.mScene.mFog.init();
-			MissionManager.initialize()
-			GameState.mInstance.mMissionIconsManager.reset()
+			MissionManager.initialize();
+			GameState.mInstance.mMissionIconsManager.reset();
 			MissionManager.setupFromServer(fakeservercall);
 			MissionManager.findNewActiveMissions();
-			// Show water amount in HUD
 			if (map_id == "Desert") {
 				(GameState.mInstance.getMainClip() as GameMain).changeDiscordMap("Desert");
-				GameState.mInstance.mHUD.changeWaterVisibility(true)
+				GameState.mInstance.mHUD.changeWaterVisibility(true);
 			} else if (map_id == "Home") {
 				(GameState.mInstance.getMainClip() as GameMain).changeDiscordMap("Homeland");
-				GameState.mInstance.mHUD.changeWaterVisibility(false)
+				GameState.mInstance.mHUD.changeWaterVisibility(false);
 			}
 			GameState.mInstance.mLoadingStatesOver = true;
 		}
@@ -494,6 +496,7 @@
 			saveOldMap()
 			fakedata["player_unit_count"] = calculateGlobalUnits(mMaps);
 
+			PvPOpponentCollection.smCollection = new PvPOpponentCollection();
 			GameState.mInstance.mPlayerProfile.setupPvPData(fakedata);
 			GameState.mInstance.mPlayerProfile.setupGlobalUnitCounts(fakedata);
 		}
@@ -581,6 +584,7 @@
 
 			fakedata["player_unit_count"] = calculateGlobalUnits(savedata["maps"]);
 
+			PvPOpponentCollection.smCollection = new PvPOpponentCollection();
 			GameState.mInstance.mPlayerProfile.setupPvPData(fakedata);
 			GameState.mInstance.mPlayerProfile.setupGlobalUnitCounts(fakedata);
 
