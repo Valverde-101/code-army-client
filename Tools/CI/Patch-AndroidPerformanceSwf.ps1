@@ -3,17 +3,29 @@ param(
   [Parameter(Mandatory=$true)][string]$InputSwf,
   [Parameter(Mandatory=$true)][string]$OutputSwf,
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
+  [string]$GitPath,
   [string]$ExpectedSourceSha256='99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4',
   [string]$ManifestPath
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
-$git=Get-Command git.exe -ErrorAction SilentlyContinue
-if(-not $git){$git=Get-Command git -ErrorAction SilentlyContinue}
-if(-not $git){throw 'SWF_PERF_PATCH=FAIL git_missing'}
-$head=(& $git.Source -C $RepoRoot rev-parse HEAD).Trim()
+$gitCandidates=@()
+if($GitPath){$gitCandidates+=$GitPath}
+$gitCmd=Get-Command git.exe -ErrorAction SilentlyContinue
+if($gitCmd){$gitCandidates+=$gitCmd.Source}
+$repoParent=Split-Path -Parent $RepoRoot
+$androidBuildRoot=Split-Path -Parent $repoParent
+$gitCandidates+=@(
+  (Join-Path $androidBuildRoot 'Tools\Git\cmd\git.exe'),
+  (Join-Path $androidBuildRoot 'PortableGit\cmd\git.exe')
+)
+$git=$gitCandidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+if(-not $git){throw "SWF_PERF_PATCH=FAIL git_missing candidates=$($gitCandidates -join ';')"}
+$head=(& $git -C $RepoRoot rev-parse HEAD).Trim()
+if($LASTEXITCODE -ne 0){throw "SWF_PERF_PATCH=FAIL git_head_exit=$LASTEXITCODE git=$git"}
 if($head -ne $ExpectedSha){throw "EXACT_HEAD=FAIL expected=$ExpectedSha actual=$head"}
+Write-Host "SWF_PATCH_GIT=PASS path=$git head=$head"
 if(-not (Test-Path -LiteralPath $InputSwf)){throw "SWF_PERF_PATCH=FAIL input_missing=$InputSwf"}
 $inputSha=(Get-FileHash -LiteralPath $InputSwf -Algorithm SHA256).Hash.ToLowerInvariant()
 if($inputSha -ne $ExpectedSourceSha256.ToLowerInvariant()){throw "SWF_PERF_PATCH=FAIL source_sha expected=$ExpectedSourceSha256 actual=$inputSha"}

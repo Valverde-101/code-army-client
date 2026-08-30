@@ -210,7 +210,7 @@ $stagedSwf=Join-Path $stage $appContentSwf
 $patchManifestPath=Join-Path $buildRoot 'SWF-PERFORMANCE-PATCH.json'
 $patcher=Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1'
 if(-not (Test-Path -LiteralPath $patcher)){throw "SWF_PERFORMANCE_PATCH=FAIL patcher_missing=$patcher"}
-& $patcher -RepoRoot $RepoRoot -InputSwf $publishedSwf -OutputSwf $stagedSwf -ExpectedSha $ExpectedSha -ExpectedSourceSha256 $canonicalSwfSha -ManifestPath $patchManifestPath
+& $patcher -RepoRoot $RepoRoot -InputSwf $publishedSwf -OutputSwf $stagedSwf -ExpectedSha $ExpectedSha -GitPath $git -ExpectedSourceSha256 $canonicalSwfSha -ManifestPath $patchManifestPath
 $stagedSwfInfo=Get-Item -LiteralPath $stagedSwf
 $swfSha=(Get-FileHash -LiteralPath $stagedSwf -Algorithm SHA256).Hash.ToLowerInvariant()
 $swfSize=$stagedSwfInfo.Length
