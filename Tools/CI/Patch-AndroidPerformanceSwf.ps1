@@ -49,11 +49,7 @@ New-Item -ItemType Directory -Force -Path $outDir|Out-Null
 if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.json'}
 $tmp1=Join-Path $outDir 'swf-perf-tilemap.tmp.swf'
 $tmp2=Join-Path $outDir 'swf-perf-scene.tmp.swf'
-$tmp3=Join-Path $outDir 'swf-feature-config.tmp.swf'
-$tmp4=Join-Path $outDir 'swf-feature-button.tmp.swf'
-$tmp5=Join-Path $outDir 'swf-perf-animation.tmp.swf'
-$tmp6=Join-Path $outDir 'swf-perf-environment.tmp.swf'
-foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$tmp5,$tmp6,$OutputSwf)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
+foreach($p in @($tmp1,$tmp2,$OutputSwf)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
 
 $logRoot=Split-Path -Parent $ManifestPath
 if(-not $logRoot){$logRoot=$outDir}
@@ -82,20 +78,14 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
 
 $tileSource=Join-Path $RepoRoot 'src\game\battlefield\TileMapGraphic.as'
 $sceneSource=Join-Path $RepoRoot 'src\game\isometric\IsometricScene.as'
-$configSource=Join-Path $RepoRoot 'src\Config.as'
-$buttonSource=Join-Path $RepoRoot 'src\game\gui\button\ArmyButton.as'
-$animationSource=Join-Path $RepoRoot 'src\game\characters\AnimationController.as'
-$environmentSource=Join-Path $RepoRoot 'src\game\environment\EnvEffectManager.as'
 
-# Large legacy classes keep their original SWF bytecode. Only these parser-clean classes are replaced.
+# Runtime-stability policy:
+# only the two previously exercised rendering hot-path classes may be recompiled.
+# Global lifecycle/UI/audio-adjacent classes stay as canonical v23.2 bytecode.
 Invoke-FFDecReplace -In $InputSwf -Out $tmp1 -ClassName 'game.battlefield.TileMapGraphic' -Source $tileSource -LogName 'ffdec-performance-tilemap.log'
 Invoke-FFDecReplace -In $tmp1 -Out $tmp2 -ClassName 'game.isometric.IsometricScene' -Source $sceneSource -LogName 'ffdec-performance-scene.log'
-Invoke-FFDecReplace -In $tmp2 -Out $tmp3 -ClassName 'Config' -Source $configSource -LogName 'ffdec-feature-config.log'
-Invoke-FFDecReplace -In $tmp3 -Out $tmp4 -ClassName 'game.gui.button.ArmyButton' -Source $buttonSource -LogName 'ffdec-feature-button.log'
-Invoke-FFDecReplace -In $tmp4 -Out $tmp5 -ClassName 'game.characters.AnimationController' -Source $animationSource -LogName 'ffdec-performance-animation.log'
-Invoke-FFDecReplace -In $tmp5 -Out $tmp6 -ClassName 'game.environment.EnvEffectManager' -Source $environmentSource -LogName 'ffdec-performance-environment.log'
-Move-Item -LiteralPath $tmp6 -Destination $OutputSwf -Force
-foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$tmp5)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
+Move-Item -LiteralPath $tmp2 -Destination $OutputSwf -Force
+Remove-Item -LiteralPath $tmp1 -Force -ErrorAction SilentlyContinue
 
 $outputInfo=Get-Item -LiteralPath $OutputSwf
 $outputSha=(Get-FileHash -LiteralPath $OutputSwf -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -110,7 +100,7 @@ $dumpExit=$LASTEXITCODE
 $dump|Set-Content -LiteralPath $dumpLog -Encoding UTF8
 if($dumpExit -ne 0){throw "SWF_PERF_PATCH=FAIL dump_exit=$dumpExit"}
 $dumpText=$dump -join "`n"
-foreach($className in @('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','Config','game.gui.button.ArmyButton','game.characters.AnimationController','game.environment.EnvEffectManager')){
+foreach($className in @('game.battlefield.TileMapGraphic','game.isometric.IsometricScene')){
   if($dumpText -notmatch [regex]::Escape($className)){throw "SWF_PERF_PATCH=FAIL class_missing_after_patch=$className"}
 }
 
@@ -118,16 +108,12 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.1'
+  patch_version='mobile-engine-v3.2-safe'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@(
     [ordered]@{name='game.battlefield.TileMapGraphic';source='src/game/battlefield/TileMapGraphic.as';sha256=(Get-FileHash $tileSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.isometric.IsometricScene';source='src/game/isometric/IsometricScene.as';sha256=(Get-FileHash $sceneSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='Config';source='src/Config.as';sha256=(Get-FileHash $configSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.gui.button.ArmyButton';source='src/game/gui/button/ArmyButton.as';sha256=(Get-FileHash $buttonSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.characters.AnimationController';source='src/game/characters/AnimationController.as';sha256=(Get-FileHash $animationSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.environment.EnvEffectManager';source='src/game/environment/EnvEffectManager.as';sha256=(Get-FileHash $environmentSource -Algorithm SHA256).Hash.ToLowerInvariant()}
+    [ordered]@{name='game.isometric.IsometricScene';source='src/game/isometric/IsometricScene.as';sha256=(Get-FileHash $sceneSource -Algorithm SHA256).Hash.ToLowerInvariant()}
   )
   guarantees=@(
     'enemy_character_update_cadence_unchanged',
@@ -137,7 +123,7 @@ $manifest=[ordered]@{
     'audio_assets_preserved_from_source_swf',
     'animate_linkage_preserved_from_source_swf'
   )
-  feature_patch_version='offline-features-v1'
+  feature_patch_version='safe-runtime-v2'
   optimizations=@(
     'padded_tilemap_camera_cache_256px',
     'tilemap_rebuild_threshold_72pct',
@@ -151,15 +137,16 @@ $manifest=[ordered]@{
     'viewport_cull_offscreen_renderables_384px',
     'persistent_visible_membership_dictionary',
     'android_pinch_zoom_enabled',
-    'offline_pvp_entry_enabled',
-    'offline_world_map_home_desert_uses_existing_binary_bypass',
-    'offline_pvp_button_restored_without_gamehud_recompile',
     'pinch_zoom_bypasses_tutorial_gate',
-    'animation_direction_target_cache',
-    'environment_cloud_collection_fix'
+    'canonical_config_bytecode_preserved',
+    'canonical_armybutton_bytecode_preserved',
+    'canonical_animationcontroller_bytecode_preserved',
+    'canonical_enveffectmanager_bytecode_preserved',
+    'canonical_menu_button_lifecycle_preserved',
+    'canonical_audio_lifecycle_preserved'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.1 source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.2-safe source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf
