@@ -583,9 +583,13 @@
 			this.mHudButtonShop = Utils.createBasicButton(this.mIngameHUDClip_BOTTOM, "Button_shop", this.buttonShopPressed);
 			this.mHudButtonSave = Utils.createBasicButton(this.mIngameHUDClip_BOTTOM, "Button_save", this.buttonSavePressed);
 			this.mButtonMap = Utils.createBasicButton(this.mIngameHUDClip_BOTTOM, 'Button_Map', this.buttonMapPressed);
-			this.mButtonMap.setVisible(Config.USE_WORLD_MAP);
+			this.mButtonMap.setVisible(Config.OFFLINE_MODE || Config.USE_WORLD_MAP);
 			this.mButtonPvp = Utils.createBasicButton(this.mIngameHUDClip_BOTTOM, 'Button_Pvp', this.buttonPvpPressed);
-			this.mButtonPvp.setVisible(FeatureTuner.USE_PVP_MATCH);
+			this.mButtonPvp.setVisible(Config.OFFLINE_MODE || FeatureTuner.USE_PVP_MATCH);
+			if (Config.OFFLINE_MODE) {
+				this.mButtonMap.setEnabled(true);
+				this.mButtonPvp.setEnabled(true);
+			}
 
 
 			this.mRightPlaceButtonClip = this.mIngameHUDClip.getChildByName("right_button") as MovieClip;
@@ -2426,6 +2430,11 @@
 		}
 
 		private function buttonPvpPressed(param1: MouseEvent): void {
+			if (Config.OFFLINE_MODE) {
+				OfflineSave.startEmptyPvPProgress();
+				GameState.mInstance.openPvPMatchUpDialog();
+				return;
+			}
 			if (!MissionManager.isTutorialCompleted()) {
 				return;
 			}
@@ -2433,7 +2442,7 @@
 		}
 
 		public function updateMapButtonEnablation(): void {
-			var _loc1_: Boolean = Config.OFFLINE_MODE && Config.USE_WORLD_MAP ? true : MissionManager.isMapButtonEnabled();
+			var _loc1_: Boolean = Config.OFFLINE_MODE ? true : MissionManager.isMapButtonEnabled();
 			this.mButtonMap.setEnabled(_loc1_);
 			smTooltipTIDLinkage['Button_Map'] = _loc1_ ? GameState.getText('HUD_MAP_TOOLTIP') : GameState.getText('HUD_MAP_LOCKED_TOOLTIP');
 		}

@@ -121,9 +121,9 @@ if(([string]$prov.swf_source_sha256).ToLowerInvariant() -ne $canonicalSwfSha){$f
 if(([string]$prov.swf_sha256).ToLowerInvariant() -eq $canonicalSwfSha){$failures.Add('swf_output_not_patched')}
 if($seedHash -ne ([string]$prov.swf_sha256).ToLowerInvariant()){$failures.Add("apk_swf_sha expected=$($prov.swf_sha256) actual=$seedHash")}
 if(-not [bool]$prov.swf_performance_patched){$failures.Add('swf_performance_patched=false')}
-if([string]$prov.performance_patch_version -ne 'mobile-engine-v3.2-safe'){$failures.Add("performance_patch_version=$($prov.performance_patch_version)")}
+if([string]$prov.performance_patch_version -ne 'mobile-engine-v3.3-features-safe'){$failures.Add("performance_patch_version=$($prov.performance_patch_version)")}
 $patchClasses=@($prov.performance_patch_classes)
-$allowedPatchClasses=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene')
+$allowedPatchClasses=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.gui.GameHUD','game.gui.popups.WorldMapWindow')
 foreach($requiredPatchClass in $allowedPatchClasses){
   if($patchClasses -notcontains $requiredPatchClass){$failures.Add("performance_patch_class_missing=$requiredPatchClass")}
 }
@@ -243,7 +243,7 @@ if($promotedSha -ne $apkSha){throw "APK_PROMOTION=FAIL expected=$apkSha actual=$
 $meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sha=[string]$prov.binary_seed_source_sha;apk_path=$promoted;apk_size=(Get-Item $promoted).Length;apk_sha256=$promotedSha;package_name=$package;build_tier=$buildTier}
 "$promoted.json"|ForEach-Object{$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $_ -Encoding UTF8}
 if($env:GITHUB_ENV){"PROMOTED_CANDIDATE_PATH=$promoted"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
-Write-Host "SWF_PERFORMANCE_PATCH_VALIDATE=PASS source_sha256=$canonicalSwfSha patched_sha256=$seedHash version=mobile-engine-v3.2-safe"
+Write-Host "SWF_PERFORMANCE_PATCH_VALIDATE=PASS source_sha256=$canonicalSwfSha patched_sha256=$seedHash version=mobile-engine-v3.3-features-safe"
 Write-Host "NATIVE_PERF_OVERLAY_VALIDATE=PASS provider=DiagnosticsProvider authority=air.army.attack.armyattackdiagnostics render_mode=$ExpectedRenderMode"
 Write-Host "BASE_ONLY_VALIDATE=PASS modern_v23_2=true profiles=0 selector=false diagnostics_ane=true root_swf=$seedEntryPath swf_source_original=true swf_performance_patched=true"
 Write-Host "APK_VALIDATE=PASS"

@@ -49,7 +49,9 @@ New-Item -ItemType Directory -Force -Path $outDir|Out-Null
 if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.json'}
 $tmp1=Join-Path $outDir 'swf-perf-tilemap.tmp.swf'
 $tmp2=Join-Path $outDir 'swf-perf-scene.tmp.swf'
-foreach($p in @($tmp1,$tmp2,$OutputSwf)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
+$tmp3=Join-Path $outDir 'swf-feature-hud.tmp.swf'
+$tmp4=Join-Path $outDir 'swf-feature-worldmap.tmp.swf'
+foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$OutputSwf)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
 
 $logRoot=Split-Path -Parent $ManifestPath
 if(-not $logRoot){$logRoot=$outDir}
@@ -78,14 +80,18 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
 
 $tileSource=Join-Path $RepoRoot 'src\game\battlefield\TileMapGraphic.as'
 $sceneSource=Join-Path $RepoRoot 'src\game\isometric\IsometricScene.as'
+$hudSource=Join-Path $RepoRoot 'src\game\gui\GameHUD.as'
+$worldMapSource=Join-Path $RepoRoot 'src\game\gui\popups\WorldMapWindow.as'
 
 # Runtime-stability policy:
-# only the two previously exercised rendering hot-path classes may be recompiled.
-# Global lifecycle/UI/audio-adjacent classes stay as canonical v23.2 bytecode.
+# Keep canonical Config, GameState, ArmyButton, animation and audio-adjacent bytecode.
+# Recompile only the two rendering hot paths plus the two narrow in-game feature entrypoints.
 Invoke-FFDecReplace -In $InputSwf -Out $tmp1 -ClassName 'game.battlefield.TileMapGraphic' -Source $tileSource -LogName 'ffdec-performance-tilemap.log'
 Invoke-FFDecReplace -In $tmp1 -Out $tmp2 -ClassName 'game.isometric.IsometricScene' -Source $sceneSource -LogName 'ffdec-performance-scene.log'
-Move-Item -LiteralPath $tmp2 -Destination $OutputSwf -Force
-Remove-Item -LiteralPath $tmp1 -Force -ErrorAction SilentlyContinue
+Invoke-FFDecReplace -In $tmp2 -Out $tmp3 -ClassName 'game.gui.GameHUD' -Source $hudSource -LogName 'ffdec-feature-hud.log'
+Invoke-FFDecReplace -In $tmp3 -Out $tmp4 -ClassName 'game.gui.popups.WorldMapWindow' -Source $worldMapSource -LogName 'ffdec-feature-worldmap.log'
+Move-Item -LiteralPath $tmp4 -Destination $OutputSwf -Force
+foreach($p in @($tmp1,$tmp2,$tmp3)){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}
 
 $outputInfo=Get-Item -LiteralPath $OutputSwf
 $outputSha=(Get-FileHash -LiteralPath $OutputSwf -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -100,7 +106,7 @@ $dumpExit=$LASTEXITCODE
 $dump|Set-Content -LiteralPath $dumpLog -Encoding UTF8
 if($dumpExit -ne 0){throw "SWF_PERF_PATCH=FAIL dump_exit=$dumpExit"}
 $dumpText=$dump -join "`n"
-foreach($className in @('game.battlefield.TileMapGraphic','game.isometric.IsometricScene')){
+foreach($className in @('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.gui.GameHUD','game.gui.popups.WorldMapWindow')){
   if($dumpText -notmatch [regex]::Escape($className)){throw "SWF_PERF_PATCH=FAIL class_missing_after_patch=$className"}
 }
 
@@ -108,12 +114,14 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.2-safe'
+  patch_version='mobile-engine-v3.3-features-safe'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@(
     [ordered]@{name='game.battlefield.TileMapGraphic';source='src/game/battlefield/TileMapGraphic.as';sha256=(Get-FileHash $tileSource -Algorithm SHA256).Hash.ToLowerInvariant()},
-    [ordered]@{name='game.isometric.IsometricScene';source='src/game/isometric/IsometricScene.as';sha256=(Get-FileHash $sceneSource -Algorithm SHA256).Hash.ToLowerInvariant()}
+    [ordered]@{name='game.isometric.IsometricScene';source='src/game/isometric/IsometricScene.as';sha256=(Get-FileHash $sceneSource -Algorithm SHA256).Hash.ToLowerInvariant()},
+    [ordered]@{name='game.gui.GameHUD';source='src/game/gui/GameHUD.as';sha256=(Get-FileHash $hudSource -Algorithm SHA256).Hash.ToLowerInvariant()},
+    [ordered]@{name='game.gui.popups.WorldMapWindow';source='src/game/gui/popups/WorldMapWindow.as';sha256=(Get-FileHash $worldMapSource -Algorithm SHA256).Hash.ToLowerInvariant()}
   )
   guarantees=@(
     'enemy_character_update_cadence_unchanged',
@@ -123,7 +131,7 @@ $manifest=[ordered]@{
     'audio_assets_preserved_from_source_swf',
     'animate_linkage_preserved_from_source_swf'
   )
-  feature_patch_version='safe-runtime-v2'
+  feature_patch_version='offline-entrypoints-v3'
   optimizations=@(
     'padded_tilemap_camera_cache_256px',
     'tilemap_rebuild_threshold_72pct',
@@ -138,7 +146,12 @@ $manifest=[ordered]@{
     'persistent_visible_membership_dictionary',
     'android_pinch_zoom_enabled',
     'pinch_zoom_bypasses_tutorial_gate',
+    'offline_pvp_button_visible_without_level_gate',
+    'offline_pvp_bootstrap_before_match_dialog',
+    'offline_world_map_button_visible',
+    'offline_world_map_home_desert_enabled',
     'canonical_config_bytecode_preserved',
+    'canonical_gamestate_bytecode_preserved',
     'canonical_armybutton_bytecode_preserved',
     'canonical_animationcontroller_bytecode_preserved',
     'canonical_enveffectmanager_bytecode_preserved',
@@ -148,5 +161,5 @@ $manifest=[ordered]@{
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.2-safe source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.3-features-safe source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

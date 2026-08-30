@@ -75,6 +75,21 @@ jobs:
         run: |
           & '.\Tools\CI\Bootstrap-PhysicalClone.ps1' -Repository $env:GITHUB_REPOSITORY -ExpectedSha $env:EXPECTED_SOURCE_SHA -SourceBranch $env:SOURCE_BRANCH
 
+      - name: Prepare canonical repo workspace
+        shell: powershell
+        run: |
+          $root=$null
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){
+              $candidate=Join-Path $drive.Root 'AndroidBuild'
+              $repo=Join-Path $candidate 'Repositories\code-army-client'
+              if(Test-Path -LiteralPath $repo){$root=$candidate;break}
+            }
+          }
+          if(-not $root){throw 'REPO_WORKSPACE=FAIL androidbuild_root'}
+          $repoRoot=Join-Path $root 'Repositories\code-army-client'
+          & '.\Tools\CI\Prepare-RepoWorkspace.ps1' -AndroidBuildRoot $root -RepoRoot $repoRoot -ExpectedSha $env:EXPECTED_SOURCE_SHA -KeepBuilds 3
+
   published-audit:
     name: 2A. Audit modern v23.2 base
     needs: source-sync
@@ -302,6 +317,11 @@ jobs:
         shell: powershell
         run: |
           & '.\Tools\CI\Validate-AndroidApk.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+
+      - name: Retain latest three repo builds
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Prepare-RepoWorkspace.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -KeepBuilds 3
       - name: Prepare manual physical validation
         id: manual_physical
         shell: powershell
@@ -357,7 +377,7 @@ jobs:
             "MANUAL_PHYSICAL_OUTCOME=${{ steps.manual_physical.outcome }}"
             "PHYSICAL_VALIDATION=PENDING_USER_MANUAL_TEST"
           )|Set-Content -LiteralPath (Join-Path $diag 'ci-diagnostics.txt') -Encoding UTF8
-          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-manifest.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md','manual-physical-validation.json','SWF-PERFORMANCE-PATCH.json','ffdec-performance-tilemap.log','ffdec-performance-scene.log','ffdec-performance-dumpas3.log')){
+          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-manifest.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md','manual-physical-validation.json','SWF-PERFORMANCE-PATCH.json','ffdec-performance-tilemap.log','ffdec-performance-scene.log','ffdec-feature-hud.log','ffdec-feature-worldmap.log','ffdec-performance-dumpas3.log')){
             $src=Join-Path $build $name
             if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination (Join-Path $diag $name) -Force}
           }
@@ -461,7 +481,7 @@ jobs:
           if('${{ steps.publish_logs.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL evidence_upload'}
           Write-Host "BASE_ONLY_MODE=PASS modern_v23_2=true mods=false selector=false diagnostics_ane=true"
           Write-Host "SWF_SOURCE_ORIGINAL=PASS canonical_v23_2=true"
-          Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.2-safe classes=TileMapGraphic,IsometricScene canonical_global_classes=preserved enemy_ai_cadence=unchanged"
+          Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.3-features-safe classes=TileMapGraphic,IsometricScene canonical_global_classes=preserved enemy_ai_cadence=unchanged"
           Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,INICIAR,MARCAR_LAG,DETENER,ZIP render_mode=gpu profiler=low_overhead_v2"
           Write-Host "ADB_DEVICE=SKIPPED_WITH_REASON manual_physical_test"
           Write-Host "INSTALL=SKIPPED_WITH_REASON user_manual_install"
