@@ -216,6 +216,14 @@
 
 		private var mMouseY: Number = 0;
 
+		private var mCachedMouseCell: GridCell;
+
+		private var mMouseCellDirty: Boolean = true;
+
+		private var mPointerUiAccumulator: int = 0;
+
+		private static const POINTER_UI_REFRESH_MS: int = 200;
+
 		private var mMouseScrollStartX: Number = 0;
 
 		private var mMouseScrollStartY: Number = 0;
@@ -289,6 +297,9 @@
 			this.mGridDimZ = param4;
 			this.mSwitch = 0;
 			this.mTimer = 0;
+			this.mPointerUiAccumulator = 0;
+			this.mMouseCellDirty = true;
+			this.mCachedMouseCell = null;
 			this.mZoomActivated = false;
 			this.mObjectLoader = new ObjectLoader();
 			this.mAllElements = new Array();
@@ -421,8 +432,11 @@
 		}
 
 		public function setMousePos(param1: MouseEvent): void {
-			this.mMouseX = param1.stageX;
-			this.mMouseY = param1.stageY;
+			if (this.mMouseX != param1.stageX || this.mMouseY != param1.stageY) {
+				this.mMouseX = param1.stageX;
+				this.mMouseY = param1.stageY;
+				this.mMouseCellDirty = true;
+			}
 		}
 
 		public function setMouseScrolling(param1: Boolean): void {
@@ -2595,8 +2609,11 @@
 			this.updateHudObjects(param1);
 			this.updatePatrols(param1);
 			this.updateDebrisSpawn(param1);
+			this.mPointerUiAccumulator += param1;
 			var _loc4_: GridCell = this.getTileUnderMouse();
-			if (this.mGame.mState == GameState.STATE_PLAY || this.mGame.mState == GameState.STATE_PVP || this.mGame.mState == GameState.STATE_VISITING_NEIGHBOUR) {
+			var pointerUiRefresh:Boolean = _loc4_ != this.mPreviousCell || this.mPointerUiAccumulator >= POINTER_UI_REFRESH_MS || mouseDownAction;
+			if (pointerUiRefresh && (this.mGame.mState == GameState.STATE_PLAY || this.mGame.mState == GameState.STATE_PVP || this.mGame.mState == GameState.STATE_VISITING_NEIGHBOUR)) {
+				this.mPointerUiAccumulator = 0;
 				this.highlightDebris(_loc4_);
 				this.highlightCell(_loc4_);
 				this.highlightCharacter(_loc4_, param1);
@@ -2713,6 +2730,9 @@
 			if (NeighborAvatar.smMouseOver) {
 				return null;
 			}
+			if (!this.mMouseCellDirty) {
+				return this.mCachedMouseCell;
+			}
 			this.mPointTmp.x = 0;
 			this.mPointTmp.y = 0;
 			var _loc1_: Point = this.mContainer.localToGlobal(this.mPointTmp);
@@ -2725,9 +2745,10 @@
 			this.mPointTmp.y = this.mGridDimY * Math.floor(this.mPointTmp.y / this.mGridDimY);
 			this.mMouseLocalX = _loc4_;
 			this.mMouseLocalY = _loc5_;
-			return this.getCellAtLocation(this.mPointTmp.x, this.mPointTmp.y);
+			this.mCachedMouseCell = this.getCellAtLocation(this.mPointTmp.x, this.mPointTmp.y);
+			this.mMouseCellDirty = false;
+			return this.mCachedMouseCell;
 		}
-
 		public function active(): Boolean {
 			return this.mSceneActive;
 		}
@@ -2754,6 +2775,7 @@
 				this.mSceneHud.x = _loc2_;
 				this.mSceneHud.y = _loc3_;
 				this.mViewportDirty = true;
+				this.mMouseCellDirty = true;
 				this.mTilemapGraphic.updateCameraViewport();
 			}
 			this.mCamera.update();
@@ -2989,6 +3011,7 @@
 			this.mTilemapGraphic.createBitmaps();
 			this.mTilemapGraphic.updateTilemap();
 			this.mViewportDirty = true;
+			this.mMouseCellDirty = true;
 			if (!Config.DISABLE_SORT) {
 				this.sortAll();
 			}

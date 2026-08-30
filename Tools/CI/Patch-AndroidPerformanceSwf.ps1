@@ -47,9 +47,18 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
   if(-not (Test-Path -LiteralPath $Source)){throw "SWF_PERF_PATCH=FAIL source_missing=$Source"}
   $args=@('-cli','-air','-onerror','abort','-replace',$In,$Out,$ClassName,$Source)
   $log=Join-Path $outDir $LogName
-  if($java){$lines=@(& $java.Source '-jar' $ffdec.FullName @args 2>&1|ForEach-Object{$_.ToString()})}
-  else{$lines=@(& $ffdec.FullName @args 2>&1|ForEach-Object{$_.ToString()})}
-  $exit=$LASTEXITCODE
+  $previousErrorActionPreference=$ErrorActionPreference
+  try{
+    # FFDec/JVM may write informational diagnostics to stderr. Windows PowerShell
+    # wraps redirected native stderr as ErrorRecord objects; with Stop this can
+    # terminate before LASTEXITCODE is inspected.
+    $ErrorActionPreference='Continue'
+    if($java){$lines=@(& $java.Source '-jar' $ffdec.FullName @args 2>&1|ForEach-Object{$_.ToString()})}
+    else{$lines=@(& $ffdec.FullName @args 2>&1|ForEach-Object{$_.ToString()})}
+    $exit=$LASTEXITCODE
+  }finally{
+    $ErrorActionPreference=$previousErrorActionPreference
+  }
   $lines|Set-Content -LiteralPath $log -Encoding UTF8
   if($exit -ne 0 -or -not (Test-Path -LiteralPath $Out)){
     $lines|Select-Object -Last 80|ForEach-Object{Write-Host $_}

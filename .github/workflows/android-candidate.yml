@@ -357,7 +357,7 @@ jobs:
             "MANUAL_PHYSICAL_OUTCOME=${{ steps.manual_physical.outcome }}"
             "PHYSICAL_VALIDATION=PENDING_USER_MANUAL_TEST"
           )|Set-Content -LiteralPath (Join-Path $diag 'ci-diagnostics.txt') -Encoding UTF8
-          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-manifest.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md','manual-physical-validation.json','SWF-PERFORMANCE-PATCH.json','ffdec-performance-tilemap.log','ffdec-performance-scene.log','ffdec-performance-dumpas3.log')){
+          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-manifest.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md','manual-physical-validation.json','SWF-PERFORMANCE-PATCH.json','ffdec-performance-tilemap.log','ffdec-performance-scene.log','ffdec-feature-config.log','ffdec-feature-hud.log','ffdec-feature-state.log','ffdec-feature-worldmap.log','ffdec-performance-dumpas3.log')){
             $src=Join-Path $build $name
             if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination (Join-Path $diag $name) -Force}
           }
