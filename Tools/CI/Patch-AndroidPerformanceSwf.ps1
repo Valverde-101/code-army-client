@@ -47,7 +47,7 @@ foreach($p in @($tmp1,$tmp2,$tmp3,$tmp4,$tmp5,$tmp6,$tmp7,$OutputSwf)){Remove-It
 function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string]$Source,[string]$LogName){
   if(-not (Test-Path -LiteralPath $Source)){throw "SWF_PERF_PATCH=FAIL source_missing=$Source"}
   $args=@('-cli','-air','-onerror','abort','-replace',$In,$Out,$ClassName,$Source)
-  $log=Join-Path $outDir $LogName
+  $logRoot=Split-Path -Parent $ManifestPath`n  $log=Join-Path $logRoot $LogName
   $previousErrorActionPreference=$ErrorActionPreference
   try{
     $ErrorActionPreference='Continue'

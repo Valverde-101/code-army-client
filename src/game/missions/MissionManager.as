@@ -70,7 +70,7 @@
 		mCompletedMissions = new Array();
 		mCompletedCOsWithMissions = new Array();
 		mCompletedMissionsGlobal = new Array();
-		smNodes = new Array;
+		smNodes = new Array();
 	  }
       
       private static function sortMissions(param1:Mission, param2:Mission) : int
