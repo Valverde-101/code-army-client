@@ -36,15 +36,15 @@ function Get-LinkTarget([string]$Path){
 function Select-KeepDirectories([string]$Root,[string]$PinnedName,[int]$Count){
   if(-not (Test-Path -LiteralPath $Root)){return @()}
   $dirs=@(Get-ChildItem -LiteralPath $Root -Directory -Force -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending)
-  $result=New-Object System.Collections.Generic.List[object]
+  $result=@()
   $pinned=$dirs|Where-Object{$_.Name -eq $PinnedName}|Select-Object -First 1
-  if($pinned){$result.Add($pinned)}
+  if($pinned){$result+=@($pinned)}
   foreach($dir in $dirs){
     if($result.Count -ge $Count){break}
     if($pinned -and $dir.FullName -eq $pinned.FullName){continue}
-    $result.Add($dir)
+    $result+=@($dir)
   }
-  return @($result)
+  return $result
 }
 
 # One-time migration: preserve only the newest/pinned build folders, then make the old
