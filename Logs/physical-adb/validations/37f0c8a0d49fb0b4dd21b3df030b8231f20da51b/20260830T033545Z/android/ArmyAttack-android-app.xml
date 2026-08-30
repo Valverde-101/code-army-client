@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<application xmlns="http://ns.adobe.com/air/application/50.2">
+  <id>army.attack</id>
+  <versionNumber>23.2.0</versionNumber>
+  <versionLabel>23.2-android-37f0c8a0</versionLabel>
+  <filename>ArmyAttack</filename>
+  <name>Army Attack</name>
+  <initialWindow>
+    <content>iArmyAirOfflineSavingv23.swf</content>
+    <visible>true</visible>
+    <fullScreen>true</fullScreen>
+    <aspectRatio>landscape</aspectRatio>
+    <renderMode>gpu</renderMode>
+    <autoOrients>false</autoOrients>
+  </initialWindow>
+  <extensions>
+    <extensionID>com.valverde.armyattack.diagnostics</extensionID>
+  </extensions>
+  <icon>
+    <image36x36>AppIconsForPublish/icon36.png</image36x36>
+    <image48x48>AppIconsForPublish/icon48.png</image48x48>
+    <image72x72>AppIconsForPublish/icon72.png</image72x72>
+    <image96x96>AppIconsForPublish/icon96.png</image96x96>
+    <image144x144>AppIconsForPublish/icon144.png</image144x144>
+    <image192x192>AppIconsForPublish/icon192.png</image192x192>
+  </icon>
+  <android>
+    <manifestAdditions><![CDATA[
+      <manifest>
+        <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="33"/>
+        <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
+        <application android:hardwareAccelerated="true" android:usesCleartextTraffic="false">
+          <provider android:name="com.valverde.armyattack.diagnostics.DiagnosticsProvider" android:authorities="air.army.attack.armyattackdiagnostics" android:exported="false" android:grantUriPermissions="true"/>
+          <meta-data android:name="armyattack.tested_sha" android:value="37f0c8a0d49fb0b4dd21b3df030b8231f20da51b"/>
+          <meta-data android:name="armyattack.render_mode" android:value="gpu"/>
+          <meta-data android:name="armyattack.perf_overlay" android:value="true"/>
+        </application>
+      </manifest>
+    ]]></manifestAdditions>
+  </android>
+</application>
+
