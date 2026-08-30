@@ -1,0 +1,21 @@
+﻿{
+    "schema_version":  1,
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "6b443375613279ac77edef087e65c552be74c7ad",
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\6b443375613279ac77edef087e65c552be74c7ad\\android\\ArmyAttack-android-arm64-gpu.apk",
+    "apk_size":  66868717,
+    "apk_sha256":  "5a034a14520ff8cdc8ca2cf7e46b2651b815a5c3c7e74d2484eda2b20e21a137",
+    "method":  "manual_physical",
+    "adb_used":  false,
+    "status":  "PENDING_USER_VALIDATION",
+    "required_steps":  [
+                           "Install the exact APK manually on the physical Android phone",
+                           "Launch Army Attack and confirm the main game loads",
+                           "Open PERF and press INICIAR",
+                           "Play a representative gameplay session",
+                           "Press MARCAR LAG whenever a visible slowdown occurs",
+                           "Press DETENER and then ZIP",
+                           "Share the generated ZIP back for analysis"
+                       ]
+}
+
