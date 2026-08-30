@@ -1,0 +1,27 @@
+﻿{
+    "repository":  "Michielvde1253/army-client",
+    "tag":  "v21.1",
+    "asset":  "AA21_1_release_android_HR.apk",
+    "path":  "V:\\AndroidBuild\\Inputs\\code-army-client\\upstream\\v21.1\\AA21_1_release_android_HR.apk",
+    "size":  46393520,
+    "sha256":  "6136ab9b1175d75bcd53cabbe8c787bad9c51c5520324e94da230a18fb7bc824",
+    "package_name":  "air.army.attack",
+    "version_code":  "21000000",
+    "version_name":  "21",
+    "min_sdk":  "21",
+    "target_sdk":  "33",
+    "launchable_activity":  "air.army.attack.AIRAppEntry",
+    "abis":  [
+                 "arm64-v8a"
+             ],
+    "swfs":  [
+                 {
+                     "path":  "assets/iArmyAirOfflineSavingv21_2.swf",
+                     "size":  13179883,
+                     "sha256":  "bdf4ef97d6dfd0f3dcfafd082f051edabb799304d678090d2766d6f43ad977bc"
+                 }
+             ],
+    "asset_entry_count":  458,
+    "aapt":  "V:\\AndroidBuild\\AndroidSDK\\build-tools\\36.1.0\\aapt.exe"
+}
+
