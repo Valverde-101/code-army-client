@@ -17,7 +17,7 @@ $originalOffline=$offline
 if($offline -notmatch 'savedata\["active_map_id"\] = map_id;'){
   $anchor='savedata["isFogOfWarOff"] = GameState.mInstance.isFogOfWarOn();'
   if(-not $offline.Contains($anchor)){throw 'ACTIVE_MAP_FIX=FAIL save_anchor_missing'}
-  $offline=$offline.Replace($anchor,$anchor+"`r`n`t`t`tsavedata[`"active_map_id`"] = map_id;")
+  $offline=$offline.Replace($anchor,$anchor+"`r`n`t`t`tsavedata[`"active_map_id`"] = map_id.indexOf(`"pvp_`") == -1 ? map_id : `"Home`";")
 }
 $offline=$offline.Replace('savedata["saveversion"] = 5;','savedata["saveversion"] = 6;')
 
@@ -70,11 +70,14 @@ if($offline -notmatch 'restore_active_map_after_home_bootstrap'){
 				GameState.mInstance.executeSwitchMap(activeMapId, null);
 			}
 '@
-  $offline=$offline.Replace($anchor,$anchor+$restore)
+  $restorePos=$offline.LastIndexOf($anchor)
+  if($restorePos -lt 0){throw 'ACTIVE_MAP_FIX=FAIL home_bootstrap_anchor_missing'}
+  $restorePos+=$anchor.Length
+  $offline=$offline.Insert($restorePos,$restore)
 }
 
 foreach($required in @(
-  'savedata["active_map_id"] = map_id;',
+  'savedata["active_map_id"] = map_id.indexOf("pvp_") == -1 ? map_id : "Home";',
   'savedata["saveversion"] = 6;',
   'if (version < 6) {',
   'var activeMapId: String = "Home";',
@@ -90,10 +93,10 @@ if($offline -ne $originalOffline){Set-Content -LiteralPath $offlinePath -Value $
 $test=Get-Content -LiteralPath $testPath -Raw
 $originalTest=$test
 if($test -notmatch 'offline_save_persists_active_map_id'){
-  $anchor="$audit=Join-Path `$RepoRoot 'Tools\\CI\\Audit-SwfCore.ps1'"
+  $anchor='$audit=Join-Path $RepoRoot ''Tools\\CI\\Audit-SwfCore.ps1'''
   if(-not $test.Contains($anchor)){throw 'ACTIVE_MAP_FIX=FAIL regression_anchor_missing'}
   $checks=@'
-Require-Contains $offline 'savedata["active_map_id"] = map_id;' 'offline_save_persists_active_map_id'
+Require-Contains $offline 'savedata["active_map_id"] = map_id.indexOf("pvp_") == -1 ? map_id : "Home";' 'offline_save_persists_only_stable_world'
 Require-Contains $offline 'savedata["saveversion"] = 6;' 'offline_save_version_bumped_for_active_map'
 Require-Contains $offline 'if (version < 6) {' 'offline_old_save_active_map_migration'
 Require-Contains $offline 'var activeMapId: String = "Home";' 'offline_restore_defaults_home'

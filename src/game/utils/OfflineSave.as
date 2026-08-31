@@ -352,9 +352,10 @@
 				savedata["maps"].push(mMaps[i])
 			}
 			savedata["isFogOfWarOff"] = GameState.mInstance.isFogOfWarOn();
+			savedata["active_map_id"] = map_id.indexOf("pvp_") == -1 ? map_id : "Home";
 			var now: Date = new Date();
 			savedata["time_of_last_save"] = now.valueOf();
-			savedata["saveversion"] = 5;
+			savedata["saveversion"] = 6;
 			return savedata;
 		}
 
@@ -402,6 +403,11 @@
 							savedata["maps"][i]["map_data"]["gamefield_items"].splice(j, 1);
 						}
 					}
+				}
+			}
+			if (version < 6) {
+				if (savedata["active_map_id"] == null || String(savedata["active_map_id"]).length == 0) {
+					savedata["active_map_id"] = "Home";
 				}
 			}
 			return savedata;
@@ -513,6 +519,14 @@
 			var saveversion: int = int(savedata["saveversion"]);
 			savedata = fixOldSave(savedata, saveversion);
 
+			var activeMapId: String = "Home";
+			if (savedata["active_map_id"] != null) {
+				activeMapId = String(savedata["active_map_id"]);
+			}
+			if (activeMapId.indexOf("pvp_") == 0 || GameState.GRAPHICS_MAP_ID_LIST.indexOf(activeMapId) < 0) {
+				activeMapId = "Home";
+			}
+
 			// Decrease timers (worst piece of code ever, forgive me xD)
 			var minus_rechargetime: int = 0;
 			var energy_to_give: int = 0;
@@ -610,6 +624,13 @@
 			GameState.mInstance.startMusic();
 			(GameState.mInstance.getMainClip() as GameMain).changeDiscordMap("Homeland");
 			GameState.mInstance.mHUD.changeWaterVisibility(false)
+
+			// restore_active_map_after_home_bootstrap: Home remains the safe bootstrap scene.
+			// executeSwitchMap() owns resource readiness, transition cleanup and rollback.
+			if (activeMapId != "Home" && mMaps[activeMapId]) {
+				trace("[OFFLINE_RESTORE_MAP] from=Home to=" + activeMapId);
+				GameState.mInstance.executeSwitchMap(activeMapId, null);
+			}
 		}
 
 	}

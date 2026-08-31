@@ -214,7 +214,7 @@
 
 		private var mAppearTimer: Timer;
 
-		private const mAppearDelayMs: int = Math.ceil(1000 / GameState.mInstance.getMainClip().stage.frameRate);
+		private static const TOOLTIP_TIMEOUT_MS: int = 1000;
 
 		private var mZoomActivated: Boolean;
 
@@ -376,28 +376,25 @@
 				GameState.mInstance.setZoomIndex(zoomIndex - 1);
 			}
 		}
-		public function startToolTipTimer(): void {
+		private function stopToolTipTimer(): void {
 			if (this.mAppearTimer) {
-				this.mAppearTimer.removeEventListener(TimerEvent.TIMER, this.appearTimerTick);
+				this.mAppearTimer.removeEventListener(TimerEvent.TIMER_COMPLETE, this.appearTimerComplete);
 				this.mAppearTimer.stop();
 				this.mAppearTimer = null;
 			}
-			this.mAppearTimer = new Timer(this.mAppearDelayMs);
-			this.mAppearTimer.addEventListener(TimerEvent.TIMER, this.appearTimerTick);
+		}
+
+		public function startToolTipTimer(): void {
+			this.stopToolTipTimer();
+			this.mAppearTimer = new Timer(TOOLTIP_TIMEOUT_MS, 1);
+			this.mAppearTimer.addEventListener(TimerEvent.TIMER_COMPLETE, this.appearTimerComplete, false, 0, true);
 			this.mAppearTimer.start();
 		}
 
-		public function appearTimerTick(param1: TimerEvent): void {
-			if (this.mAppearTimer) {
-				if (this.mAppearTimer.currentCount > this.mAppearDelayMs) {
-					this.mAppearTimer.removeEventListener(TimerEvent.TIMER, this.appearTimerTick);
-					this.mAppearTimer.stop();
-					this.mAppearTimer = null;
-					this.hideObjectTooltip();
-				}
-			}
+		private function appearTimerComplete(param1: TimerEvent): void {
+			this.stopToolTipTimer();
+			this.hideObjectTooltip();
 		}
-
 		public function initTileMap(): void {
 			var _loc2_: Item = null;
 			var _loc3_: AreaItem = null;
@@ -4391,6 +4388,7 @@
 		}
 
 		public function destroy(): void {
+			this.stopToolTipTimer();
 			if (this.mOfflineFeatureHudBottom && this.mOfflineFeatureButtonsHooked) {
 				this.mOfflineFeatureHudBottom.removeEventListener(MouseEvent.MOUSE_DOWN, this.offlineFeatureMouseDown, true);
 			}
