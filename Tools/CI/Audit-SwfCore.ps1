@@ -105,7 +105,7 @@ foreach($file in $asFiles){
   $total.get_definition_by_name+=$defs
 }
 
-$hotspots=@($rows|Where-Object{$_.risk_score -gt 0}|Sort-Object risk_score -Descending, bitmapdata_allocations -Descending, repeating_timer_candidates -Descending|Select-Object -First 40)
+$hotspots=@($rows|Where-Object{$_.risk_score -gt 0}|Sort-Object @{Expression='risk_score';Descending=$true},@{Expression='bitmapdata_allocations';Descending=$true},@{Expression='repeating_timer_candidates';Descending=$true}|Select-Object -First 40)
 $listenerRisks=@($rows|Where-Object{$_.listener_delta -ge 3}|Sort-Object listener_delta -Descending|Select-Object -First 30)
 $bitmapRisks=@($rows|Where-Object{$_.bitmapdata_allocations -gt 0}|Sort-Object bitmapdata_allocations -Descending|Select-Object -First 30)
 $timerRisks=@($rows|Where-Object{$_.repeating_timer_candidates -gt 0}|Sort-Object repeating_timer_candidates -Descending|Select-Object -First 30)
@@ -147,7 +147,7 @@ $json=Join-Path $OutputRoot 'SWF-CORE-AUDIT.json'
 $csv=Join-Path $OutputRoot 'SWF-CORE-AUDIT-files.csv'
 $md=Join-Path $OutputRoot 'SWF-CORE-AUDIT.md'
 $report|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $json -Encoding UTF8
-$rows|Sort-Object risk_score -Descending,path|Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
+$rows|Sort-Object @{Expression='risk_score';Descending=$true},@{Expression='path';Descending=$false}|Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
 
 $lines=New-Object System.Collections.Generic.List[string]
 $lines.Add('# Army Attack SWF/Core static audit')
