@@ -8,8 +8,11 @@
 	import game.isometric.GridCell;
 	import game.isometric.ImportedObject;
 	import game.isometric.IsometricScene;
+	import game.isometric.elements.Renderable;
 	import game.isometric.characters.IsometricCharacter;
+	import game.items.EnemyUnitItem;
 	import game.items.MapItem;
+	import game.items.PlayerUnitItem;
 	import game.items.PowerUpItem;
 	import game.states.GameState;
 	import game.utils.EffectController;
@@ -31,65 +34,43 @@
 		}
 
 		public function execute(param1: IsometricCharacter): void {
-			var _loc3_: GridCell = null;
-			var _loc4_: Array = null;
-			var _loc5_: Array = null;
-			var _loc2_: PowerUpItem = mItem as PowerUpItem;
-			var resourceManager: DCResourceManager = DCResourceManager.getInstance();
-			if (_loc2_) {
-				if (param1) {
-					if (_loc2_.mIncreasedHealth > 0) {
-						param1.setHealth(Math.min(param1.mMaxHealth, param1.getHealth() + _loc2_.mIncreasedHealth));
-					}
-					if (_loc2_.mIncreasedActions > 0) {
-						if (param1 is PlayerUnit) {
-							GameState.mInstance.mPvPMatch.mActionsLeft += _loc2_.mIncreasedActions;
-						}
-					}
-					if (_loc2_.mPowerUpItem) {
-						if (param1 is PlayerUnit) {
-							GameState.mInstance.mPlayerProfile.addItem(_loc2_.mPowerUpItem, 1);
-						}
-					}
-					if (_loc2_.mPowerUpFireMissionItem) {
-						_loc3_ = null;
-						if (param1 is PlayerUnit) {
-							if ((_loc4_ = mScene.getPvPEnemyAliveUnits()).length > 0) {
-								_loc3_ = (_loc4_[Math.floor(Math.random() * _loc4_.length)] as PvPEnemyUnit).getCell();
-							}
-						} else if ((_loc5_ = mScene.getPlayerAliveUnits()).length > 0) {
-							_loc3_ = (_loc5_[Math.floor(Math.random() * _loc5_.length)] as PlayerUnit).getCell();
-						}
-						GameState.mInstance.queueAction(new PvPFireMissionAction(_loc3_, _loc2_.mPowerUpFireMissionItem), true);
-					}
-
-
-
-					GameState.mInstance.mScene.addEffect(null, EffectController.EFFECT_TYPE_POWER_UP, param1.mX, param1.mY, _loc2_.mEffectGraphics);
-
-
-
-
-					/*
-			   Unhardcoding: replaced by EffectGraphics in the config
-		   
-               if(_loc2_.mId == "AirSupport_1")
-               {
-                  GameState.mInstance.mScene.addEffect(null,EffectController.EFFECT_TYPE_POWER_UP_AIR_SUPPORT,param1.mX,param1.mY);
-               }
-               else if(_loc2_.mId == "HealthPack")
-               {
-                  GameState.mInstance.mScene.addEffect(null,EffectController.EFFECT_TYPE_POWER_UP_HEALTH_PACK,param1.mX,param1.mY);
-               }
-               else if(_loc2_.mId == "Paratrooper")
-               {
-                  GameState.mInstance.mScene.addEffect(null,EffectController.EFFECT_TYPE_POWER_UP_PARATROOPER,param1.mX,param1.mY);
-               }
-		       */
-				}
-			}
+			this.applyPowerUp(mItem as PowerUpItem, param1, 0);
 		}
 
+		private function applyPowerUp(param1: PowerUpItem, param2: IsometricCharacter, param3: int): void {
+			if(!param1 || !param2 || param3 > 3) return;
+			var targetCell: GridCell = null;
+			var targets: Array = null;
+			var freeCell: GridCell = null;
+			var spawned: Renderable = null;
+			var nested: PowerUpItem = null;
+			Utils.DiagEvent("PVP_POWERUP_PICKUP","id=" + param1.mId + ";actor=" + (param2 is PlayerUnit ? "player" : "enemy") + ";health=" + param1.mIncreasedHealth + ";actions=" + param1.mIncreasedActions + ";freeze=" + param1.mFreezeTurns);
+			if(param1.mIncreasedHealth > 0) { param2.setHealth(Math.min(param2.getMaxHealth(), param2.getHealth() + param1.mIncreasedHealth)); param2.refreshStatusHints(); }
+			if(param1.mIncreasedActions > 0 && GameState.mInstance.mPvPMatch) { GameState.mInstance.mPvPMatch.mActionsLeft += param1.mIncreasedActions; if(GameState.mInstance.mPvPHUD) GameState.mInstance.mPvPHUD.mTextUpdateRequired = true; }
+			if(param1.mPowerUpItem && param2 is PlayerUnit) GameState.mInstance.mPlayerProfile.addItem(param1.mPowerUpItem, 1);
+			if(param1.mPowerUpUnit && param2 is PlayerUnit) {
+				freeCell = mScene.getSurroundingFreeCell(param2.getCell().mPosI,param2.getCell().mPosJ);
+				if(freeCell) { mScene.addRewardedPlayerUnit(param1.mPowerUpUnit,freeCell); Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpUnit.mId + ";result=spawned"); }
+				else Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";result=no_free_cell");
+			}
+			if(param1.mPowerUpEnemyUnit && param2 is PvPEnemyUnit) {
+				freeCell = mScene.getSurroundingFreeCell(param2.getCell().mPosI,param2.getCell().mPosJ);
+				if(freeCell) {
+					spawned = mScene.createObject(param1.mPowerUpEnemyUnit,new Point(0,0));
+					if(spawned) { spawned.setPos(mScene.getCenterPointXOfCell(freeCell),mScene.getCenterPointYOfCell(freeCell),0); spawned.getContainer().visible = true; spawned.mVisible = true; Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpEnemyUnit.mId + ";result=enemy_spawned"); }
+				}
+			}
+			if(param1.mPowerUpFireMissionItem && GameState.mInstance.mPvPMatch) {
+				if(param2 is PlayerUnit) targets = mScene.getPvPEnemyAliveUnits(); else targets = mScene.getPlayerAliveUnits();
+				if(targets && targets.length > 0) targetCell = (targets[Math.floor(Math.random() * targets.length)] as IsometricCharacter).getCell();
+				if(targetCell) { GameState.mInstance.queueAction(new PvPFireMissionAction(targetCell,param1.mPowerUpFireMissionItem),true); Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";result=queued"); }
+				else Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";result=no_target");
+			}
+			if(param1.mFreezeTurns > 0 && GameState.mInstance.mPvPMatch) GameState.mInstance.mPvPMatch.freezeOpponentTurns(param2 is PlayerUnit,param1.mFreezeTurns);
+			nested = param1.getRandomPowerUp();
+			if(nested) { Utils.DiagEvent("PVP_POWERUP_RANDOM","id=" + param1.mId + ";selected=" + nested.mId); this.applyPowerUp(nested,param2,param3 + 1); }
+			if(param1.mEffectGraphics) GameState.mInstance.mScene.addEffect(null,EffectController.EFFECT_TYPE_POWER_UP,param2.mX,param2.mY,param1.mEffectGraphics);
+		}
 		override public function destroy(): void {
 			var _loc1_: GridCell = getCell();
 			if (_loc1_) {

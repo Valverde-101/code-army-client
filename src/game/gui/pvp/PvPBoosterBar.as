@@ -60,11 +60,13 @@ package game.gui.pvp
             (_loc5_ = Utils.createBasicButton(_loc4_,"Button_Use",this.usePressed)).setText(GameState.getText("PVP_USE"),"Text_Title");
             _loc5_.setEnabled(false);
             this.mBoosterButtons.push(_loc5_);
-            this.mBoosterFrames.push(_loc4_.getChildAt(1) as MovieClip);
-            Utils.removeAllChildren(this.mBoosterFrames[this.mBoosterFrames.length - 1] as MovieClip);
+            var iconFrame:MovieClip = _loc4_.getChildAt(1) as MovieClip;
+            if(_loc3_ == 0 && iconFrame) this.mIconSize = Math.max(20,int(Math.max(iconFrame.width,iconFrame.height)));
+            this.mBoosterFrames.push(iconFrame);
+            Utils.removeAllChildren(iconFrame);
             _loc3_++;
          }
-         this.mIconSize = (this.mBoosterFrames[0] as MovieClip).width;
+         Utils.DiagEvent("PVP_BOOSTER_LAYOUT","icon_size=" + this.mIconSize);
          this.addToScreen();
          this.updateArrowStates();
       }
@@ -195,7 +197,7 @@ package game.gui.pvp
                _loc5_ = this.mBoosterInventory[_loc1_ * 2] as ShopItem;
                _loc7_ = int(this.mBoosterInventory[_loc1_ * 2 + 1]);
                this.setPanelQuantity(_loc6_,_loc7_);
-               trace("[PVP_BOOSTER_SLOT] slot=" + _loc2_ + " id=" + _loc5_.mId + " count=" + _loc7_ + " icon_file=" + _loc5_.getIconGraphicsFile() + " icon=" + _loc5_.getIconGraphics());
+               Utils.DiagEvent("PVP_BOOSTER_SLOT","slot=" + _loc2_ + ";id=" + _loc5_.mId + ";count=" + _loc7_ + ";icon_file=" + _loc5_.getIconGraphicsFile() + ";icon=" + _loc5_.getIconGraphics());
                IconLoader.addIcon(_loc3_,_loc5_,this.iconLoaded);
                _loc4_.setEnabled(_loc7_ > 0);
             }
@@ -207,12 +209,16 @@ package game.gui.pvp
             _loc1_++;
             _loc2_++;
          }
-         trace("[PVP_BOOSTER_BAR] item_count=" + itemCount + " cursor=" + this.mCursorPos);
+         Utils.DiagEvent("PVP_BOOSTER_BAR","item_count=" + itemCount + ";cursor=" + this.mCursorPos);
       }
 
       private function iconLoaded(param1:Sprite) : void
       {
+         if(!param1) { Utils.DiagEvent("PVP_BOOSTER_ICON_FAIL","reason=null_sprite"); return; }
+         param1.visible = true;
+         param1.alpha = 1;
          Utils.scaleIcon(param1,this.mIconSize,this.mIconSize);
+         Utils.DiagEvent("PVP_BOOSTER_ICON_READY","width=" + param1.width + ";height=" + param1.height + ";target=" + this.mIconSize);
       }
    }
 }

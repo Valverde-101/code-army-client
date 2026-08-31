@@ -2,8 +2,6 @@ package game.characters
 {
    import game.actions.Action;
    import game.actions.ActionQueue;
-   import flash.geom.ColorTransform;
-   import flash.display.MovieClip;
    import game.actions.PvPEnemyMovingAction;
    import game.battlefield.MapData;
    import game.gui.TooltipHealth;
@@ -171,15 +169,13 @@ package game.characters
          var animationIndex:int = getCurrentAnimationIndex();
          if(animationIndex == AnimationController.CHARACTER_ANIMATION_MOVE || animationIndex == AnimationController.CHARACTER_ANIMATION_MOVE_UP)
          {
-            var movingClip:MovieClip = mAnimationController.getCurrentAnimation();
-            if(movingClip)
-            {
-               movingClip.transform.colorTransform = new ColorTransform(0.68,0.74,0.92,1,0,0,0,0);
-               Utils.DiagEvent("PVP_ENEMY_VISUAL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";mode=opfor_move_dark");
-            }
+            var item:EnemyUnitItem = mItem as EnemyUnitItem;
+            var source:String = item && item.mGraphicsArray && animationIndex < item.mGraphicsArray.length ? String(item.mGraphicsArray[animationIndex]) : "";
+            var slash:int = source.lastIndexOf("/");
+            var symbol:String = slash >= 0 ? source.substr(slash + 1) : source;
+            Utils.DiagEvent("PVP_ENEMY_SYMBOL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";source=" + source + ";symbol=" + symbol + ";opfor=" + (source.indexOf("swf/units_opfor/pvp_") == 0));
          }
       }
-      
       override public function update(param1:int) : void
       {
          super.update(param1);

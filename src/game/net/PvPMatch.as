@@ -40,6 +40,8 @@ package game.net
       private const TURN_DELAY:int = 2000;
       private var mTurnChangeTimer:int;
       private var mDebriefingOpened:Boolean = false;
+      private var mPlayerFrozenTurns:int = 0;
+      private var mEnemyFrozenTurns:int = 0;
 
       public function PvPMatch()
       {
@@ -132,6 +134,12 @@ package game.net
          if(this.mGame.mPvPHUD) this.mGame.mPvPHUD.refreshBoosters();
       }
 
+      public function freezeOpponentTurns(param1:Boolean, param2:int) : void
+      {
+         if(param2 <= 0) return;
+         if(param1) this.mEnemyFrozenTurns += param2; else this.mPlayerFrozenTurns += param2;
+         Utils.DiagEvent("PVP_FREEZE","source=" + (param1 ? "player" : "enemy") + ";turns=" + param2 + ";player_frozen=" + this.mPlayerFrozenTurns + ";enemy_frozen=" + this.mEnemyFrozenTurns);
+      }
       public function setResult(param1:Boolean) : void
       {
          this.mWin = param1;
@@ -207,6 +215,8 @@ package game.net
          this.mActionsLeft = ACTIONS_PER_TURN;
          this.mTurnCounter = 0;
          this.mTurnChangeTimer = 0;
+         this.mPlayerFrozenTurns = 0;
+         this.mEnemyFrozenTurns = 0;
          var _loc2_:int = this.mOpponent.mBadassLevel;
          this.mAI = new PvPAI(this.mGame,this.mGame.mScene,GameState.mConfig.PvPAIWeakenings["" + Math.round(Math.min(50,Math.max(0,_loc2_)))]);
          if(this.mGame.mPvPHUD)
@@ -440,17 +450,13 @@ package game.net
 
       private function changeTurn() : void
       {
-         if(this.mDebriefingOpened)
-         {
-            return;
-         }
+         if(this.mDebriefingOpened) return;
+         var nextPlayerTurn:Boolean = !this.mPlayerTurn;
+         if(nextPlayerTurn && this.mPlayerFrozenTurns > 0) { --this.mPlayerFrozenTurns; nextPlayerTurn = false; Utils.DiagEvent("PVP_FREEZE_SKIP","side=player;remaining=" + this.mPlayerFrozenTurns); }
+         else if(!nextPlayerTurn && this.mEnemyFrozenTurns > 0) { --this.mEnemyFrozenTurns; nextPlayerTurn = true; Utils.DiagEvent("PVP_FREEZE_SKIP","side=enemy;remaining=" + this.mEnemyFrozenTurns); }
          this.mActionsLeft = ACTIONS_PER_TURN;
-         this.mPlayerTurn = !this.mPlayerTurn;
-         if(this.mGame.mPvPHUD)
-         {
-            this.mGame.mPvPHUD.mTextUpdateRequired = true;
-            this.mGame.mPvPHUD.turnChanged(this.mPlayerTurn);
-         }
+         this.mPlayerTurn = nextPlayerTurn;
+         if(this.mGame.mPvPHUD) { this.mGame.mPvPHUD.mTextUpdateRequired = true; this.mGame.mPvPHUD.turnChanged(this.mPlayerTurn); }
       }
 
       public function initObjects() : void

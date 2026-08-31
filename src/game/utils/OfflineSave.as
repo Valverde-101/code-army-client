@@ -1,4 +1,5 @@
 ﻿package game.utils {
+	import flash.utils.getTimer;
 	import game.player.GamePlayerProfile;
 	import game.player.Inventory;
 	import game.sound.ArmySoundManager;
@@ -302,6 +303,8 @@
 		public static function switchMap(): void {
 			var map_id: String = GameState.mInstance.mCurrentMapId;
 			var savedMap: * = null;
+			var switchStarted: int = getTimer();
+			var mapPhaseStarted: int = switchStarted;
 			trace("[OFFLINE_SWITCH_MAP_BEGIN] map=" + map_id + " has_saved=" + Boolean(mMaps[map_id]));
 			Utils.DiagEvent("OFFLINE_SWITCH_MAP_BEGIN","map=" + map_id + ";has_saved=" + Boolean(mMaps[map_id]));
 			GameState.mInstance.mLoadingStatesOver = false;
@@ -324,12 +327,14 @@
 				GameState.mInstance.initObjects(null);
 				Utils.DiagEvent("OFFLINE_MAP_PHASE","map=" + map_id + ";phase=init_empty_objects_done");
 			}
-			GameState.mInstance.updateGrid();
+			Utils.DiagEvent("OFFLINE_MAP_TIMING","map=" + map_id + ";phase=map_objects;ms=" + (getTimer() - mapPhaseStarted) + ";elements=" + (GameState.mInstance.mScene && GameState.mInstance.mScene.mAllElements ? GameState.mInstance.mScene.mAllElements.length : 0));
+			mapPhaseStarted = getTimer();
 			GameState.mInstance.mScene.mFog.init();
 			MissionManager.initialize();
 			GameState.mInstance.mMissionIconsManager.reset();
 			MissionManager.setupFromServer(fakeservercall);
 			MissionManager.findNewActiveMissions();
+			Utils.DiagEvent("OFFLINE_MAP_TIMING","map=" + map_id + ";phase=fog_missions;ms=" + (getTimer() - mapPhaseStarted));
 			if (map_id == "Desert") {
 				(GameState.mInstance.getMainClip() as GameMain).changeDiscordMap("Desert");
 				GameState.mInstance.mHUD.changeWaterVisibility(true);
@@ -339,7 +344,7 @@
 			}
 			GameState.mInstance.mLoadingStatesOver = true;
 			trace("[OFFLINE_SWITCH_MAP_END] map=" + map_id + " grid=" + (GameState.mInstance.mMapData && GameState.mInstance.mMapData.mGrid ? GameState.mInstance.mMapData.mGrid.length : 0));
-			Utils.DiagEvent("OFFLINE_SWITCH_MAP_END","map=" + map_id + ";grid=" + (GameState.mInstance.mMapData && GameState.mInstance.mMapData.mGrid ? GameState.mInstance.mMapData.mGrid.length : 0));
+			Utils.DiagEvent("OFFLINE_SWITCH_MAP_END","map=" + map_id + ";grid=" + (GameState.mInstance.mMapData && GameState.mInstance.mMapData.mGrid ? GameState.mInstance.mMapData.mGrid.length : 0) + ";total_ms=" + (getTimer() - switchStarted));
 		}
 
 		public static function generateSaveJson(): * {
@@ -362,7 +367,7 @@
 			savedata["active_map_id"] = map_id.indexOf("pvp_") == -1 ? map_id : "Home";
 			var now: Date = new Date();
 			savedata["time_of_last_save"] = now.valueOf();
-			savedata["saveversion"] = 6;
+			savedata["saveversion"] = 7;
 			return savedata;
 		}
 
@@ -417,6 +422,7 @@
 					savedata["active_map_id"] = "Home";
 				}
 			}
+			if (version < 7) savedata["offline_pvp_booster_seed_cleanup_pending"] = true;
 			return savedata;
 		}
 
@@ -491,24 +497,26 @@
 		}
 
 		public static function ensureOfflinePvPBoosters(): void {
-			if (!Config.OFFLINE_MODE || !GameState.mInstance || !GameState.mInstance.mPlayerProfile || !GameState.mInstance.mPlayerProfile.mInventory) {
-				return;
-			}
+			if (!Config.OFFLINE_MODE || !GameState.mInstance || !GameState.mInstance.mPlayerProfile || !GameState.mInstance.mPlayerProfile.mInventory) return;
 			var inventory: Inventory = GameState.mInstance.mPlayerProfile.mInventory;
 			var boosterIds: Array = ["Damage1", "Damage2", "Damage3", "Health5", "Health10", "Health15", "Range1", "Range2", "Range3"];
+			var boosters: Array = new Array();
 			var boosterId: String = null;
 			var booster: Item = null;
-			var seeded: int = 0;
+			var legacySeedDetected: Boolean = true;
+			var index: int = 0;
 			for each (boosterId in boosterIds) {
 				booster = ItemManager.getItem(boosterId, "Booster");
-				if (booster && inventory.getNumberOfItems(booster) <= 0) {
-					inventory.addItems(booster, 3);
-					seeded++;
-				}
+				boosters.push(booster);
+				if (!booster || inventory.getNumberOfItems(booster) < 3) legacySeedDetected = false;
 			}
-			trace("[OFFLINE_PVP_BOOSTERS] visible_entries=" + int(inventory.getBoosters().length / 2) + " seeded=" + seeded);
+			if (legacySeedDetected) {
+				for (index = 0; index < boosters.length; index++) inventory.addItems(boosters[index], -3);
+				Utils.DiagEvent("OFFLINE_PVP_BOOSTER_LEGACY_SEED_REMOVED","entries=" + boosters.length);
+			}
+			var visible: Array = inventory.getBoosters();
+			Utils.DiagEvent("OFFLINE_PVP_BOOSTERS","visible_entries=" + int(visible.length / 2) + ";legacy_seed_removed=" + legacySeedDetected);
 		}
-
 		public static function startEmptyPvPProgress(): void {
 			var fakedata: * = {};
 

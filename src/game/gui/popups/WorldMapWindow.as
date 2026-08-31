@@ -220,23 +220,32 @@
 		}
 
 		private function requestClose(): void {
-			var _loc1_: Function = null;
-			if (this.mClosing) {
-				return;
-			}
+			var callback: Function = null;
+			var tracked: * = null;
+			if (this.mClosing) return;
 			this.mClosing = true;
 			this.mouseEnabled = false;
 			this.mouseChildren = false;
 			this.detachCampaignListeners();
-			_loc1_ = mDoneCallback;
+			callback = mDoneCallback;
 			mDoneCallback = null;
-			Utils.DiagEvent("WORLD_MAP_CLOSE","current=" + GameState.mInstance.mCurrentMapId + ";callback=" + Boolean(_loc1_));
-			if (_loc1_ != null) {
-				_loc1_((this as Object).constructor);
+			Utils.DiagEvent("WORLD_MAP_CLOSE","current=" + GameState.mInstance.mCurrentMapId + ";callback=" + Boolean(callback) + ";modal_before=" + PopUpManager.mModalOpenCount);
+			try {
+				if (callback != null) callback((this as Object).constructor);
+			} catch (error: Error) {
+				Utils.DiagEvent("WORLD_MAP_CLOSE_CALLBACK_FAIL","error=" + error.message);
+			} finally {
+				if (PopUpManager.isPopUpCreated(WorldMapWindow)) {
+					tracked = PopUpManager.getPopUp(WorldMapWindow);
+					if (tracked === this) {
+						this.close();
+						PopUpManager.releasePopUp(WorldMapWindow);
+						Utils.DiagEvent("WORLD_MAP_CLOSE_FALLBACK","modal_after=" + PopUpManager.mModalOpenCount);
+					}
+				}
+				if (GameState.mInstance) GameState.mInstance.restoreGameplayInputAfterPopup();
 			}
-			if (GameState.mInstance) GameState.mInstance.restoreGameplayInputAfterPopup();
 		}
-
 		private function goToArea(param1: String): void {
 			if (!param1 || param1.length == 0 || this.mClosing || WORLD_MAP_ID_LIST.indexOf(param1) < 0) {
 				Utils.DiagEvent("WORLD_MAP_AREA_REJECT","target=" + param1 + ";closing=" + this.mClosing);

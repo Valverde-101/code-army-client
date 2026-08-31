@@ -2444,13 +2444,12 @@
 
 		private function buttonPvpPressed(param1: MouseEvent): void {
 			if (Config.OFFLINE_MODE) {
-				OfflineSave.startEmptyPvPProgress();
+				Utils.DiagEvent("PVP_OPEN_REQUEST","map=" + GameState.mInstance.mCurrentMapId);
+				OfflineSave.ensureOfflinePvPBoosters();
 				GameState.mInstance.openPvPMatchUpDialog();
 				return;
 			}
-			if (!MissionManager.isTutorialCompleted()) {
-				return;
-			}
+			if (!MissionManager.isTutorialCompleted()) return;
 			GameState.mInstance.openPvPMatchUpDialog();
 		}
 

@@ -2769,6 +2769,7 @@
 		}
 
 		public function initObjects(param1: ServerCall): void {
+			var initObjectsStarted: int = getTimer();
 			var _loc5_: Renderable = null;
 			var _loc8_: HFEPlotObject = null;
 			var _loc11_: Array = null;
@@ -2816,27 +2817,24 @@
 			}
 			var _loc3_: Array = this.mScene.mAllElements;
 			var _loc4_: Array = new Array();
+			var occupiedByObject: Object = {};
+			var cellKey: String = null;
 			var _loc6_: int = int(_loc3_.length);
 			var _loc7_: int = 0;
 			while (_loc7_ < _loc6_) {
-				if ((_loc5_ = _loc3_[_loc7_] as Renderable) is HFEPlotObject) {
-					_loc20_ = int(_loc3_.length);
-					_loc21_ = 0;
-					while (_loc21_ < _loc20_) {
-						if ((_loc19_ = _loc3_[_loc21_] as Renderable) is HFEObject) {
-							if (_loc5_.mX == _loc19_.mX) {
-								if (_loc5_.mY == _loc19_.mY) {
-									_loc4_.push(_loc5_);
-									break;
-								}
-							}
-						}
-						_loc21_++;
-					}
-				}
+				_loc19_ = _loc3_[_loc7_] as Renderable;
+				if (_loc19_ is HFEObject) occupiedByObject[String(_loc19_.mX) + "|" + String(_loc19_.mY)] = true;
 				_loc7_++;
 			}
-			var _loc9_: int = int(_loc4_.length);
+			_loc7_ = 0;
+			while (_loc7_ < _loc6_) {
+				_loc5_ = _loc3_[_loc7_] as Renderable;
+				if (_loc5_ is HFEPlotObject) {
+					cellKey = String(_loc5_.mX) + "|" + String(_loc5_.mY);
+					if (occupiedByObject[cellKey]) _loc4_.push(_loc5_);
+				}
+				_loc7_++;
+			}			var _loc9_: int = int(_loc4_.length);
 			var _loc10_: int = 0;
 			while (_loc10_ < _loc9_) {
 				_loc8_ = _loc4_[_loc10_] as HFEPlotObject;
@@ -2847,6 +2845,7 @@
 			this.mPlayerProfile.updateUnitCaps();
 			this.mPlayerProfile.mSuppliesCap = _loc2_;
 			this.mScene.findSpawningBeacon();
+			Utils.DiagEvent("INIT_OBJECTS_TIMING","map=" + this.mCurrentMapId + ";ms=" + (getTimer() - initObjectsStarted) + ";elements=" + (this.mScene && this.mScene.mAllElements ? this.mScene.mAllElements.length : 0) + ";plots_removed=" + _loc4_.length);
 		}
 
 		private function fakeNeighborActions(): void {
