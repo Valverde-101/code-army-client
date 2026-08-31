@@ -45,6 +45,7 @@ $total=[ordered]@{
   repeating_timer_candidates=0
   bitmapdata_allocations=0
   bitmap_dispose_calls=0
+  bitmap_unscaled_raster_candidates=0
   enter_frame_hooks=0
   mouse_move_hooks=0
   http_literals=0
@@ -63,6 +64,12 @@ foreach($file in $asFiles){
   $repeat=[Math]::Max(0,$timers-$singleShot)
   $bitmap=([regex]::Matches($text,'new\s+BitmapData\s*\(')).Count
   $dispose=([regex]::Matches($text,'\.dispose\s*\(')).Count
+  # A common mobile-memory anti-pattern is allocating a raster cache at the
+  # source DisplayObject's unscaled width/height, then drawing it with a zoom
+  # matrix. At 40% zoom that retains 6.25x the pixel area actually required.
+  # This is only a static candidate signal; lifecycle/source review decides
+  # whether the allocation is genuinely wasteful.
+  $unscaledRaster=([regex]::Matches($text,'new\s+BitmapData\s*\(\s*[^,\r\n]+\.width\s*,\s*[^,\r\n]+\.height')).Count
   $enterFrame=([regex]::Matches($text,'Event\.ENTER_FRAME')).Count
   $mouseMove=([regex]::Matches($text,'MouseEvent\.MOUSE_MOVE')).Count
   $http=([regex]::Matches($text,'https?://','IgnoreCase')).Count
@@ -71,7 +78,7 @@ foreach($file in $asFiles){
   $defs=([regex]::Matches($text,'getDefinitionByName\s*\(')).Count
   $rel=$file.FullName.Substring($repo.Length).TrimStart('\').Replace('\','/')
   $listenerDelta=$add-$remove
-  $riskScore=($repeat*3)+($bitmap*4)+([Math]::Max(0,$listenerDelta)*2)+($enterFrame*4)+($mouseMove*2)+($http*2)+($notImpl*8)
+  $riskScore=($repeat*3)+($bitmap*4)+($unscaledRaster*6)+([Math]::Max(0,$listenerDelta)*2)+($enterFrame*4)+($mouseMove*2)+($http*2)+($notImpl*8)
   $rows.Add([pscustomobject]@{
     path=$rel
     lines=$lineCount
@@ -82,6 +89,7 @@ foreach($file in $asFiles){
     repeating_timer_candidates=$repeat
     bitmapdata_allocations=$bitmap
     bitmap_dispose_calls=$dispose
+    bitmap_unscaled_raster_candidates=$unscaledRaster
     enter_frame_hooks=$enterFrame
     mouse_move_hooks=$mouseMove
     http_literals=$http
@@ -97,6 +105,7 @@ foreach($file in $asFiles){
   $total.repeating_timer_candidates+=$repeat
   $total.bitmapdata_allocations+=$bitmap
   $total.bitmap_dispose_calls+=$dispose
+  $total.bitmap_unscaled_raster_candidates+=$unscaledRaster
   $total.enter_frame_hooks+=$enterFrame
   $total.mouse_move_hooks+=$mouseMove
   $total.http_literals+=$http
@@ -105,9 +114,10 @@ foreach($file in $asFiles){
   $total.get_definition_by_name+=$defs
 }
 
-$hotspots=@($rows|Where-Object{$_.risk_score -gt 0}|Sort-Object @{Expression='risk_score';Descending=$true},@{Expression='bitmapdata_allocations';Descending=$true},@{Expression='repeating_timer_candidates';Descending=$true}|Select-Object -First 40)
+$hotspots=@($rows|Where-Object{$_.risk_score -gt 0}|Sort-Object @{Expression='risk_score';Descending=$true},@{Expression='bitmap_unscaled_raster_candidates';Descending=$true},@{Expression='bitmapdata_allocations';Descending=$true},@{Expression='repeating_timer_candidates';Descending=$true}|Select-Object -First 40)
 $listenerRisks=@($rows|Where-Object{$_.listener_delta -ge 3}|Sort-Object listener_delta -Descending|Select-Object -First 30)
-$bitmapRisks=@($rows|Where-Object{$_.bitmapdata_allocations -gt 0}|Sort-Object bitmapdata_allocations -Descending|Select-Object -First 30)
+$bitmapRisks=@($rows|Where-Object{$_.bitmapdata_allocations -gt 0}|Sort-Object @{Expression='bitmap_unscaled_raster_candidates';Descending=$true},@{Expression='bitmapdata_allocations';Descending=$true}|Select-Object -First 30)
+$unscaledRasterRisks=@($rows|Where-Object{$_.bitmap_unscaled_raster_candidates -gt 0}|Sort-Object bitmap_unscaled_raster_candidates -Descending|Select-Object -First 30)
 $timerRisks=@($rows|Where-Object{$_.repeating_timer_candidates -gt 0}|Sort-Object repeating_timer_candidates -Descending|Select-Object -First 30)
 $networkRisks=@($rows|Where-Object{$_.http_literals -gt 0}|Sort-Object http_literals -Descending|Select-Object -First 30)
 
@@ -125,7 +135,7 @@ foreach($f in $configFiles){
 }
 
 $report=[ordered]@{
-  schema_version=1
+  schema_version=2
   repository='Valverde-101/code-army-client'
   tested_sha=$head
   generated_utc=[DateTime]::UtcNow.ToString('o')
@@ -134,11 +144,13 @@ $report=[ordered]@{
   hotspots=$hotspots
   listener_imbalance_candidates=$listenerRisks
   bitmap_allocation_candidates=$bitmapRisks
+  bitmap_unscaled_raster_candidates=$unscaledRasterRisks
   repeating_timer_candidates=$timerRisks
   network_dependency_candidates=$networkRisks
   interpretation=@(
     'Candidates are static signals, not proof of a leak or defect.',
     'Prioritize high-frequency render/update paths with BitmapData allocations or repeating timers.',
+    'Unscaled-raster candidates deserve mobile review when a DisplayObject is rasterized through a zoom matrix after allocation.',
     'Listener deltas require lifecycle inspection because some listeners are intentionally process-long.',
     'HTTP literals identify online coupling that may need an offline implementation or explicit fail-fast path.'
   )
@@ -156,16 +168,16 @@ $lines.Add("TESTED_SHA: $head")
 $lines.Add("AS files: $($total.action_script_files); lines: $($total.lines)")
 $lines.Add("Listeners add/remove: $($total.add_event_listener)/$($total.remove_event_listener)")
 $lines.Add("Timer allocations: $($total.timer_allocations); repeating candidates: $($total.repeating_timer_candidates)")
-$lines.Add("BitmapData allocations/dispose calls: $($total.bitmapdata_allocations)/$($total.bitmap_dispose_calls)")
+$lines.Add("BitmapData allocations/dispose calls: $($total.bitmapdata_allocations)/$($total.bitmap_dispose_calls); unscaled-raster candidates: $($total.bitmap_unscaled_raster_candidates)")
 $lines.Add("ENTER_FRAME hooks: $($total.enter_frame_hooks); MOUSE_MOVE hooks: $($total.mouse_move_hooks)")
 $lines.Add("HTTP literals: $($total.http_literals); TODO/FIXME/HACK: $($total.todo_fixme); not-implemented throws: $($total.throw_not_implemented)")
 $lines.Add('')
 $lines.Add('## Highest static-risk files')
-foreach($h in ($hotspots|Select-Object -First 20)){$lines.Add("- $($h.path): risk=$($h.risk_score), bitmap=$($h.bitmapdata_allocations), timers=$($h.repeating_timer_candidates), listener_delta=$($h.listener_delta), enter_frame=$($h.enter_frame_hooks), mouse_move=$($h.mouse_move_hooks), http=$($h.http_literals)")}
+foreach($h in ($hotspots|Select-Object -First 20)){$lines.Add("- $($h.path): risk=$($h.risk_score), bitmap=$($h.bitmapdata_allocations), unscaled_raster=$($h.bitmap_unscaled_raster_candidates), timers=$($h.repeating_timer_candidates), listener_delta=$($h.listener_delta), enter_frame=$($h.enter_frame_hooks), mouse_move=$($h.mouse_move_hooks), http=$($h.http_literals)")}
 $lines.Add('')
 $lines.Add('This report is an audit queue. Each candidate still requires source/lifecycle review and a focused regression before modification.')
 $lines|Set-Content -LiteralPath $md -Encoding UTF8
 
-Write-Host "SWF_CORE_AUDIT=PASS sha=$head as_files=$($total.action_script_files) lines=$($total.lines) bitmap_allocations=$($total.bitmapdata_allocations) repeating_timers=$($total.repeating_timer_candidates) listener_add=$($total.add_event_listener) listener_remove=$($total.remove_event_listener) http_literals=$($total.http_literals)"
+Write-Host "SWF_CORE_AUDIT=PASS sha=$head as_files=$($total.action_script_files) lines=$($total.lines) bitmap_allocations=$($total.bitmapdata_allocations) unscaled_raster_candidates=$($total.bitmap_unscaled_raster_candidates) repeating_timers=$($total.repeating_timer_candidates) listener_add=$($total.add_event_listener) listener_remove=$($total.remove_event_listener) http_literals=$($total.http_literals)"
 Write-Host "SWF_CORE_AUDIT_JSON=$json"
 Write-Host "SWF_CORE_AUDIT_REPORT=$md"
