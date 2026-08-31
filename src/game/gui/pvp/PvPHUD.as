@@ -242,7 +242,7 @@
 			var meAsPvpOpponent:PvPOpponent = new PvPOpponent("random_facebook_id",player_profile.mBadassXp,player_profile.mBadassLevel,player_profile.mBadassWins,"Me","")
 			
 			this.mPlayerPanel = new PvPFighterPanel(this.mIngameHUDClip.getChildByName("Player_Card") as Sprite, meAsPvpOpponent, GameState.getText("PVP_PLAYER_TURN"));
-			this.mEnemyPanel = new PvPFighterPanel(this.mIngameHUDClip.getChildByName("Opponent_Card") as Sprite, PvPOpponentCollection.smCollection.getOpponent("1"), GameState.getText("PVPV_ENEMY_TURN"));
+			this.mEnemyPanel = new PvPFighterPanel(this.mIngameHUDClip.getChildByName("Opponent_Card") as Sprite, this.mGame.mPvPMatch.mOpponent, GameState.getText("PVPV_ENEMY_TURN"));
 			this.mButtonToggleMusic = this.addButton(this.mSettingsButtonsBar, "Button_Music", this.ToggleMusicClicked);
 			this.mButtonToggleMusicDisabled = this.addButton(this.mSettingsButtonsBar, "Button_Music_Disabled", this.ToggleMusicClicked);
 			this.mButtonToggleSound = this.addButton(this.mSettingsButtonsBar, "Button_Sounds", this.ToggleSndFxClicked);

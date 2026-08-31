@@ -384,8 +384,10 @@
 						_loc6_ = _loc5_.getChildByName("Hint_Friendly") as MovieClip;
 						if (_loc6_) {
 							_loc7_ = _loc6_.getChildByName("Hint_Health_Friendly") as MovieClip;
-							var textfield_health: TextField = _loc7_.getChildByName("Text_Value") as TextField;
-							textfield_health.text = String(this.getHealth()) + "/" + String(this.mMaxHealth)
+							var textfield_health_attention: TextField = _loc7_.getChildByName("Text_Value") as TextField;
+							if (textfield_health_attention) {
+								textfield_health_attention.text = String(this.getHealth()) + "/" + String(this.mMaxHealth);
+							}
 						}
 
 					}
@@ -408,17 +410,25 @@
 			while (_loc3_ < _loc2_.numChildren) {
 				if (_loc5_ = (_loc4_ = _loc2_.getChildAt(_loc3_) as MovieClip).getChildByName("Hint_Health_Friendly") as MovieClip) {
 					_loc6_ = _loc5_.getChildByName("Badge_Fire_Power") as MovieClip;
-					_loc6_.gotoAndStop(this.getPower())
+					if (_loc6_) {
+						_loc6_.gotoAndStop(1);
+					}
 					var textfield_power: TextField = _loc5_.getChildByName("Text_Power_Value") as TextField;
-					textfield_power.text = "x" + String(this.getPower());
+					if (textfield_power) {
+						textfield_power.text = "x" + String(this.getPower());
+					}
 				}
 				if (_loc5_ = (_loc4_ = _loc2_.getChildAt(_loc3_) as MovieClip).getChildByName("Hint_Health_Friendly_Attention") as MovieClip) {
 					_loc6_ = _loc5_.getChildByName("Hint_Friendly") as MovieClip;
 					if (_loc6_) {
 						_loc7_ = _loc6_.getChildByName("Badge_Fire_Power") as MovieClip;
-						_loc7_.gotoAndStop(this.getPower())
-						var textfield_power: TextField = _loc6_.getChildByName("Text_Power_Value") as TextField;
-						textfield_power.text = "x" + String(this.getPower());
+						if (_loc7_) {
+							_loc7_.gotoAndStop(1);
+						}
+						var textfield_power_attention: TextField = _loc6_.getChildByName("Text_Power_Value") as TextField;
+						if (textfield_power_attention) {
+							textfield_power_attention.text = "x" + String(this.getPower());
+						}
 					}
 				}
 				_loc3_++;

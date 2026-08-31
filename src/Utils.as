@@ -341,9 +341,14 @@ package
       {
          var _loc4_:DCResourceManager = DCResourceManager.getInstance();
          var _loc5_:int = 0;
+         var _loc6_:String = null;
          while(_loc5_ < param1.length)
          {
-            _loc4_.load(Config.DIR_DATA + param1[_loc5_] + ".swf",param1[_loc5_],null,param3,param2);
+            _loc6_ = String(param1[_loc5_]);
+            if(!_loc4_.isLoaded(_loc6_) && !_loc4_.isAddedToLoadingList(_loc6_))
+            {
+               _loc4_.load(Config.DIR_DATA + _loc6_ + ".swf",_loc6_,null,param3,param2);
+            }
             _loc5_++;
          }
       }

@@ -2721,6 +2721,9 @@
 				return;
 			}
 			popup.close();
+			if (!popup.isClosed()) {
+				popup.clean();
+			}
 			PopUpManager.releasePopUp(param1);
 			MissionManager.increaseCounter("Close", popup, 1);
 		}
