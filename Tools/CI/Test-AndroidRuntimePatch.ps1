@@ -105,7 +105,7 @@ Require-NotContains $scene 'appearTimerTick' 'tooltip_timer_no_repeating_tick_ha
 Require-Contains $offline 'savedata["active_map_id"] = map_id.indexOf("pvp_") == -1 ? map_id : "Home";' 'offline_save_persists_only_stable_world'
 Require-Contains $offline 'savedata["saveversion"] = 7;' 'offline_save_version_bumped_for_active_map'
 Require-Contains $offline 'if (version < 6) {' 'offline_old_save_active_map_migration'
-Require-Contains $offline 'if (version < 7) {' 'offline_old_save_booster_cleanup_migration'
+Require-Contains $offline 'if (version < 7) savedata["offline_pvp_booster_seed_cleanup_pending"] = true;' 'offline_old_save_booster_cleanup_migration'
 Require-Contains $offline 'var activeMapId: String = "Home";' 'offline_restore_defaults_home'
 Require-Contains $offline 'GameState.GRAPHICS_MAP_ID_LIST.indexOf(activeMapId) < 0' 'offline_restore_rejects_unknown_map'
 Require-Contains $offline 'restore_active_map_after_home_bootstrap' 'offline_restore_waits_for_home_bootstrap'
