@@ -126,6 +126,7 @@ Require-Contains $pvpAttack 'consumeActionBooster("enemy_unit_attack")' 'pvp_uni
 Require-Contains $pvpInstall 'consumeActionBooster("enemy_installation_attack")' 'pvp_installation_attack_consumes_booster'
 Require-Contains $pvpInstall 'mPvPMatch.addIngameCollectible(_loc12_)' 'pvp_installation_drop_tracked'
 Require-Contains $pvpFire 'mPvPMatch.addIngameCollectible(_loc10_)' 'pvp_firemission_drop_tracked'
+Require-Contains $pvpFire 'import game.actions.FireMissionAction;' 'pvp_firemission_import_is_ffdec_compilable'
 Require-Contains $loot '[PVP_LOOT_DEFER_UI]' 'pvp_loot_suppresses_campaign_collection_popup'
 Require-Contains $game 'public function getEffectivePlayerAttackRange' 'pvp_range_booster_affects_target_selection'
 Require-Contains $game '[MAP_SWITCH_BEGIN]' 'worldmap_transition_begin_instrumented'

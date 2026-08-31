@@ -1,6 +1,6 @@
 package game.actions
 {
-   import game.actions.FireMissionAction
+   import game.actions.FireMissionAction;
    import game.characters.PlayerUnit;
    import game.characters.PvPEnemyUnit;
    import game.gameElements.PlayerBuildingObject;
