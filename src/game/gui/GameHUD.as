@@ -921,7 +921,7 @@
 				// Scale the height based on the percentage increase from the original height
 				var scaleFactorHeight: Number = (param2 + 150) / 680; // Assuming 680 is the original height
 				
-				var scaleFactor:Number = Math.min(scaleFactorWidth, scaleFactorHeight) // Ensure there is no distortion
+				var scaleFactor:Number = Math.min(scaleFactorWidth, scaleFactorHeight); // Ensure there is no distortion
 
 				// APPLYING SCALE FACTOR
 
