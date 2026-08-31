@@ -1709,6 +1709,12 @@
 			if (Config.DEBUG_MODE) {}
 		}
 
+		public function getEffectivePlayerAttackRange(param1: PlayerUnit): int {
+			var result: int = param1 ? param1.getAttackRange() : 0;
+			if (param1 && this.mState == STATE_PVP && this.mPvPMatch) result += this.mPvPMatch.getActiveRangeBoost();
+			return result;
+		}
+
 		public function searchNearbyPlayerUnits(param1: Renderable): Array {
 			var _loc2_: Array = null;
 			var _loc6_: int = 0;
@@ -1717,13 +1723,14 @@
 			var _loc9_: int = 0;
 			var _loc3_: int = param1.getTileSize().x - 1;
 			var _loc4_: int = param1.getTileSize().y - 1;
-			var _loc5_: int = -PlayerUnit.smLongestAttackRange;
-			while (_loc5_ <= PlayerUnit.smLongestAttackRange + _loc3_) {
-				_loc6_ = -PlayerUnit.smLongestAttackRange;
-				while (_loc6_ <= PlayerUnit.smLongestAttackRange + _loc4_) {
+			var pvpRangeBonus: int = this.mState == STATE_PVP && this.mPvPMatch ? this.mPvPMatch.getActiveRangeBoost() : 0;
+			var _loc5_: int = -(PlayerUnit.smLongestAttackRange + pvpRangeBonus);
+			while (_loc5_ <= PlayerUnit.smLongestAttackRange + pvpRangeBonus + _loc3_) {
+				_loc6_ = -(PlayerUnit.smLongestAttackRange + pvpRangeBonus);
+				while (_loc6_ <= PlayerUnit.smLongestAttackRange + pvpRangeBonus + _loc4_) {
 					if (Boolean(_loc7_ = this.mScene.getCellAtLocation(param1.mX + _loc5_ * this.mScene.mGridDimX, param1.mY + _loc6_ * this.mScene.mGridDimY)) && _loc7_.mCharacter is PlayerUnit) {
 						if ((_loc8_ = _loc7_.mCharacter as PlayerUnit).isAlive()) {
-							_loc9_ = _loc8_.getAttackRange();
+							_loc9_ = this.getEffectivePlayerAttackRange(_loc8_);
 							if (Math.abs(_loc5_) <= _loc9_ || _loc5_ > 0 && _loc5_ - _loc3_ <= _loc9_ && Math.abs(_loc6_) <= _loc9_ || _loc6_ > 0 && _loc6_ - _loc4_ <= _loc9_) {
 								if (!_loc2_) {
 									_loc2_ = new Array();
@@ -1752,10 +1759,11 @@
 			var _loc10_: int = 0;
 			while (_loc10_ < _loc9_) {
 				_loc8_ = _loc7_[_loc10_] as PlayerUnit;
-				_loc3_ = param1.getCell().mPosI - _loc8_.getAttackRange();
-				_loc4_ = param1.getCell().mPosI + (param1.getTileSize().x - 1) + _loc8_.getAttackRange();
-				_loc5_ = param1.getCell().mPosJ - _loc8_.getAttackRange();
-				_loc6_ = param1.getCell().mPosJ + (param1.getTileSize().y - 1) + _loc8_.getAttackRange();
+				var effectiveRange:int = this.getEffectivePlayerAttackRange(_loc8_);
+				_loc3_ = param1.getCell().mPosI - effectiveRange;
+				_loc4_ = param1.getCell().mPosI + (param1.getTileSize().x - 1) + effectiveRange;
+				_loc5_ = param1.getCell().mPosJ - effectiveRange;
+				_loc6_ = param1.getCell().mPosJ + (param1.getTileSize().y - 1) + effectiveRange;
 				if (_loc8_.isStill() && _loc8_.getCell().mPosI >= _loc3_ && _loc8_.getCell().mPosI <= _loc4_ && _loc8_.getCell().mPosJ >= _loc5_ && _loc8_.getCell().mPosJ <= _loc6_) {
 					_loc2_.push(_loc8_);
 				} else if (_loc11_ = _loc8_.getMovementTargetCell()) {
@@ -1829,7 +1837,9 @@
 			var _loc3_: int = param1.getTileSize().x;
 			var _loc4_: int = param1.getTileSize().y;
 			var _loc5_: GridCell = this.mScene.getCellAtLocation(param1.mX, param1.mY);
-			var _loc6_: Array = MapArea.getArea(this.mScene, _loc5_.mPosI - PlayerUnit.smLongestAttackRange, _loc5_.mPosJ - PlayerUnit.smLongestAttackRange, PlayerUnit.smLongestAttackRange * 2 + _loc3_, PlayerUnit.smLongestAttackRange * 2 + _loc4_).getCells();
+			var pvpSearchBonus:int = this.mState == STATE_PVP && this.mPvPMatch ? this.mPvPMatch.getActiveRangeBoost() : 0;
+			var pvpSearchRange:int = PlayerUnit.smLongestAttackRange + pvpSearchBonus;
+			var _loc6_: Array = MapArea.getArea(this.mScene, _loc5_.mPosI - pvpSearchRange, _loc5_.mPosJ - pvpSearchRange, pvpSearchRange * 2 + _loc3_, pvpSearchRange * 2 + _loc4_).getCells();
 			var _loc7_: int = 0;
 			while (_loc7_ < _loc6_.length) {
 				if (!_loc6_[_loc7_] || !(_loc6_[_loc7_] as GridCell).mCharacter || !(_loc6_[_loc7_].mCharacter is PlayerUnit) || !((_loc6_[_loc7_] as GridCell).mCharacter as PlayerUnit).isAlive()) {
@@ -1844,7 +1854,7 @@
 			var _loc8_: Array = this.mScene.getTilesUnderObject(param1);
 			var _loc9_: int = 0;
 			while (_loc9_ < _loc6_.length) {
-				_loc11_ = (_loc10_ = _loc6_[_loc9_]).mCharacter.mAttackRange;
+				_loc11_ = this.getEffectivePlayerAttackRange((_loc10_ = _loc6_[_loc9_]).mCharacter as PlayerUnit);
 				_loc12_ = 0;
 				while (_loc12_ < _loc8_.length) {
 					_loc13_ = _loc10_.mPosI - (_loc8_[_loc12_] as GridCell).mPosI;
@@ -3281,9 +3291,14 @@
 				return;
 			}
 			if (Config.OFFLINE_MODE && !param2 && !param3) {
+				if (!mConfig || !mConfig.MapSetup || !mConfig.MapSetup[param1]) {
+					trace("[MAP_SWITCH_REJECT] reason=missing_config target=" + param1);
+					return;
+				}
 				this.mPendingOfflineOriginMapId = this.mCurrentMapId;
 				OfflineSave.saveOldMap();
 				this.mPendingOfflineSwitchMapId = param1;
+				trace("[MAP_SWITCH_BEGIN] from=" + this.mPendingOfflineOriginMapId + " to=" + param1);
 				this.startLoading(param1);
 				this.waitForMapTilemap(param1, this.completeOfflineMapSwitch, this.failOfflineMapSwitch);
 				return;
@@ -3333,6 +3348,7 @@
 		private function completeOfflineMapSwitch(): void {
 			var _loc1_: String = this.mPendingOfflineSwitchMapId;
 			var _loc2_: String = this.mPendingOfflineOriginMapId;
+			trace("[MAP_SWITCH_APPLY_BEGIN] from=" + _loc2_ + " to=" + _loc1_);
 			this.mPendingOfflineSwitchMapId = null;
 			this.mPendingOfflineOriginMapId = null;
 			if (!_loc1_ || _loc1_.length == 0) {
@@ -3351,6 +3367,7 @@
 				this.startMusic();
 				EnvEffectManager.init();
 				this.changeState(STATE_PLAY);
+				trace("[MAP_SWITCH_COMMIT] from=" + _loc2_ + " to=" + _loc1_ + " graphics=" + this.mCurrentMapGraphicsId);
 				this.stopLoading();
 			} catch (error: Error) {
 				trace("[MAP_TRANSITION_FAIL] from=" + _loc2_ + " to=" + _loc1_ + " error=" + error.message);
@@ -3359,6 +3376,7 @@
 		}
 
 		private function failOfflineMapSwitch(): void {
+			trace("[MAP_SWITCH_FAIL] from=" + this.mPendingOfflineOriginMapId + " to=" + this.mPendingOfflineSwitchMapId + " reason=resource_timeout");
 			this.mPendingOfflineSwitchMapId = null;
 			this.mPendingOfflineOriginMapId = null;
 			this.stopLoading();
@@ -3446,6 +3464,8 @@
 			if (!_loc2_.isLoaded(_loc3_) && !_loc2_.isAddedToLoadingList(_loc3_)) {
 				_loc2_.load(Config.DIR_CONFIG + _loc3_ + ".csv", _loc3_, null, true);
 			}
+			trace("[MAP_RESOURCE_QUEUE] map=" + param1 + " tilemap=" + _loc3_ + " offline=" + Config.OFFLINE_MODE);
+			if (Config.OFFLINE_MODE) return;
 			_loc5_ = this.getRequiredMapSwfs(param1);
 			for each (_loc3_ in _loc5_) {
 				if (!_loc2_.isLoaded(_loc3_) && !_loc2_.isAddedToLoadingList(_loc3_)) {
@@ -3471,6 +3491,7 @@
 			if (!_loc2_.isLoaded(_loc3_) || _loc2_.get(_loc3_) == null) {
 				return false;
 			}
+			if (Config.OFFLINE_MODE) return true;
 			_loc5_ = this.getRequiredMapSwfs(param1);
 			for each (_loc3_ in _loc5_) {
 				if (!_loc2_.isLoaded(_loc3_)) {
@@ -3515,7 +3536,9 @@
 		private function completePendingMapResourceWait(param1: Boolean): void {
 			var _loc1_: Function = this.mPendingMapReadyCallback;
 			var _loc2_: Function = this.mPendingMapFailureCallback;
+			var completedTarget: String = this.mPendingMapTargetId;
 			this.cancelPendingMapResourceWait();
+			trace("[MAP_RESOURCE_RESULT] map=" + completedTarget + " ready=" + param1);
 			if (param1) {
 				if (_loc1_ != null) {
 					_loc1_();
@@ -3627,20 +3650,18 @@
 			if (!this.mRootNode.contains(this.mLoadingClip)) {
 				this.mRootNode.addChild(this.mLoadingClip);
 			}
-			this.mCurrentMusic = this.getMapMusicForId(_loc5_);
-			ArmySoundManager.loadMusic(this.mCurrentMusic);
-			this.startMusic();
-			if (mConfig && mConfig.MapSetup) {
-				_loc6_ = mConfig.MapSetup[_loc5_];
-			}
-			if (_loc6_ && _loc6_.SWFFile) {
-				_loc1_ = _loc6_.SWFFile;
-				if (_loc1_ is Array) {
-					_loc2_ = _loc1_ as Array;
-				} else {
-					_loc2_ = [_loc1_];
+			if (Config.OFFLINE_MODE) {
+				trace("[MAP_LOADING_OVERLAY] target=" + _loc5_ + " music_commit=deferred embedded_swfs=true");
+			} else {
+				this.mCurrentMusic = this.getMapMusicForId(_loc5_);
+				ArmySoundManager.loadMusic(this.mCurrentMusic);
+				this.startMusic();
+				if (mConfig && mConfig.MapSetup) _loc6_ = mConfig.MapSetup[_loc5_];
+				if (_loc6_ && _loc6_.SWFFile) {
+					_loc1_ = _loc6_.SWFFile;
+					_loc2_ = _loc1_ is Array ? _loc1_ as Array : [_loc1_];
+					Utils.addSwfToResourceManager(_loc2_);
 				}
-				Utils.addSwfToResourceManager(_loc2_);
 			}
 		}
 
@@ -3654,6 +3675,7 @@
 				this.mRootNode.removeChild(this.mLoadingClip);
 			}
 			getMainClip().mouseChildren = true;
+			trace("[MAP_INPUT_RESTORED] current=" + this.mCurrentMapId + " state=" + this.mState);
 		}
 
 		public function addToWorld(param1: MapItem): void {

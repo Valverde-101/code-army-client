@@ -94,6 +94,7 @@ package game.actions
             ++mKilledEnemyCount;
             _loc10_ = (param1.mItem as TargetItem).getRandomItemDrop();
             _loc2_.mScene.addLootReward(_loc10_,1,param1.getContainer());
+            _loc2_.mPvPMatch.addIngameCollectible(_loc10_);
          }
          param1.reduceHealth(this.mItem.mDamage);
       }

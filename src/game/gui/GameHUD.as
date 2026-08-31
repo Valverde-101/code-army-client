@@ -2426,6 +2426,12 @@
 		}
 
 		private function buttonMapPressed(param1: MouseEvent): void {
+			if (Config.OFFLINE_MODE) {
+				trace("[WORLD_MAP_OPEN] mode=embedded current=" + this.mGame.mCurrentMapId);
+				this.openDialog(WorldMapWindow, [this.closeDialog], null, true);
+				this.cancelTools();
+				return;
+			}
 			this.openDialogIfResourceLoaded("swf/map", WorldMapWindow, [this.closeDialog]);
 		}
 

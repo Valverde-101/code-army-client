@@ -9,6 +9,7 @@ package game.gui.pvp
    import game.gui.AutoTextField;
    import game.gui.IconLoader;
    import game.gui.button.ArmyButton;
+   import game.items.BoosterItem;
    import game.items.ShopItem;
    import game.states.GameState;
    
@@ -86,7 +87,11 @@ package game.gui.pvp
             {
                if(_loc2_ >= 0 && _loc2_ < this.mBoosterInventory.length / 2)
                {
-                  GameState.mInstance.mPvPMatch.mActivatedBooster = this.mBoosterInventory[_loc2_ * 2];
+                  var booster:BoosterItem = this.mBoosterInventory[_loc2_ * 2] as BoosterItem;
+                  if(booster)
+                  {
+                     GameState.mInstance.mPvPMatch.activateBooster(booster);
+                  }
                }
             }
             _loc2_++;
@@ -190,6 +195,7 @@ package game.gui.pvp
                _loc5_ = this.mBoosterInventory[_loc1_ * 2] as ShopItem;
                _loc7_ = int(this.mBoosterInventory[_loc1_ * 2 + 1]);
                this.setPanelQuantity(_loc6_,_loc7_);
+               trace("[PVP_BOOSTER_SLOT] slot=" + _loc2_ + " id=" + _loc5_.mId + " count=" + _loc7_ + " icon_file=" + _loc5_.getIconGraphicsFile() + " icon=" + _loc5_.getIconGraphics());
                IconLoader.addIcon(_loc3_,_loc5_,this.iconLoaded);
                _loc4_.setEnabled(_loc7_ > 0);
             }

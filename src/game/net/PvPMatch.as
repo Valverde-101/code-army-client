@@ -3,6 +3,7 @@ package game.net
    import com.dchoc.graphics.DCResourceManager;
    import flash.geom.Point;
    import game.ai.PvPAI;
+   import game.characters.PlayerUnit;
    import game.isometric.GridCell;
    import game.isometric.IsometricScene;
    import game.isometric.elements.Renderable;
@@ -53,10 +54,82 @@ package game.net
 
       public function addIngameCollectible(param1:Item) : void
       {
-         if(param1 != null)
+         if(param1 == null) return;
+         if(param1 is CollectibleItem)
          {
             this.mIngameCollectibles.push(param1);
+            trace("[PVP_LOOT_TRACK] id=" + param1.mId + " count=" + this.mIngameCollectibles.length);
          }
+         else
+         {
+            trace("[PVP_LOOT_SKIP_DEBRIEF] id=" + param1.mId + " type=" + param1.mType);
+         }
+      }
+
+      public function getActiveRangeBoost() : int
+      {
+         return this.mActivatedBooster ? this.mActivatedBooster.mRangeBoost : 0;
+      }
+
+      public function getActivePowerBoost() : int
+      {
+         return this.mActivatedBooster ? this.mActivatedBooster.mPowerBoost : 0;
+      }
+
+      public function getBoostedDamage(param1:int, param2:int = 1) : int
+      {
+         var actorCount:int = Math.max(1,param2);
+         var bonusPerActor:int = this.getActivePowerBoost();
+         var result:int = param1 + bonusPerActor * actorCount;
+         if(bonusPerActor > 0) trace("[PVP_BOOSTER_DAMAGE] id=" + this.mActivatedBooster.mId + " base=" + param1 + " actors=" + actorCount + " bonus=" + (bonusPerActor * actorCount) + " total=" + result);
+         return result;
+      }
+
+      public function activateBooster(param1:BoosterItem) : Boolean
+      {
+         if(!param1 || !this.mGame || !this.mGame.mPlayerProfile || !this.mGame.mPlayerProfile.mInventory) return false;
+         var count:int = this.mGame.mPlayerProfile.mInventory.getNumberOfItems(param1);
+         if(count <= 0)
+         {
+            trace("[PVP_BOOSTER_REJECT] id=" + param1.mId + " reason=empty");
+            return false;
+         }
+         if(param1.mHealthBoost > 0)
+         {
+            var units:Array = this.mGame.mScene ? this.mGame.mScene.getPlayerAliveUnits() : null;
+            var unit:PlayerUnit = null;
+            var healed:int = 0;
+            if(!units || units.length == 0)
+            {
+               trace("[PVP_BOOSTER_REJECT] id=" + param1.mId + " reason=no_alive_units");
+               return false;
+            }
+            for each(unit in units)
+            {
+               unit.setHealth(Math.min(unit.getMaxHealth(),unit.getHealth() + param1.mHealthBoost));
+               unit.refreshStatusHints();
+               healed++;
+            }
+            this.mGame.mPlayerProfile.mInventory.addItems(param1,-1);
+            this.mActivatedBooster = null;
+            trace("[PVP_BOOSTER_HEAL] id=" + param1.mId + " amount=" + param1.mHealthBoost + " units=" + healed);
+            if(this.mGame.mPvPHUD) this.mGame.mPvPHUD.refreshBoosters();
+            return true;
+         }
+         this.mActivatedBooster = param1;
+         trace("[PVP_BOOSTER_ARM] id=" + param1.mId + " power=" + param1.mPowerBoost + " range=" + param1.mRangeBoost + " count=" + count);
+         return true;
+      }
+
+      public function consumeActionBooster(param1:String) : void
+      {
+         if(!this.mActivatedBooster || !this.mGame || !this.mGame.mPlayerProfile) return;
+         var booster:BoosterItem = this.mActivatedBooster;
+         var before:int = this.mGame.mPlayerProfile.mInventory.getNumberOfItems(booster);
+         if(before > 0) this.mGame.mPlayerProfile.mInventory.addItems(booster,-1);
+         this.mActivatedBooster = null;
+         trace("[PVP_BOOSTER_CONSUME] id=" + booster.mId + " reason=" + param1 + " before=" + before + " after=" + this.mGame.mPlayerProfile.mInventory.getNumberOfItems(booster));
+         if(this.mGame.mPvPHUD) this.mGame.mPvPHUD.refreshBoosters();
       }
 
       public function setResult(param1:Boolean) : void
@@ -128,6 +201,7 @@ package game.net
          this.mWin = false;
          this.mIngameBadassXp = 0;
          this.mIngameCollectibles = new Array();
+         this.mActivatedBooster = null;
          this.initObjects();
          this.mPlayerTurn = true;
          this.mActionsLeft = ACTIONS_PER_TURN;

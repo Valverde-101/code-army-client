@@ -68,6 +68,13 @@ package game.actions
          mNewState = STATE_BEFORE_ATTACK;
       }
       
+      override protected function getCombinedDamage() : int
+      {
+         var baseDamage:int = super.getCombinedDamage();
+         var actorCount:int = mCharacterActors ? mCharacterActors.length : (mActor ? 1 : 0);
+         return GameState.mInstance.mPvPMatch ? GameState.mInstance.mPvPMatch.getBoostedDamage(baseDamage,actorCount) : baseDamage;
+      }
+
       override protected function execute() : void
       {
          var _loc7_:Item = null;
@@ -112,6 +119,7 @@ package game.actions
             _loc9_ = true;
          }
          _loc1_.reduceHealth(_loc8_);
+         if(_loc2_.mPvPMatch) _loc2_.mPvPMatch.consumeActionBooster("enemy_unit_attack");
          mNewState = STATE_OVER;
          _loc2_.playerMoveMade();
       }

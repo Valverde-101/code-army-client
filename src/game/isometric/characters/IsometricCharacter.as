@@ -456,6 +456,10 @@
 			return this.mHealth;
 		}
 
+		public function getMaxHealth(): int {
+			return this.mMaxHealth;
+		}
+
 		public function getPower(): int {
 			return this.mPower;
 		}
