@@ -295,7 +295,7 @@ package game.net
 
       private function doEnemyAction() : void
       {
-         if(this.mDebriefingOpened)
+         if(this.mDebriefingOpened || !this.mGame || !this.mGame.mScene)
          {
             return;
          }
@@ -303,7 +303,36 @@ package game.net
          {
             this.mAI = new PvPAI(this.mGame,this.mGame.mScene,GameState.mConfig.PvPAIWeakenings["0"]);
          }
-         this.mAI.makeMove();
+         var queuedBefore:int = this.mGame.mMainActionQueue ? this.mGame.mMainActionQueue.mActions.length : 0;
+         try
+         {
+            this.mAI.makeMove();
+         }
+         catch(error:Error)
+         {
+            trace("[PVP_AI_EXCEPTION] turn=" + this.mTurnCounter + " actions=" + this.mActionsLeft + " error=" + error.message);
+            this.consumeFailedEnemyAction();
+            return;
+         }
+         var queuedAfter:int = this.mGame.mMainActionQueue ? this.mGame.mMainActionQueue.mActions.length : 0;
+         if(!this.mGame.mCurrentAction && queuedAfter <= queuedBefore)
+         {
+            trace("[PVP_AI_NO_ACTION] turn=" + this.mTurnCounter + " actions=" + this.mActionsLeft);
+            this.consumeFailedEnemyAction();
+         }
+      }
+
+      private function consumeFailedEnemyAction() : void
+      {
+         if(this.mActionsLeft > 0)
+         {
+            --this.mActionsLeft;
+         }
+         this.mTurnChangeTimer = this.TURN_DELAY;
+         if(this.mGame && this.mGame.mPvPHUD)
+         {
+            this.mGame.mPvPHUD.mTextUpdateRequired = true;
+         }
       }
 
       private function changeTurn() : void
