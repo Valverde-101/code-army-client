@@ -2,6 +2,7 @@
 	import com.dchoc.graphics.DCResourceManager;
 	import flash.display.MovieClip;
 	import flash.events.MouseEvent;
+	import flash.utils.setTimeout;
 	import game.gui.StylizedHeaderClip;
 	import game.gui.TooltipMap;
 	import game.gui.button.ArmyButton;
@@ -24,6 +25,8 @@
 		private var mButtonContainer: MovieClip;
 
 		private var mClosing: Boolean = false;
+
+		private var mPendingSwitchMapId: String;
 
 		public function WorldMapWindow() {
 			var _loc3_: MovieClip = null;
@@ -82,35 +85,18 @@
 		public function Activate(param1: Function): void {
 			var _loc2_: StylizedHeaderClip = null;
 			this.mClosing = false;
+			this.mPendingSwitchMapId = null;
+			this.mouseEnabled = true;
+			this.mouseChildren = true;
 			mDoneCallback = param1;
 			_loc2_ = new StylizedHeaderClip(mClip.getChildByName("Header") as MovieClip, GameState.getText("HUD_MAP_TOOLTIP"));
 			MissionManager.increaseCounter("OpenMap", null, 1);
 		}
 
-		/*
-		CONFIG::BUILD_FOR_MOBILE_AIR {
-			override public function scaleToScreen(): void {
-				// Get the current stage width and height
-				var stageWidth: Number = GameState.mInstance.getStageWidth();
-				var stageHeight: Number = GameState.mInstance.getStageHeight();
-
-				// Define the target size relative to the provided percentages
-				var targetWidth: Number = stageWidth * 1.5;
-				var targetHeight: Number = stageHeight * 1.5;
-
-				// Calculate the scaling factors based on the clip's dimensions
-				var scaleXFactor: Number = targetWidth / mClip.width;
-				var scaleYFactor: Number = targetHeight / mClip.height;
-
-				// Apply the smaller scaling factor to maintain aspect ratio
-				var scaleFactor: Number = Math.min(scaleXFactor, scaleYFactor);
-				mClip.scaleX = scaleFactor;
-				mClip.scaleY = scaleFactor;
-			}
-		}
-		*/
-
 		private function isAreaAvailable(param1: int): Boolean {
+			if (param1 < 0 || param1 >= WORLD_MAP_ID_LIST.length || !WORLD_MAP_ID_LIST[param1] || WORLD_MAP_ID_LIST[param1].length == 0) {
+				return false;
+			}
 			if (Config.OFFLINE_MODE && (param1 == 0 || param1 == 1)) {
 				return true;
 			}
@@ -123,8 +109,11 @@
 		}
 
 		private function mouseDown(param1: MouseEvent): void {
-			var _loc2_: int = this.getAreaIndex(param1.target) + 1;
-			var _loc3_: MovieClip = this.mButtonContainer.getChildByName("Button_Campaign_0" + _loc2_) as MovieClip;
+			var _loc2_: int = this.getAreaIndex(param1.target);
+			if (_loc2_ < 0 || !this.isAreaAvailable(_loc2_) || this.mClosing) {
+				return;
+			}
+			var _loc3_: MovieClip = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 			(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = false;
 			(_loc3_.getChildByName("Background_Over") as MovieClip).visible = false;
 			(_loc3_.getChildByName("Background_Down") as MovieClip).visible = true;
@@ -135,6 +124,9 @@
 		private function mouseOver(param1: MouseEvent): void {
 			var _loc3_: MovieClip = null;
 			var _loc2_: int = this.getAreaIndex(param1.target);
+			if (_loc2_ < 0 || this.mClosing) {
+				return;
+			}
 			if (this.isAreaAvailable(_loc2_)) {
 				_loc3_ = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 				(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = false;
@@ -156,6 +148,9 @@
 		private function mouseOut(param1: MouseEvent): void {
 			var _loc3_: MovieClip = null;
 			var _loc2_: int = this.getAreaIndex(param1.target);
+			if (_loc2_ < 0) {
+				return;
+			}
 			if (this.isAreaAvailable(_loc2_)) {
 				_loc3_ = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 				(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = true;
@@ -170,6 +165,9 @@
 
 		private function mouseUp(param1: MouseEvent): void {
 			var _loc2_: int = this.getAreaIndex(param1.target);
+			if (_loc2_ < 0 || !this.isAreaAvailable(_loc2_) || this.mClosing) {
+				return;
+			}
 			var _loc3_: MovieClip = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 			(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = true;
 			(_loc3_.getChildByName("Background_Over") as MovieClip).visible = false;
@@ -188,7 +186,7 @@
 				}
 				_loc2_++;
 			}
-			return 0;
+			return -1;
 		}
 
 		private function setAreaAvailability(param1: int, param2: Boolean): void {
@@ -241,21 +239,37 @@
 		}
 
 		private function goToArea(param1: String): void {
-			if (!param1 || param1.length == 0 || this.mClosing) {
+			if (!param1 || param1.length == 0 || this.mClosing || WORLD_MAP_ID_LIST.indexOf(param1) < 0) {
 				return;
 			}
 			if (param1 == GameState.mInstance.mCurrentMapId) {
 				this.requestClose();
 				return;
 			}
+			this.mPendingSwitchMapId = param1;
+			trace("[WORLD_MAP_SWITCH_REQUEST] from=" + GameState.mInstance.mCurrentMapId + " to=" + param1);
 			this.requestClose();
-			GameState.mInstance.executeSwitchMap(param1, null);
+			setTimeout(this.executePendingSwitch, 0);
+		}
+
+		private function executePendingSwitch(): void {
+			var _loc1_: String = this.mPendingSwitchMapId;
+			this.mPendingSwitchMapId = null;
+			if (!_loc1_ || _loc1_.length == 0 || !GameState.mInstance) {
+				return;
+			}
+			if (_loc1_ == GameState.mInstance.mCurrentMapId) {
+				return;
+			}
+			trace("[WORLD_MAP_SWITCH_DISPATCH] from=" + GameState.mInstance.mCurrentMapId + " to=" + _loc1_);
+			GameState.mInstance.executeSwitchMap(_loc1_, null);
 		}
 
 		private function closeClicked(param1: MouseEvent): void {
 			if (param1) {
 				param1.stopImmediatePropagation();
 			}
+			this.mPendingSwitchMapId = null;
 			this.requestClose();
 		}
 	}
