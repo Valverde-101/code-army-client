@@ -49,6 +49,7 @@ Require-Contains $game 'private var mLoadingActive: Boolean = false;' 'loading_l
 Require-Contains $game 'if (this.mLoadingActive) {' 'stale_loading_callback_blocked'
 Require-Contains $game '_loc1_.removeEventListener(_loc2_, this.LoadingFinished);' 'stop_loading_detaches_async_callback'
 Require-Contains $scene 'if (!popup.isClosed()) {' 'worldmap_popup_forced_closed_before_scene_swap'
+Require-Contains $scene 'GameState.mInstance.mCurrentMapId.indexOf("pvp_") == 0' 'pvp_prestate_map_bypasses_campaign_cloud_cover'
 Require-Contains $pvpHud 'this.mGame.mPvPMatch.mOpponent' 'pvp_hud_uses_selected_opponent'
 Require-NotContains $pvpHud 'getOpponent("1")' 'pvp_hud_hardcoded_opponent_removed'
 Require-Contains $character '_loc6_.gotoAndStop(1);' 'unit_power_badge_single_icon'
