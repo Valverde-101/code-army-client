@@ -115,25 +115,50 @@
 			var _loc3_: String = null;
 			var _loc4_: int = param2 * param3;
 			var _loc5_: int = 0;
+			var _loc6_: Array = null;
+			var _loc7_: String = null;
+			var _loc8_: Array = null;
+			var _loc9_: int = 0;
+			var _loc10_: int = 0;
 			if (param1 == null) {
 				throw new Error("TILEMAP_RESOURCE_NULL");
 			}
-			_loc2_ = param1.split(",");
-			for each (_loc3_ in _loc2_) {
-				_loc3_ = _loc3_.replace(/\r/g, "").replace(/\n/g, "");
-				while (_loc3_.length > 0 && (_loc3_.charCodeAt(0) == 65279 || _loc3_.charCodeAt(0) == 32 || _loc3_.charCodeAt(0) == 9)) {
-					_loc3_ = _loc3_.substr(1);
+			_loc6_ = param1.replace(/\r/g, "").split("\n");
+			for each (_loc7_ in _loc6_) {
+				_loc8_ = new Array();
+				_loc2_ = _loc7_.split(",");
+				for each (_loc3_ in _loc2_) {
+					while (_loc3_.length > 0 && (_loc3_.charCodeAt(0) == 65279 || _loc3_.charCodeAt(0) == 32 || _loc3_.charCodeAt(0) == 9)) {
+						_loc3_ = _loc3_.substr(1);
+					}
+					while (_loc3_.length > 0 && (_loc3_.charCodeAt(_loc3_.length - 1) == 32 || _loc3_.charCodeAt(_loc3_.length - 1) == 9)) {
+						_loc3_ = _loc3_.substr(0, _loc3_.length - 1);
+					}
+					if (_loc3_.length > 0) {
+						_loc8_.push(int(_loc3_));
+					}
 				}
-				while (_loc3_.length > 0 && (_loc3_.charCodeAt(_loc3_.length - 1) == 32 || _loc3_.charCodeAt(_loc3_.length - 1) == 9)) {
-					_loc3_ = _loc3_.substr(0, _loc3_.length - 1);
-				}
-				if (_loc3_.length == 0) {
+				if (_loc8_.length == 0) {
 					continue;
 				}
-				_loc1_.push(int(_loc3_));
-				if (_loc1_.length == _loc4_) {
-					break;
+				_loc9_++;
+				if (_loc9_ > param3) {
+					throw new Error("TILEMAP_ROW_COUNT expected=" + param3 + " actual_more_than=" + param3);
 				}
+				if (_loc8_.length < param2) {
+					throw new Error("TILEMAP_ROW_WIDTH row=" + _loc9_ + " expected=" + param2 + " actual=" + _loc8_.length);
+				}
+				if (_loc8_.length > param2) {
+					trace("[TILEMAP_ROW_TRIM] row=" + _loc9_ + " expected=" + param2 + " actual=" + _loc8_.length + " trim=right");
+				}
+				_loc10_ = 0;
+				while (_loc10_ < param2) {
+					_loc1_.push(_loc8_[_loc10_]);
+					_loc10_++;
+				}
+			}
+			if (_loc9_ != param3) {
+				throw new Error("TILEMAP_ROW_COUNT expected=" + param3 + " actual=" + _loc9_);
 			}
 			if (_loc1_.length != _loc4_) {
 				throw new Error("TILEMAP_CELL_COUNT expected=" + _loc4_ + " actual=" + _loc1_.length);

@@ -50,6 +50,10 @@ package game.characters
       
       public var mKillRewardBadassXP:int;
       
+      private var mResolvedGraphicsArray:Array;
+      
+      private var mLastVisualSource:String;
+      
       public function PvPEnemyUnit(param1:int, param2:IsometricScene, param3:EnemyUnitItem)
       {
          var _loc4_:Object = null;
@@ -102,6 +106,54 @@ package game.characters
          {
             this.initSounds();
          }
+      }
+      
+      private function resolveOpforGraphics(param1:Array) : Array
+      {
+         var _loc1_:Array = param1 ? param1.concat() : new Array();
+         var _loc2_:int = 0;
+         var _loc3_:String = null;
+         var _loc4_:int = 0;
+         var _loc5_:String = null;
+         var _loc6_:String = null;
+         var _loc7_:int = 0;
+         while(_loc2_ < _loc1_.length)
+         {
+            _loc3_ = _loc1_[_loc2_] as String;
+            if(_loc3_ != null && _loc3_.indexOf("swf/units_opfor/") == 0)
+            {
+               _loc4_ = _loc3_.lastIndexOf("/");
+               _loc5_ = _loc4_ >= 0 ? _loc3_.substr(_loc4_ + 1) : _loc3_;
+               _loc6_ = null;
+               if(_loc5_.indexOf("pvp_") != 0)
+               {
+                  if(_loc5_.indexOf("good_infantry_") == 0)
+                  {
+                     _loc6_ = "pvp_" + _loc5_;
+                  }
+                  else if(_loc5_.indexOf("premium_infantry_") == 0)
+                  {
+                     _loc6_ = "pvp_" + _loc5_;
+                  }
+                  else if(_loc5_.indexOf("good_special_forces_") == 0)
+                  {
+                     _loc6_ = "pvp_" + _loc5_;
+                  }
+                  else if(_loc5_.indexOf("good_sniper_") == 0)
+                  {
+                     _loc6_ = "pvp_premium_infantry_" + _loc5_.substr("good_sniper_".length);
+                  }
+               }
+               if(_loc6_ != null)
+               {
+                  _loc1_[_loc2_] = "swf/units_opfor/" + _loc6_;
+                  _loc7_++;
+               }
+            }
+            _loc2_++;
+         }
+         Utils.DiagEvent("PVP_ENEMY_GRAPHICS_RESOLVED","unit=" + this.mUnitId + ";remapped=" + _loc7_ + ";mode=opfor_dark");
+         return _loc1_;
       }
       
       override protected function initSounds() : void
@@ -169,11 +221,15 @@ package game.characters
          var animationIndex:int = getCurrentAnimationIndex();
          if(animationIndex == AnimationController.CHARACTER_ANIMATION_MOVE || animationIndex == AnimationController.CHARACTER_ANIMATION_MOVE_UP)
          {
-            var item:EnemyUnitItem = mItem as EnemyUnitItem;
-            var source:String = item && item.mGraphicsArray && animationIndex < item.mGraphicsArray.length ? String(item.mGraphicsArray[animationIndex]) : "";
-            var slash:int = source.lastIndexOf("/");
-            var symbol:String = slash >= 0 ? source.substr(slash + 1) : source;
-            Utils.DiagEvent("PVP_ENEMY_SYMBOL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";source=" + source + ";symbol=" + symbol + ";opfor=" + (source.indexOf("swf/units_opfor/pvp_") == 0));
+            var source:String = this.mResolvedGraphicsArray && animationIndex < this.mResolvedGraphicsArray.length ? String(this.mResolvedGraphicsArray[animationIndex]) : "";
+            if(source != this.mLastVisualSource)
+            {
+               var slash:int = source.lastIndexOf("/");
+               var symbol:String = slash >= 0 ? source.substr(slash + 1) : source;
+               var mode:String = source.indexOf("swf/units_opfor/pvp_") == 0 ? "opfor_move_dark" : "opfor_unresolved";
+               Utils.DiagEvent("PVP_ENEMY_SYMBOL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";source=" + source + ";symbol=" + symbol + ";mode=" + mode);
+               this.mLastVisualSource = source;
+            }
          }
       }
       override public function update(param1:int) : void
@@ -274,33 +330,37 @@ package game.characters
       {
          var _loc7_:PlayerUnit = null;
          var _loc9_:GridCell = null;
+         var _loc10_:GridCell = getCell();
          var _loc1_:Array = new Array();
-         var _loc2_:int = getCell().mPosI - getAttackRange();
-         var _loc3_:int = getCell().mPosI + getAttackRange();
-         var _loc4_:int = getCell().mPosJ - getAttackRange();
-         var _loc5_:int = getCell().mPosJ + getAttackRange();
+         if(_loc10_ == null || mScene == null)
+         {
+            return null;
+         }
+         var _loc2_:int = _loc10_.mPosI - getAttackRange();
+         var _loc3_:int = _loc10_.mPosI + getAttackRange();
+         var _loc4_:int = _loc10_.mPosJ - getAttackRange();
+         var _loc5_:int = _loc10_.mPosJ + getAttackRange();
          var _loc6_:Array = mScene.getPlayerAliveUnits();
+         if(_loc6_ == null)
+         {
+            return null;
+         }
          var _loc8_:int = 0;
          while(_loc8_ < _loc6_.length)
          {
-            if((_loc9_ = _loc7_.getCell()).mPosI >= _loc2_)
+            _loc7_ = _loc6_[_loc8_] as PlayerUnit;
+            if(_loc7_ != null && (_loc9_ = _loc7_.getCell()) != null)
             {
-               if(_loc9_.mPosI <= _loc3_)
+               if(_loc9_.mPosI >= _loc2_ && _loc9_.mPosI <= _loc3_ && _loc9_.mPosJ >= _loc4_ && _loc9_.mPosJ <= _loc5_)
                {
-                  if(_loc9_.mPosJ >= _loc4_)
-                  {
-                     if(_loc9_.mPosJ <= _loc5_)
-                     {
-                        _loc1_.push(_loc7_);
-                     }
-                  }
+                  _loc1_.push(_loc7_);
                }
             }
             _loc8_++;
          }
-         if(Boolean(_loc1_) && _loc1_.length > 0)
+         if(_loc1_.length > 0)
          {
-            return _loc1_[Math.floor(Math.random() * _loc1_.length)];
+            return _loc1_[Math.floor(Math.random() * _loc1_.length)] as PlayerUnit;
          }
          return null;
       }
