@@ -135,22 +135,7 @@ Require-Contains $game '[MAP_INPUT_RESTORED]' 'worldmap_input_restore_instrument
 Require-Contains $game 'music_commit=deferred' 'desert_music_not_used_as_false_transition_signal'
 Require-Contains $gameHud '[WORLD_MAP_OPEN] mode=embedded' 'offline_world_map_bypasses_fake_swf_loader'
 Require-Contains $gameHud 'var scaleFactor:Number = Math.min(scaleFactorWidth, scaleFactorHeight);' 'mobile_hud_scale_factor_ffdec_semicolon'
-Require-Contains $swfPatch '(?:\/\/.*)?
-Require-Contains $offline '[OFFLINE_SWITCH_MAP_BEGIN]' 'offline_map_loader_begin_instrumented'
-Require-Contains $offline '[OFFLINE_SWITCH_MAP_END]' 'offline_map_loader_end_instrumented'
-Require-Contains $perfOverlay 'captureProcessDiagnostics(dir);' 'performance_zip_captures_process_state'
-Require-Contains $perfOverlay 'logcat-own-process.txt' 'performance_zip_includes_own_process_logcat'
-Require-Contains $perfOverlay 'threads.txt' 'performance_zip_includes_thread_dump'
-Require-Contains $perfOverlay 'smaps-rollup.txt' 'performance_zip_includes_memory_rollup'
-Require-Contains $swfPatch "Class='game.gameElements.LootReward'" 'swf_patch_includes_pvp_loot_class'
-Require-Contains $swfPatch "Class='game.actions.PvPAttackEnemyAction'" 'swf_patch_includes_pvp_attack_class'
-Require-Contains $swfPatch "Class='game.gui.GameHUD'" 'swf_patch_includes_gamehud_class'
-$audit=Join-Path $RepoRoot 'Tools\CI\Audit-SwfCore.ps1'
-if(-not(Test-Path -LiteralPath $audit)){throw "REGRESSION=FAIL missing=Tools/CI/Audit-SwfCore.ps1"}
-& $audit -RepoRoot $RepoRoot
-Write-Host 'REGRESSION_CHECK=PASS name=swf_core_audit_reproducible'
-Write-Host 'REGRESSION=PASS suite=android-runtime-v3.15-pvp-loot-boosters-worldmap-diagnostics'
- 'ffdec_config_preprocessor_accepts_trailing_comments'
+Require-Contains $swfPatch '(?://.*)?\z' 'ffdec_config_preprocessor_accepts_trailing_comments'
 Require-Contains $offline '[OFFLINE_SWITCH_MAP_BEGIN]' 'offline_map_loader_begin_instrumented'
 Require-Contains $offline '[OFFLINE_SWITCH_MAP_END]' 'offline_map_loader_end_instrumented'
 Require-Contains $perfOverlay 'captureProcessDiagnostics(dir);' 'performance_zip_captures_process_state'
