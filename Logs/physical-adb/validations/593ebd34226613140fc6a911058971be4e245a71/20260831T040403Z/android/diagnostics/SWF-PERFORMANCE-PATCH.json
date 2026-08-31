@@ -1,0 +1,145 @@
+﻿{
+    "schema_version":  1,
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "593ebd34226613140fc6a911058971be4e245a71",
+    "patch_version":  "mobile-engine-v3.9-map-resource-lifecycle",
+    "source_swf":  {
+                       "path":  "V:\\AndroidBuild\\Repositories\\code-army-client\\vendor\\Test_army_attack\\armyattack\\assets\\iArmyAirOfflineSavingv23.swf",
+                       "size":  24871956,
+                       "sha256":  "99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4"
+                   },
+    "output_swf":  {
+                       "path":  "V:\\AndroidBuild\\Toolchains\\AIR50-API33-BT33.0.2\\Builds\\code-army-client\\593ebd34226613140fc6a911058971be4e245a71\\android\\stage\\iArmyAirOfflineSavingv23.swf",
+                       "size":  24894337,
+                       "sha256":  "144a35544bfa15278e2f16f29397fce378760a8006448c2df0a490a56982d823"
+                   },
+    "classes":  [
+                    {
+                        "name":  "game.battlefield.TileMapGraphic",
+                        "source":  "src/game/battlefield/TileMapGraphic.as",
+                        "sha256":  "5203c8cd55739d6fbb7d421f480de10e4142aac5e4ec5ca5aa3de4a2fc4ac7de"
+                    },
+                    {
+                        "name":  "game.isometric.IsometricScene",
+                        "source":  "src/game/isometric/IsometricScene.as",
+                        "sha256":  "00a78cedeeedda7856c1b2c33e33a746168cf2a261b29053a0ffdddb9364e178"
+                    },
+                    {
+                        "name":  "game.battlefield.MapData",
+                        "source":  "src/game/battlefield/MapData.as",
+                        "sha256":  "e2d024bc61aaedff58f696983528d854bc04c8e8e1f45cbe9551fc0d0fb0a155"
+                    },
+                    {
+                        "name":  "game.isometric.characters.IsometricCharacter",
+                        "source":  "src/game/isometric/characters/IsometricCharacter.as",
+                        "sha256":  "fbea3c5ac965121ff5033464512a94ed89999ea94ba771bfc62ac71bcba85eee"
+                    },
+                    {
+                        "name":  "game.characters.AnimationController",
+                        "source":  "src/game/characters/AnimationController.as",
+                        "sha256":  "9ac546b434c1df036a2b2dca19b87115ebd04c30c7b8e90591010563b4927c0b"
+                    },
+                    {
+                        "name":  "Utils",
+                        "source":  "src/Utils.as",
+                        "sha256":  "2905e5494259d40d0c7e5ff8d9b3ba8bbe2ddcb6ae18ef2742bc17f6d4edc56d"
+                    },
+                    {
+                        "name":  "game.utils.OfflineSave",
+                        "source":  "src/game/utils/OfflineSave.as",
+                        "sha256":  "9253622fd898af3d7ab889457276ff9897e0304abe2d25bbdd9dac1a26d1f531"
+                    },
+                    {
+                        "name":  "game.states.GameState",
+                        "source":  "src/game/states/GameState.as",
+                        "sha256":  "06d7d4dede23e470694e50a770721e1af9bc8489818581dcddba764ac75a98cf"
+                    },
+                    {
+                        "name":  "game.gui.GiveFilePermissionDialog",
+                        "source":  "src/game/gui/GiveFilePermissionDialog.as",
+                        "sha256":  "6ebb2bebdece083b36f23710a15dc166ac5c682f153866b4f7dcc319113dceed"
+                    },
+                    {
+                        "name":  "game.net.PvPMatch",
+                        "source":  "src/game/net/PvPMatch.as",
+                        "sha256":  "f453e481639a27cbb2d42412764823d3205fb83a040b335bc64493e44e827883"
+                    },
+                    {
+                        "name":  "game.gui.popups.WorldMapWindow",
+                        "source":  "src/game/gui/popups/WorldMapWindow.as",
+                        "sha256":  "b7419c83d8b61c5e4ab3d3fd028d25b2e3a69386bbf3e03d581994da7b901933"
+                    },
+                    {
+                        "name":  "game.gui.pvp.PvPMatchUpDialog",
+                        "source":  "src/game/gui/pvp/PvPMatchUpDialog.as",
+                        "sha256":  "328ec266c22b918bee0305cf192d3f809697973b664ae680e9898c201bbc4876"
+                    },
+                    {
+                        "name":  "game.gui.pvp.PvPCombatSetupDialog",
+                        "source":  "src/game/gui/pvp/PvPCombatSetupDialog.as",
+                        "sha256":  "283aa3efaac92b2c3cca53e5d2dc2f5a1687d0e13f765bdd8762f25aa8f0d73e"
+                    },
+                    {
+                        "name":  "game.gui.pvp.PvPBoosterBar",
+                        "source":  "src/game/gui/pvp/PvPBoosterBar.as",
+                        "sha256":  "a93d010609f52d838baf2a68ef8bbbf1a6477d591dfd0a67962c06b8e51969cc"
+                    },
+                    {
+                        "name":  "game.gui.pvp.PvPHUD",
+                        "source":  "src/game/gui/pvp/PvPHUD.as",
+                        "sha256":  "80d984527141ed730194de0d2fe601baa7ae419de698e984e845974d92b38230"
+                    }
+                ],
+    "guarantees":  [
+                       "enemy_character_update_cadence_unchanged",
+                       "enemy_actions_update_cadence_unchanged",
+                       "enemy_movement_update_cadence_unchanged",
+                       "visual_assets_preserved_from_source_swf",
+                       "audio_assets_preserved_from_source_swf",
+                       "animate_linkage_preserved_from_source_swf"
+                   ],
+    "feature_patch_version":  "offline-systems-v5-root-recovery",
+    "optimizations":  [
+                          "padded_tilemap_camera_cache_256px",
+                          "deterministic_tile_bitmap_cache_disposal_before_zoom_rebuild",
+                          "tilemap_rebuild_threshold_72pct",
+                          "remove_unused_sort_hit_tests",
+                          "fix_sort_order_change_index_comparison",
+                          "indexed_character_hot_loop",
+                          "indexed_static_object_hot_loop",
+                          "skip_global_membership_scan_while_camera_pans",
+                          "skip_sort_when_object_positions_are_unchanged",
+                          "reuse_existing_mouse_cell_result",
+                          "viewport_cull_offscreen_renderables_384px",
+                          "persistent_visible_membership_dictionary",
+                          "android_pinch_zoom_enabled",
+                          "pinch_zoom_bypasses_tutorial_gate",
+                          "offline_pvp_button_visible_without_level_gate",
+                          "offline_pvp_bootstrap_before_match_dialog",
+                          "offline_world_map_button_visible",
+                          "offline_world_map_home_desert_enabled",
+                          "offline_world_map_single_canonical_switch_path",
+                          "offline_saved_map_id_normalization",
+                          "pvp_transient_map_single_build",
+                          "pvp_returns_to_origin_map",
+                          "pvp_three_visible_opponent_slots_owned",
+                          "pvp_chance_bounded_percentage",
+                          "pvp_enemy_randomization_bounded_attempts",
+                          "mobile_save_onboarding_v22_gate_removed",
+                          "mobile_save_dialog_fits_viewport",
+                          "mobile_save_choice_nonblocking",
+                          "offline_pvp_state_not_reset_on_button_press",
+                          "offline_pvp_dialog_excludes_global_recent_data",
+                          "offline_pvp_opponents_bounded_to_valid_ranks",
+                          "offline_pvp_booster_store_populated",
+                          "canonical_config_bytecode_preserved",
+                          "canonical_gamehud_bytecode_preserved",
+                          "canonical_armybutton_bytecode_preserved",
+                          "canonical_animationcontroller_bytecode_preserved",
+                          "canonical_enveffectmanager_bytecode_preserved",
+                          "canonical_menu_button_lifecycle_preserved",
+                          "canonical_audio_lifecycle_preserved"
+                      ],
+    "generated_utc":  "2026-08-31T04:01:32.0672625Z"
+}
+
