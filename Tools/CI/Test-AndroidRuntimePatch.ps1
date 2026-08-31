@@ -73,4 +73,8 @@ Require-Contains $combat 'USE_BUTTON_STATES_ANIM = false' 'pvp_setup_buttons_hav
 Require-Contains $pvpBooster 'Utils.removeAllChildren(_loc3_);' 'pvp_booster_placeholders_cleared'
 Require-Contains $baseConfig '"ZoomLevelsMobile": "40, 75, 100"' 'pvp_mobile_zoom_explicit_in_config'
 Require-Contains $baseConfig '"swf/desert_backgroud_01"' 'desert_secondary_swf_declared_in_config'
-Write-Host 'REGRESSION=PASS suite=android-runtime-v3.9'
+$audit=Join-Path $RepoRoot 'Tools\CI\Audit-SwfCore.ps1'
+if(-not(Test-Path -LiteralPath $audit)){throw "REGRESSION=FAIL missing=Tools/CI/Audit-SwfCore.ps1"}
+& $audit -RepoRoot $RepoRoot
+Write-Host 'REGRESSION_CHECK=PASS name=swf_core_audit_reproducible'
+Write-Host 'REGRESSION=PASS suite=android-runtime-v3.10-core-audit'
