@@ -52,6 +52,7 @@ $patchSpecs=@(
   [ordered]@{Class='game.isometric.IsometricScene';Source='src\game\isometric\IsometricScene.as';Log='ffdec-performance-scene.log'},
   [ordered]@{Class='game.utils.OfflineSave';Source='src\game\utils\OfflineSave.as';Log='ffdec-feature-offlinesave.log'},
   [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
+  [ordered]@{Class='game.gui.GiveFilePermissionDialog';Source='src\game\gui\GiveFilePermissionDialog.as';Log='ffdec-feature-save-permission.log'},
   [ordered]@{Class='game.net.PvPMatch';Source='src\game\net\PvPMatch.as';Log='ffdec-feature-pvp-match.log'},
   [ordered]@{Class='game.gui.popups.WorldMapWindow';Source='src\game\gui\popups\WorldMapWindow.as';Log='ffdec-feature-worldmap.log'},
   [ordered]@{Class='game.gui.pvp.PvPMatchUpDialog';Source='src\game\gui\pvp\PvPMatchUpDialog.as';Log='ffdec-feature-pvp-matchup.log'},
@@ -78,7 +79,7 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
   }
   Write-Host "SWF_CLASS_PATCH=PASS class=$ClassName log=$log"
 }
-function Convert-GameStateSourceForFFDec([string]$Source,[string]$Destination){
+function Convert-MobileAirSourceForFFDec([string]$Source,[string]$Destination,[string]$ClassName){
   $sourceLines=Get-Content -LiteralPath $Source
   $result=New-Object System.Collections.Generic.List[string]
   $configMode=$null
@@ -114,8 +115,8 @@ function Convert-GameStateSourceForFFDec([string]$Source,[string]$Destination){
   if($text -match 'CONFIG::'){throw "SWF_PERF_PATCH=FAIL config_directive_survived source=$Source"}
   if($text -cmatch '\bPermissionEvent\b|\bPermissionStatus\b'){throw "SWF_PERF_PATCH=FAIL air_permission_type_survived source=$Source"}
   Set-Content -LiteralPath $Destination -Value $text -Encoding UTF8
-  Write-Host "FFDEC_AIR_PERMISSION_SHIM=PASS event=permissionStatus granted=granted"
-  Write-Host "FFDEC_SOURCE_PREPROCESS=PASS class=game.states.GameState target=BUILD_FOR_MOBILE_AIR path=$Destination"
+  Write-Host "FFDEC_AIR_PERMISSION_SHIM=PASS class=$ClassName event=permissionStatus granted=granted"
+  Write-Host "FFDEC_SOURCE_PREPROCESS=PASS class=$ClassName target=BUILD_FOR_MOBILE_AIR path=$Destination"
 }
 
 Remove-Item -LiteralPath $OutputSwf -Force -ErrorAction SilentlyContinue
@@ -125,10 +126,11 @@ $tempSources=New-Object System.Collections.Generic.List[string]
 for($i=0;$i -lt $patchSpecs.Count;$i++){
   $spec=$patchSpecs[$i]
   $source=Join-Path $RepoRoot $spec.Source
-  if($spec.Class -eq 'game.states.GameState'){
-    $ffdecSource=Join-Path $outDir 'GameState.mobile.ffdec.as'
+  if($spec.Class -in @('game.states.GameState','game.gui.GiveFilePermissionDialog')){
+    $leafClass=[System.IO.Path]::GetFileNameWithoutExtension([string]$spec.Source)
+    $ffdecSource=Join-Path $outDir ($leafClass + '.mobile.ffdec.as')
     Remove-Item -LiteralPath $ffdecSource -Force -ErrorAction SilentlyContinue
-    Convert-GameStateSourceForFFDec -Source $source -Destination $ffdecSource
+    Convert-MobileAirSourceForFFDec -Source $source -Destination $ffdecSource -ClassName ([string]$spec.Class)
     $source=$ffdecSource
     $tempSources.Add($ffdecSource)
   }
@@ -163,7 +165,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.6-pvp-map-memory'
+  patch_version='mobile-engine-v3.7-save-onboarding'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -205,6 +207,9 @@ $manifest=[ordered]@{
     'pvp_three_visible_opponent_slots_owned',
     'pvp_chance_bounded_percentage',
     'pvp_enemy_randomization_bounded_attempts',
+    'mobile_save_onboarding_v22_gate_removed',
+    'mobile_save_dialog_fits_viewport',
+    'mobile_save_choice_nonblocking',
     'offline_pvp_state_not_reset_on_button_press',
     'offline_pvp_dialog_excludes_global_recent_data',
     'offline_pvp_opponents_bounded_to_valid_ranks',
@@ -220,5 +225,5 @@ $manifest=[ordered]@{
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.6-pvp-map-memory source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.7-save-onboarding source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

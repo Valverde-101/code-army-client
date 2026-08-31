@@ -2532,18 +2532,24 @@
 					}
 					CONFIG::BUILD_FOR_MOBILE_AIR {
 						var file:File = File.applicationStorageDirectory.resolvePath("savesettings.txt");
-						if (file.exists) {
-							var first_time_since_v22: Boolean = false;
-						} else {
-							var first_time_since_v22: Boolean = true;
-						}
-						if (first_time_since_v22) {
-							// First time opening the game since v22, show permission window
-							this.mHUD.openGiveFilePermissionScreen();
+						if (!file.exists) {
+							// Modern Android default: app-internal storage is always available and
+							// avoids the obsolete v22 first-run permission dialog.
+							this.mSaveLocation = "legacy";
+							try {
+								var defaultSettings:Object = {};
+								defaultSettings["savelocation"] = this.mSaveLocation;
+								var defaultSettingsStream:FileStream = new FileStream();
+								defaultSettingsStream.open(file, FileMode.WRITE);
+								defaultSettingsStream.writeUTFBytes(JSON.stringify(defaultSettings));
+								defaultSettingsStream.close();
+							} catch (saveSettingsError:Error) {
+								// Keep the in-memory legacy default and continue into the game.
+							}
 						} else {
 							this.saveSettingsLoad();
-							this.mHUD.openPauseScreen();
 						}
+						this.mHUD.openPauseScreen();
 					}
 					CONFIG::BUILD_FOR_AIR {
 						this.mHUD.openPauseScreen();
