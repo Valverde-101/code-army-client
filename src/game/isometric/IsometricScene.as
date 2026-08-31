@@ -791,7 +791,11 @@
 			var _loc2_: Array = null;
 			var _loc3_: int = 0;
 			var _loc4_: AreaItem = null;
-			if (GameState.mInstance.visitingTutor() || GameState.mInstance.mState == GameState.STATE_PVP) {
+			// PvP initMap() builds border/cloud bits before GameState switches to STATE_PVP.
+			// Use the target map identity as well as the FSM state so a freshly-created
+			// PvP battlefield is never classified as a locked campaign area and covered
+			// entirely by CLOUD_BIT_FULL tiles during that pre-state initialization window.
+			if (GameState.mInstance.visitingTutor() || GameState.mInstance.mState == GameState.STATE_PVP || (GameState.mInstance.mCurrentMapId && GameState.mInstance.mCurrentMapId.indexOf("pvp_") == 0)) {
 				return true;
 			}
 			if (param1) {
