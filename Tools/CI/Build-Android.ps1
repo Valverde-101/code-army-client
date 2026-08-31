@@ -270,57 +270,39 @@ if(@($runtimeConfig.ShopBoosters.PSObject.Properties).Count -ne 9){throw 'ANDROI
 if(-not $runtimeConfig.MapSetup.pvp_map_1_4valleys_11x11.ZoomLevelsMobile){throw 'ANDROID_RUNTIME_CONFIG=FAIL pvp_mobile_zoom_missing'}
 $desertSwfs=@($runtimeConfig.MapSetup.Desert.SWFFile)
 if($desertSwfs -notcontains 'swf/new_backgroud_01' -or $desertSwfs -notcontains 'swf/desert_backgroud_01'){throw "ANDROID_RUNTIME_CONFIG=FAIL desert_swf_set actual=$($desertSwfs -join ',')"}
-# tiles_common is part of the bootstrap SWF set (AssetManager.SWF_IDS) and was
-# already exercised by the physically-tested Home map. Do not require a second
-# standalone copy at data\swf\tiles_common.swf: the v23 seed does not expose
-# that exact stage path, and treating it as a map overlay dependency blocks
-# packaging before ADT can validate the real application bundle.
-$requiredMapAssets=@(
-  'new_backgroud_01.swf',
-  'desert_backgroud_01.swf',
-  'popups_pvp.swf',
-  'map.swf'
+# The offline v23 runtime does not load map/UI SWFs as standalone files.
+# DCResourceManager maps logical .swf requests to config\dummy.json, while
+# getSWFClass() resolves the actual classes embedded in the patched root SWF.
+# Validate that real runtime contract instead of requiring non-existent
+# data\swf\*.swf packaging artifacts.
+$resourceManagerSource=Join-Path $RepoRoot 'src\com\dchoc\graphics\DCResourceManager.as'
+$dummyConfig=Join-Path $stage 'config\dummy.json'
+if(-not(Test-Path -LiteralPath $resourceManagerSource)){throw "ANDROID_EMBEDDED_SWF_MODEL=FAIL resource_manager_missing=$resourceManagerSource"}
+if(-not(Test-Path -LiteralPath $dummyConfig)){throw "ANDROID_EMBEDDED_SWF_MODEL=FAIL dummy_config_missing=$dummyConfig"}
+$resourceManagerText=Get-Content -LiteralPath $resourceManagerSource -Raw
+if(-not $resourceManagerText.Contains('this.loadTextFile("../config/dummy.json",param2);')){throw 'ANDROID_EMBEDDED_SWF_MODEL=FAIL swf_dummy_shim_missing'}
+if(-not $resourceManagerText.Contains('return getDefinitionByName(_loc3_) as Class;')){throw 'ANDROID_EMBEDDED_SWF_MODEL=FAIL global_class_lookup_missing'}
+
+$symbolDumpPath=Join-Path $buildRoot 'ffdec-performance-dumpas3.log'
+if(-not(Test-Path -LiteralPath $symbolDumpPath)){throw "ANDROID_EMBEDDED_SWF_MODEL=FAIL symbol_dump_missing=$symbolDumpPath"}
+$symbolDump=Get-Content -LiteralPath $symbolDumpPath -Raw
+$embeddedSymbols=@(
+  @{Name='grass_transition';Symbol='Bg_TransitionTile_02'},
+  @{Name='desert_transition';Symbol='Bg_TransitionTile_desert_02'},
+  @{Name='water_coast';Symbol='Water_CoastTile'},
+  @{Name='fog_tile';Symbol='Bg_FogTile_10'},
+  @{Name='world_map';Symbol='map'},
+  @{Name='pvp_matchup';Symbol='popup_pvp'},
+  @{Name='pvp_combat_setup';Symbol='popup_pvp_armies'},
+  @{Name='pvp_hud';Symbol='hud_pvp'},
+  @{Name='pvp_turn_shift';Symbol='hud_pvp_turn_shift'}
 )
-$mapAssetDest=Join-Path $stage 'data\swf'
-New-Item -ItemType Directory -Force -Path $mapAssetDest|Out-Null
-$mapAssetSearchRoots=@(
-  [pscustomobject]@{Name='seed_v23';Path=$seedExtract},
-  [pscustomobject]@{Name='published_v23_2';Path=$publishedGameRoot},
-  [pscustomobject]@{Name='principal_repo';Path=(Join-Path $RepoRoot 'src\data')}
-)
-foreach($assetName in $requiredMapAssets){
-  $dest=Join-Path $mapAssetDest $assetName
-  if(-not(Test-Path -LiteralPath $dest)){
-    $selected=$null
-    $selectedRoot=$null
-    foreach($searchRoot in $mapAssetSearchRoots){
-      if(-not(Test-Path -LiteralPath $searchRoot.Path)){continue}
-      $found=@(Get-ChildItem -LiteralPath $searchRoot.Path -Recurse -File -Filter $assetName -ErrorAction SilentlyContinue |
-        Where-Object{$_.FullName -notmatch '[\\/]mods[\\/]'} |
-        Sort-Object FullName)
-      if($found.Count -eq 0){continue}
-      $hashes=@($found|ForEach-Object{(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}|Sort-Object -Unique)
-      if($hashes.Count -ne 1){
-        throw "ANDROID_MAP_ASSET=FAIL ambiguous name=$assetName root=$($searchRoot.Name) candidates=$($found.FullName -join ';') hashes=$($hashes -join ',')"
-      }
-      $selected=$found[0]
-      $selectedRoot=$searchRoot.Name
-      break
-    }
-    if(-not $selected){
-      throw "ANDROID_MAP_ASSET=FAIL missing=$assetName searched=$($mapAssetSearchRoots.Path -join ';')"
-    }
-    Copy-Item -LiteralPath $selected.FullName -Destination $dest -Force
-    Write-Host "ANDROID_MAP_ASSET_STAGE=PASS name=$assetName source=$selectedRoot source_path=$($selected.FullName) dest=$dest"
-  }
-  $info=Get-Item -LiteralPath $dest
-  if($info.Length -le 8){throw "ANDROID_MAP_ASSET=FAIL invalid_size name=$assetName size=$($info.Length)"}
-  $header=[System.IO.File]::ReadAllBytes($dest)[0..2]
-  $signature=[System.Text.Encoding]::ASCII.GetString($header)
-  if($signature -notin @('FWS','CWS','ZWS')){throw "ANDROID_MAP_ASSET=FAIL invalid_swf name=$assetName signature=$signature"}
-  $hash=(Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant()
-  Write-Host "ANDROID_MAP_ASSET=PASS name=$assetName path=data\swf\$assetName size=$($info.Length) sha256=$hash signature=$signature"
+foreach($check in $embeddedSymbols){
+  $pattern='(?m)^'+[regex]::Escape([string]$check.Symbol)+'\s+\d+\s*$'
+  if($symbolDump -notmatch $pattern){throw "ANDROID_EMBEDDED_SWF_SYMBOL=FAIL name=$($check.Name) symbol=$($check.Symbol) dump=$symbolDumpPath"}
+  Write-Host "ANDROID_EMBEDDED_SWF_SYMBOL=PASS name=$($check.Name) symbol=$($check.Symbol)"
 }
+Write-Host "ANDROID_EMBEDDED_SWF_MODEL=PASS logical_swfs=embedded root_swf=$appContentSwf dump=$symbolDumpPath"
 
 function Get-NormalizedTileCellCount([string]$Path){
   $raw=Get-Content -LiteralPath $Path -Raw
