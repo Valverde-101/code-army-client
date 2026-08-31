@@ -23,6 +23,8 @@
 
 		private var mButtonContainer: MovieClip;
 
+		private var mClosing: Boolean = false;
+
 		public function WorldMapWindow() {
 			var _loc3_: MovieClip = null;
 			var _loc4_: MovieClip = null;
@@ -79,6 +81,7 @@
 
 		public function Activate(param1: Function): void {
 			var _loc2_: StylizedHeaderClip = null;
+			this.mClosing = false;
 			mDoneCallback = param1;
 			_loc2_ = new StylizedHeaderClip(mClip.getChildByName("Header") as MovieClip, GameState.getText("HUD_MAP_TOOLTIP"));
 			MissionManager.increaseCounter("OpenMap", null, 1);
@@ -209,19 +212,51 @@
 			}
 		}
 
-		private function goToArea(param1: String): void {
-			if (!param1 || param1.length == 0) {
+		private function detachCampaignListeners(): void {
+			var _loc1_: MovieClip = null;
+			for each (_loc1_ in this.mCampaignButtons) {
+				if (_loc1_) {
+					_loc1_.removeEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown);
+					_loc1_.removeEventListener(MouseEvent.MOUSE_UP, this.mouseUp);
+					_loc1_.removeEventListener(MouseEvent.MOUSE_OVER, this.mouseOver);
+					_loc1_.removeEventListener(MouseEvent.MOUSE_OUT, this.mouseOut);
+				}
+			}
+		}
+
+		private function requestClose(): void {
+			var _loc1_: Function = null;
+			if (this.mClosing) {
 				return;
 			}
-			mDoneCallback((this as Object).constructor);
+			this.mClosing = true;
+			this.mouseEnabled = false;
+			this.mouseChildren = false;
+			this.detachCampaignListeners();
+			_loc1_ = mDoneCallback;
+			mDoneCallback = null;
+			if (_loc1_ != null) {
+				_loc1_((this as Object).constructor);
+			}
+		}
+
+		private function goToArea(param1: String): void {
+			if (!param1 || param1.length == 0 || this.mClosing) {
+				return;
+			}
+			if (param1 == GameState.mInstance.mCurrentMapId) {
+				this.requestClose();
+				return;
+			}
+			this.requestClose();
 			GameState.mInstance.executeSwitchMap(param1, null);
 		}
 
 		private function closeClicked(param1: MouseEvent): void {
-			var _loc2_: MovieClip = param1.target as MovieClip;
-			_loc2_.removeEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown);
-			_loc2_.removeEventListener(MouseEvent.MOUSE_UP, this.mouseUp);
-			mDoneCallback((this as Object).constructor);
+			if (param1) {
+				param1.stopImmediatePropagation();
+			}
+			this.requestClose();
 		}
 	}
 }

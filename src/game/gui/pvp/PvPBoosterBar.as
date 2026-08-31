@@ -58,6 +58,7 @@ package game.gui.pvp
             _loc5_.setEnabled(false);
             this.mBoosterButtons.push(_loc5_);
             this.mBoosterFrames.push(_loc4_.getChildAt(1) as MovieClip);
+            Utils.removeAllChildren(this.mBoosterFrames[this.mBoosterFrames.length - 1] as MovieClip);
             _loc3_++;
          }
          this.mIconSize = (this.mBoosterFrames[0] as MovieClip).width;
@@ -146,6 +147,7 @@ package game.gui.pvp
          {
             _loc3_ = this.mBoosterFrames[_loc2_];
             _loc4_ = this.mBoosterButtons[_loc2_];
+            Utils.removeAllChildren(_loc3_);
             if(_loc1_ < this.mBoosterInventory.length / 2 && _loc1_ >= 0)
             {
                _loc5_ = this.mBoosterInventory[_loc1_ * 2];

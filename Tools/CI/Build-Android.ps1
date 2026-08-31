@@ -219,10 +219,10 @@ $swfSha=(Get-FileHash -LiteralPath $stagedSwf -Algorithm SHA256).Hash.ToLowerInv
 $swfSize=$stagedSwfInfo.Length
 if($swfSha -eq $canonicalSwfSha){throw "SWF_PERFORMANCE_PATCH=FAIL patched_hash_equals_source"}
 $patchManifest=Get-Content -LiteralPath $patchManifestPath -Raw|ConvertFrom-Json
-if([string]$patchManifest.patch_version -ne 'mobile-engine-v3.8-map-pvp-render'){throw "SWF_PERFORMANCE_PATCH=FAIL manifest_version=$($patchManifest.patch_version)"}
+if([string]$patchManifest.patch_version -ne 'mobile-engine-v3.9-map-resource-lifecycle'){throw "SWF_PERFORMANCE_PATCH=FAIL manifest_version=$($patchManifest.patch_version)"}
 if(([string]$patchManifest.output_swf.sha256).ToLowerInvariant() -ne $swfSha){throw "SWF_PERFORMANCE_PATCH=FAIL manifest_sha=$($patchManifest.output_swf.sha256) actual=$swfSha"}
 Write-Host "SWF_SOURCE_ORIGINAL=PASS sha256=$canonicalSwfSha size=$swfSourceSize"
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.8-map-pvp-render patched_sha256=$swfSha size=$swfSize"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.9-map-resource-lifecycle patched_sha256=$swfSha size=$swfSize"
 Write-Host "BINARY_SEED=PASS source=published_v23_2 repository=Valverde-101/Test_army_attack source_sha=$publishedActualSha source_swf_sha256=$swfSourceSha patched_swf_sha256=$swfSha"
 
 $extensionsDir=Join-Path $buildRoot 'extensions'
@@ -267,6 +267,42 @@ if(@($runtimeConfig.BadassLevels.PSObject.Properties).Count -lt 100){throw 'ANDR
 if(@($runtimeConfig.Booster.PSObject.Properties).Count -lt 9){throw 'ANDROID_RUNTIME_CONFIG=FAIL boosters'}
 if(-not $runtimeConfig.ShopTab.Boosters -or [string]$runtimeConfig.ShopTab.Boosters.TabType -ne 'pvp'){throw 'ANDROID_RUNTIME_CONFIG=FAIL booster_tab'}
 if(@($runtimeConfig.ShopBoosters.PSObject.Properties).Count -ne 9){throw 'ANDROID_RUNTIME_CONFIG=FAIL booster_store'}
+if(-not $runtimeConfig.MapSetup.pvp_map_1_4valleys_11x11.ZoomLevelsMobile){throw 'ANDROID_RUNTIME_CONFIG=FAIL pvp_mobile_zoom_missing'}
+$desertSwfs=@($runtimeConfig.MapSetup.Desert.SWFFile)
+if($desertSwfs -notcontains 'swf/new_backgroud_01' -or $desertSwfs -notcontains 'swf/desert_backgroud_01'){throw "ANDROID_RUNTIME_CONFIG=FAIL desert_swf_set actual=$($desertSwfs -join ',')"}
+$requiredMapAssets=@(
+  'data\swf\tiles_common.swf',
+  'data\swf\new_backgroud_01.swf',
+  'data\swf\desert_backgroud_01.swf',
+  'data\swf\popups_pvp.swf',
+  'data\swf\map.swf'
+)
+foreach($relative in $requiredMapAssets){
+  $asset=Join-Path $stage $relative
+  if(-not(Test-Path -LiteralPath $asset)){throw "ANDROID_MAP_ASSET=FAIL missing=$relative"}
+  Write-Host "ANDROID_MAP_ASSET=PASS path=$relative size=$((Get-Item -LiteralPath $asset).Length)"
+}
+function Get-NormalizedTileCellCount([string]$Path){
+  $raw=Get-Content -LiteralPath $Path -Raw
+  $cells=New-Object System.Collections.Generic.List[string]
+  foreach($token in ($raw -split ',')){
+    $value=(($token -replace "[\r\n]",'').Trim()).TrimStart([char]0xFEFF)
+    if($value.Length -gt 0){$cells.Add($value)}
+  }
+  return $cells.Count
+}
+$tileChecks=@(
+  @{Name='tile_map.csv';Expected=([int]$runtimeConfig.MapSetup.Home.Width * [int]$runtimeConfig.MapSetup.Home.Height)},
+  @{Name='tile_map_desert.csv';Expected=([int]$runtimeConfig.MapSetup.Desert.Width * [int]$runtimeConfig.MapSetup.Desert.Height)},
+  @{Name='pvp_map_1_4valleys_11x11.csv';Expected=([int]$runtimeConfig.MapSetup.pvp_map_1_4valleys_11x11.Width * [int]$runtimeConfig.MapSetup.pvp_map_1_4valleys_11x11.Height)}
+)
+foreach($check in $tileChecks){
+  $tilePath=Join-Path $stage ('config\'+$check.Name)
+  if(-not(Test-Path -LiteralPath $tilePath)){throw "ANDROID_TILEMAP=FAIL missing=$($check.Name)"}
+  $actual=Get-NormalizedTileCellCount $tilePath
+  if($actual -lt [int]$check.Expected){throw "ANDROID_TILEMAP=FAIL name=$($check.Name) expected_min=$($check.Expected) actual=$actual"}
+  Write-Host "ANDROID_TILEMAP=PASS name=$($check.Name) expected=$($check.Expected) normalized_cells=$actual"
+}
 if(@($runtimeOpponents.pvp_opponents).Count -lt 4 -or @($runtimeOpponents.pvp_opponents).Count -gt 12){throw 'ANDROID_RUNTIME_CONFIG=FAIL offline_opponents'}
 $invalidOpponent=@($runtimeOpponents.pvp_opponents|Where-Object{[int]$_.level -lt 1 -or [int]$_.level -gt 150 -or [int]$_.wins -lt 0})
 if($invalidOpponent.Count -gt 0){throw "ANDROID_RUNTIME_CONFIG=FAIL invalid_offline_opponents count=$($invalidOpponent.Count)"}
@@ -384,9 +420,9 @@ $prov=[ordered]@{
   swf_size=$swfSize
   swf_sha256=$swfSha
   swf_performance_patched=$true
-  performance_patch_version='mobile-engine-v3.8-map-pvp-render'
+  performance_patch_version='mobile-engine-v3.9-map-resource-lifecycle'
   performance_patch_manifest=$patchManifestPath
-  performance_patch_classes=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.isometric.characters.IsometricCharacter','Utils','game.utils.OfflineSave','game.states.GameState','game.gui.GiveFilePermissionDialog','game.net.PvPMatch','game.gui.popups.WorldMapWindow','game.gui.pvp.PvPMatchUpDialog','game.gui.pvp.PvPCombatSetupDialog','game.gui.pvp.PvPHUD')
+  performance_patch_classes=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.battlefield.MapData','game.isometric.characters.IsometricCharacter','game.characters.AnimationController','Utils','game.utils.OfflineSave','game.states.GameState','game.gui.GiveFilePermissionDialog','game.net.PvPMatch','game.gui.popups.WorldMapWindow','game.gui.pvp.PvPMatchUpDialog','game.gui.pvp.PvPCombatSetupDialog','game.gui.pvp.PvPBoosterBar','game.gui.pvp.PvPHUD')
   render_mode=$renderMode
   native_performance_overlay=$true
   native_performance_overlay_mode='test-low-overhead-v2'
@@ -433,7 +469,7 @@ $toolchain=[ordered]@{
 }
 $toolchainPath=Join-Path $buildRoot 'TOOLCHAIN.json'
 $toolchain|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $toolchainPath -Encoding UTF8
-Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=true swf_source_original=true swf_performance_patched=true performance_patch=mobile-engine-v3.8-map-pvp-render native_perf_overlay=true render_mode=$renderMode"
+Write-Host "BASE_ONLY_BUILD=PASS version=23.2 root_swf=$appContentSwf mods=false selector=false diagnostics_ane=true swf_source_original=true swf_performance_patched=true performance_patch=mobile-engine-v3.9-map-resource-lifecycle native_perf_overlay=true render_mode=$renderMode"
 Write-Host "BUILD=PASS platform=android tier=$tier"
 Write-Host "APK_GENERATED=PASS"
 Write-Host "APK_PATH=$apkPath"

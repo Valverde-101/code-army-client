@@ -50,7 +50,9 @@ if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.js
 $patchSpecs=@(
   [ordered]@{Class='game.battlefield.TileMapGraphic';Source='src\game\battlefield\TileMapGraphic.as';Log='ffdec-performance-tilemap.log'},
   [ordered]@{Class='game.isometric.IsometricScene';Source='src\game\isometric\IsometricScene.as';Log='ffdec-performance-scene.log'},
+  [ordered]@{Class='game.battlefield.MapData';Source='src\game\battlefield\MapData.as';Log='ffdec-feature-mapdata.log'},
   [ordered]@{Class='game.isometric.characters.IsometricCharacter';Source='src\game\isometric\characters\IsometricCharacter.as';Log='ffdec-feature-character-hints.log'},
+  [ordered]@{Class='game.characters.AnimationController';Source='src\game\characters\AnimationController.as';Log='ffdec-feature-animation-controller.log'},
   [ordered]@{Class='Utils';Source='src\Utils.as';Log='ffdec-performance-utils.log'},
   [ordered]@{Class='game.utils.OfflineSave';Source='src\game\utils\OfflineSave.as';Log='ffdec-feature-offlinesave.log'},
   [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
@@ -59,6 +61,7 @@ $patchSpecs=@(
   [ordered]@{Class='game.gui.popups.WorldMapWindow';Source='src\game\gui\popups\WorldMapWindow.as';Log='ffdec-feature-worldmap.log'},
   [ordered]@{Class='game.gui.pvp.PvPMatchUpDialog';Source='src\game\gui\pvp\PvPMatchUpDialog.as';Log='ffdec-feature-pvp-matchup.log'},
   [ordered]@{Class='game.gui.pvp.PvPCombatSetupDialog';Source='src\game\gui\pvp\PvPCombatSetupDialog.as';Log='ffdec-feature-pvp-combat.log'},
+  [ordered]@{Class='game.gui.pvp.PvPBoosterBar';Source='src\game\gui\pvp\PvPBoosterBar.as';Log='ffdec-feature-pvp-booster.log'},
   [ordered]@{Class='game.gui.pvp.PvPHUD';Source='src\game\gui\pvp\PvPHUD.as';Log='ffdec-feature-pvp-hud.log'}
 )
 $logRoot=Split-Path -Parent $ManifestPath
@@ -168,7 +171,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.8-map-pvp-render'
+  patch_version='mobile-engine-v3.9-map-resource-lifecycle'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -228,5 +231,5 @@ $manifest=[ordered]@{
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.8-map-pvp-render source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.9-map-resource-lifecycle source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

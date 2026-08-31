@@ -51,7 +51,10 @@
       "DefaultArea": "#MapArea.DesertS",
       "CenterCamOnArrowDelay": "1000",
       "TilemapFileName": "tile_map_desert.csv",
-      "SWFFile": "swf/new_backgroud_01",
+      "SWFFile": [
+        "swf/new_backgroud_01",
+        "swf/desert_backgroud_01"
+      ],
       "ParatroopersTriggerMission": "#Mission.AREA_D_M_C1",
       "Paratrooper": "#EnemyAppearanceSetup.Paratroop",
       "ParatrooperEnemyLimit": "6",
@@ -71,6 +74,7 @@
       "Width": "11",
       "Height": "11",
       "ZoomLevels": "40, 75, 100",
+      "ZoomLevelsMobile": "40, 75, 100",
       "MarginX": "186",
       "MarginY": "93",
       "DefaultCellX": "6",

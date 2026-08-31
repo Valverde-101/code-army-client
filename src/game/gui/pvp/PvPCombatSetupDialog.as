@@ -1,6 +1,7 @@
 ﻿package game.gui.pvp
 {
-   import com.dchoc.graphics.DCResourceManager;
+   import com.dchoc.GUI.DCButton;
+    import com.dchoc.graphics.DCResourceManager;
    import flash.display.DisplayObjectContainer;
    import flash.display.MovieClip;
    import flash.display.Sprite;
@@ -110,6 +111,12 @@
          this.mButtonBack = Utils.createBasicButton(_loc2_,"Button_Back",this.backClicked);
          this.mButtonFight = Utils.createBasicButton(_loc2_,"Button_Fight",this.fightClicked);
          this.mButtonBuy = Utils.createBasicButton(_loc2_,"Button_Buy",this.buyClicked);
+         this.mButtonFight.USE_BUTTON_STATES_ANIM = false;
+         this.mButtonBuy.USE_BUTTON_STATES_ANIM = false;
+         this.mButtonFight.terminateAnimations();
+         this.mButtonBuy.terminateAnimations();
+         this.mButtonFight.playAnim(DCButton.BUTTON_FRAME_NAME_DISABLED_UP);
+         this.mButtonBuy.playAnim(DCButton.BUTTON_FRAME_NAME_UP);
          var _loc3_:Friend = FriendsCollection.smFriends.GetThePlayer();
          (_loc4_ = this.mPlayerCard.getChildByName("Text_Name") as TextField).text = _loc3_.mName;
          this.mHeader = new StylizedHeaderClip(mClip.getChildByName("Header") as MovieClip);
@@ -379,6 +386,7 @@
             _loc3_++;
          }
          this.mButtonFight.setEnabled(smSelectedUnits.length > 0);
+         this.mButtonFight.playAnim(smSelectedUnits.length > 0 ? DCButton.BUTTON_FRAME_NAME_UP : DCButton.BUTTON_FRAME_NAME_DISABLED_UP);
       }
       
       private function setScrollButtons() : void

@@ -5,6 +5,7 @@ package game.characters
    import flash.display.MovieClip;
    import flash.events.Event;
    import game.isometric.elements.Renderable;
+    import game.isometric.characters.IsometricCharacter;
    
    public class AnimationController
    {
@@ -119,6 +120,7 @@ package game.characters
             _loc8_++;
          }
          this.mCurrentAnimation = 0;
+         this.notifyOwnerAnimationReady();
       }
       
       public function LoadingFinished(param1:Event) : void
@@ -158,6 +160,15 @@ package game.characters
          else
          {
             this.stopCurrentAnimation();
+         }
+         this.notifyOwnerAnimationReady();
+      }
+
+      private function notifyOwnerAnimationReady() : void
+      {
+         if(this.mOwner is IsometricCharacter)
+         {
+            (this.mOwner as IsometricCharacter).refreshStatusHints();
          }
       }
       

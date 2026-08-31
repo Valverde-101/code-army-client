@@ -261,9 +261,7 @@
 
 		private var mLoadingTargetMapId: String;
 
-		private var mPendingMapResourceName: String;
-
-		private var mPendingMapResourceEvent: String;
+		private var mPendingMapTargetId: String;
 
 		private var mPendingMapReadyCallback: Function;
 
@@ -272,6 +270,8 @@
 		private var mPendingMapResourceTimer: Timer;
 
 		private var mPendingOfflineSwitchMapId: String;
+
+		private var mPendingOfflineOriginMapId: String;
 
 		private var mPendingPvPMapId: String;
 
@@ -2414,13 +2414,16 @@
 			}
 			this.mScene = SceneLoader.loadFromLevelFactor(this, param1);
 			CONFIG::BUILD_FOR_MOBILE_AIR {
-				this.mZoomLevels = this.mMapData.mMapSetupData.ZoomLevelsMobile;
+				this.mZoomLevels = this.mMapData.mMapSetupData.ZoomLevelsMobile ? this.mMapData.mMapSetupData.ZoomLevelsMobile : this.mMapData.mMapSetupData.ZoomLevels;
 			}
 			CONFIG::BUILD_FOR_AIR {
 				this.mZoomLevels = this.mMapData.mMapSetupData.ZoomLevels;
 			}
 			CONFIG::NOT_BUILD_FOR_AIR {
 				this.mZoomLevels = this.mMapData.mMapSetupData.ZoomLevels;
+			}
+			if (!this.mZoomLevels || this.mZoomLevels.length == 0) {
+				throw new Error("MAP_ZOOM_LEVELS_MISSING map=" + this.mCurrentMapId);
 			}
 			this.adjustZoomSteps();
 			this.mZoomIndex = 0;
@@ -2953,16 +2956,26 @@
 
 		private function handleStartPvPMatch(param1: ServerCall): void {
 			var _loc2_: int = 0;
-			if (FeatureTuner.USE_PVP_MATCH) {
-				this.changeState(GameState.STATE_PVP);
-				_loc2_ = this.mZoomIndex;
+			if (!FeatureTuner.USE_PVP_MATCH) {
+				return;
+			}
+			_loc2_ = this.mZoomIndex;
+			try {
 				this.initMap(null, this.mCurrentMapId);
 				this.mScene.updateGridInformation();
+				this.changeState(GameState.STATE_PVP);
 				this.mPvPMatch.initMatch(param1.mData);
 				this.updateGrid();
 				this.mScene.mFog.init(false);
 				this.stopLoading();
 				this.setZoomIndex(_loc2_);
+			} catch (error: Error) {
+				trace("[PVP_TRANSITION_FAIL] map=" + this.mCurrentMapId + " error=" + error.message);
+				if (Config.OFFLINE_MODE) {
+					this.recoverOfflineTransition(this.mPvPReturnMapId, "pvp:" + error.message);
+				} else {
+					this.stopLoading();
+				}
 			}
 		}
 
@@ -3260,6 +3273,7 @@
 				return;
 			}
 			if (Config.OFFLINE_MODE && !param2 && !param3) {
+				this.mPendingOfflineOriginMapId = this.mCurrentMapId;
 				OfflineSave.saveOldMap();
 				this.mPendingOfflineSwitchMapId = param1;
 				this.startLoading(param1);
@@ -3310,27 +3324,35 @@
 
 		private function completeOfflineMapSwitch(): void {
 			var _loc1_: String = this.mPendingOfflineSwitchMapId;
+			var _loc2_: String = this.mPendingOfflineOriginMapId;
 			this.mPendingOfflineSwitchMapId = null;
+			this.mPendingOfflineOriginMapId = null;
 			if (!_loc1_ || _loc1_.length == 0) {
 				this.stopLoading();
 				return;
 			}
-			this.mCurrentMapId = _loc1_;
-			this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(_loc1_), 0);
-			this.mVisitingFriend = null;
-			EnvEffectManager.destroy();
-			OfflineSave.switchMap();
-			this.addNeighborAvatars();
-			this.mCurrentMusic = this.getMapMusic();
-			ArmySoundManager.loadMusic(this.mCurrentMusic);
-			this.startMusic();
-			EnvEffectManager.init();
-			this.changeState(STATE_PLAY);
-			this.stopLoading();
+			try {
+				this.mCurrentMapId = _loc1_;
+				this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(_loc1_), 0);
+				this.mVisitingFriend = null;
+				EnvEffectManager.destroy();
+				OfflineSave.switchMap();
+				this.addNeighborAvatars();
+				this.mCurrentMusic = this.getMapMusic();
+				ArmySoundManager.loadMusic(this.mCurrentMusic);
+				this.startMusic();
+				EnvEffectManager.init();
+				this.changeState(STATE_PLAY);
+				this.stopLoading();
+			} catch (error: Error) {
+				trace("[MAP_TRANSITION_FAIL] from=" + _loc2_ + " to=" + _loc1_ + " error=" + error.message);
+				this.recoverOfflineTransition(_loc2_, "map:" + error.message);
+			}
 		}
 
 		private function failOfflineMapSwitch(): void {
 			this.mPendingOfflineSwitchMapId = null;
+			this.mPendingOfflineOriginMapId = null;
 			this.stopLoading();
 			this.mCurrentMusic = this.getMapMusic();
 			ArmySoundManager.loadMusic(this.mCurrentMusic);
@@ -3351,9 +3373,11 @@
 			this.mVisitingFriend = null;
 			var fakeservercall: * = new ServerCall(ServiceIDs.START_PVP_MATCH, null, null, null);
 			fakeservercall["mData"] = _loc2_;
-			this.mPlayerProfile.addEnergy(-this.mPvPMatch.mEnergyCost, false);
-			this.mPlayerProfile.addSupplies(-this.mPvPMatch.mSupplyCost);
 			this.handleStartPvPMatch(fakeservercall);
+			if (this.mState == GameState.STATE_PVP && this.mCurrentMapId == _loc1_) {
+				this.mPlayerProfile.addEnergy(-this.mPvPMatch.mEnergyCost, false);
+				this.mPlayerProfile.addSupplies(-this.mPvPMatch.mSupplyCost);
+			}
 		}
 
 		private function failOfflinePvPStart(): void {
@@ -3365,57 +3389,118 @@
 			this.startMusic();
 		}
 
-		private function waitForMapTilemap(param1: String, param2: Function, param3: Function): void {
-			var _loc1_: Object = null;
-			var _loc2_: String = null;
-			var _loc3_: int = 0;
-			var _loc4_: DCResourceManager = DCResourceManager.getInstance();
-			this.cancelPendingMapResourceWait();
+		private function getRequiredMapSwfs(param1: String): Array {
+			var _loc1_: Array = new Array();
+			var _loc2_: Object = null;
+			var _loc3_: Object = null;
+			var _loc4_: String = null;
 			if (mConfig && mConfig.MapSetup) {
-				_loc1_ = mConfig.MapSetup[param1];
+				_loc2_ = mConfig.MapSetup[param1];
 			}
+			if (_loc2_ && _loc2_.SWFFile) {
+				if (_loc2_.SWFFile is Array) {
+					for each (_loc3_ in _loc2_.SWFFile) {
+						_loc4_ = String(_loc3_);
+						if (_loc4_ && _loc1_.indexOf(_loc4_) < 0) {
+							_loc1_.push(_loc4_);
+						}
+					}
+				} else {
+					_loc4_ = String(_loc2_.SWFFile);
+					if (_loc4_) {
+						_loc1_.push(_loc4_);
+					}
+				}
+			}
+			if (_loc1_.indexOf("swf/tiles_common") < 0) {
+				_loc1_.push("swf/tiles_common");
+			}
+			if (param1 == "Desert" && _loc1_.indexOf("swf/desert_backgroud_01") < 0) {
+				_loc1_.push("swf/desert_backgroud_01");
+			}
+			return _loc1_;
+		}
+
+		private function queueMapResources(param1: String): void {
+			var _loc1_: Object = mConfig && mConfig.MapSetup ? mConfig.MapSetup[param1] : null;
+			var _loc2_: DCResourceManager = DCResourceManager.getInstance();
+			var _loc3_: String = null;
+			var _loc4_: int = 0;
+			var _loc5_: Array = null;
 			if (!_loc1_ || !_loc1_.TilemapFileName) {
+				return;
+			}
+			_loc3_ = String(_loc1_.TilemapFileName);
+			_loc4_ = _loc3_.lastIndexOf(".");
+			if (_loc4_ > 0) {
+				_loc3_ = _loc3_.substring(0, _loc4_);
+			}
+			if (!_loc2_.isLoaded(_loc3_) && !_loc2_.isAddedToLoadingList(_loc3_)) {
+				_loc2_.load(Config.DIR_CONFIG + _loc3_ + ".csv", _loc3_, null, true);
+			}
+			_loc5_ = this.getRequiredMapSwfs(param1);
+			for each (_loc3_ in _loc5_) {
+				if (!_loc2_.isLoaded(_loc3_) && !_loc2_.isAddedToLoadingList(_loc3_)) {
+					_loc2_.load(Config.DIR_DATA + _loc3_ + ".swf", _loc3_, null, false);
+				}
+			}
+		}
+
+		private function areMapResourcesReady(param1: String): Boolean {
+			var _loc1_: Object = mConfig && mConfig.MapSetup ? mConfig.MapSetup[param1] : null;
+			var _loc2_: DCResourceManager = DCResourceManager.getInstance();
+			var _loc3_: String = null;
+			var _loc4_: int = 0;
+			var _loc5_: Array = null;
+			if (!_loc1_ || !_loc1_.TilemapFileName) {
+				return false;
+			}
+			_loc3_ = String(_loc1_.TilemapFileName);
+			_loc4_ = _loc3_.lastIndexOf(".");
+			if (_loc4_ > 0) {
+				_loc3_ = _loc3_.substring(0, _loc4_);
+			}
+			if (!_loc2_.isLoaded(_loc3_) || _loc2_.get(_loc3_) == null) {
+				return false;
+			}
+			_loc5_ = this.getRequiredMapSwfs(param1);
+			for each (_loc3_ in _loc5_) {
+				if (!_loc2_.isLoaded(_loc3_)) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		private function waitForMapTilemap(param1: String, param2: Function, param3: Function): void {
+			this.cancelPendingMapResourceWait();
+			if (!mConfig || !mConfig.MapSetup || !mConfig.MapSetup[param1]) {
 				if (param3 != null) {
 					param3();
 				}
 				return;
 			}
-			_loc2_ = String(_loc1_.TilemapFileName);
-			_loc3_ = _loc2_.lastIndexOf(".");
-			if (_loc3_ > 0) {
-				_loc2_ = _loc2_.substring(0, _loc3_);
-			}
-			if (_loc4_.isLoaded(_loc2_) && _loc4_.get(_loc2_) != null) {
-				param2();
-				return;
-			}
-			this.mPendingMapResourceName = _loc2_;
-			this.mPendingMapResourceEvent = _loc2_ + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
+			this.mPendingMapTargetId = param1;
 			this.mPendingMapReadyCallback = param2;
 			this.mPendingMapFailureCallback = param3;
-			_loc4_.addEventListener(this.mPendingMapResourceEvent, this.mapTilemapLoaded, false, 0, true);
-			if (!_loc4_.isAddedToLoadingList(_loc2_)) {
-				_loc4_.load(Config.DIR_CONFIG + _loc2_ + ".csv", _loc2_, null, true);
-			}
-			if (_loc4_.isLoaded(_loc2_) && _loc4_.get(_loc2_) != null) {
-				this.completePendingMapResourceWait(true);
-				return;
-			}
-			this.mPendingMapResourceTimer = new Timer(8000, 1);
+			this.queueMapResources(param1);
+			this.mPendingMapResourceTimer = new Timer(100, 100);
+			this.mPendingMapResourceTimer.addEventListener(TimerEvent.TIMER, this.mapResourcePoll, false, 0, true);
 			this.mPendingMapResourceTimer.addEventListener(TimerEvent.TIMER_COMPLETE, this.mapTilemapTimeout, false, 0, true);
-			this.mPendingMapResourceTimer.start();
+			this.mapResourcePoll(null);
+			if (this.mPendingMapResourceTimer) {
+				this.mPendingMapResourceTimer.start();
+			}
 		}
 
-		private function mapTilemapLoaded(param1: Event): void {
-			var _loc1_: DCResourceManager = DCResourceManager.getInstance();
-			if (this.mPendingMapResourceName && _loc1_.isLoaded(this.mPendingMapResourceName) && _loc1_.get(this.mPendingMapResourceName) != null) {
+		private function mapResourcePoll(param1: TimerEvent): void {
+			if (this.mPendingMapTargetId && this.areMapResourcesReady(this.mPendingMapTargetId)) {
 				this.completePendingMapResourceWait(true);
-			} else {
-				this.completePendingMapResourceWait(false);
 			}
 		}
 
 		private function mapTilemapTimeout(param1: TimerEvent): void {
+			trace("[MAP_RESOURCE_TIMEOUT] map=" + this.mPendingMapTargetId);
 			this.completePendingMapResourceWait(false);
 		}
 
@@ -3433,19 +3518,46 @@
 		}
 
 		private function cancelPendingMapResourceWait(): void {
-			var _loc1_: DCResourceManager = DCResourceManager.getInstance();
-			if (this.mPendingMapResourceEvent) {
-				_loc1_.removeEventListener(this.mPendingMapResourceEvent, this.mapTilemapLoaded);
-			}
 			if (this.mPendingMapResourceTimer) {
 				this.mPendingMapResourceTimer.stop();
+				this.mPendingMapResourceTimer.removeEventListener(TimerEvent.TIMER, this.mapResourcePoll);
 				this.mPendingMapResourceTimer.removeEventListener(TimerEvent.TIMER_COMPLETE, this.mapTilemapTimeout);
 			}
-			this.mPendingMapResourceName = null;
-			this.mPendingMapResourceEvent = null;
+			this.mPendingMapTargetId = null;
 			this.mPendingMapReadyCallback = null;
 			this.mPendingMapFailureCallback = null;
 			this.mPendingMapResourceTimer = null;
+		}
+
+		private function recoverOfflineTransition(param1: String, param2: String): void {
+			var _loc1_: String = param1;
+			if (!_loc1_ || _loc1_.length == 0 || _loc1_.indexOf("pvp_") == 0) {
+				_loc1_ = "Home";
+			}
+			trace("[MAP_TRANSITION_RECOVER] target=" + _loc1_ + " reason=" + param2);
+			this.cancelPendingMapResourceWait();
+			this.mPendingOfflineSwitchMapId = null;
+			this.mPendingOfflineOriginMapId = null;
+			this.mPendingPvPMapId = null;
+			this.mPendingPvPStartData = null;
+			if (this.mPvPHUD) {
+				this.changeFromPvPHUD();
+			}
+			try {
+				this.mCurrentMapId = _loc1_;
+				this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(_loc1_), 0);
+				this.mVisitingFriend = null;
+				OfflineSave.switchMap();
+				this.addNeighborAvatars();
+				this.changeState(STATE_PLAY);
+				this.mCurrentMusic = this.getMapMusic();
+				ArmySoundManager.loadMusic(this.mCurrentMusic);
+				this.startMusic();
+				EnvEffectManager.init();
+			} catch (recoveryError: Error) {
+				trace("[MAP_TRANSITION_RECOVERY_FAIL] error=" + recoveryError.message);
+			}
+			this.stopLoading();
 		}
 
 		public function executeReturnHome(): void {
