@@ -6,6 +6,7 @@ on:
       - chore/local-army-bootstrap-20260827
     paths:
       - '.github/workflows/apply-swf-source-fix.yml'
+      - 'Tools/SWF/Apply-IsometricTooltipTimerFix.ps1'
 
 permissions:
   contents: write
