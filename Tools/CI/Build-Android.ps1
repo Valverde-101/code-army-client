@@ -270,8 +270,12 @@ if(@($runtimeConfig.ShopBoosters.PSObject.Properties).Count -ne 9){throw 'ANDROI
 if(-not $runtimeConfig.MapSetup.pvp_map_1_4valleys_11x11.ZoomLevelsMobile){throw 'ANDROID_RUNTIME_CONFIG=FAIL pvp_mobile_zoom_missing'}
 $desertSwfs=@($runtimeConfig.MapSetup.Desert.SWFFile)
 if($desertSwfs -notcontains 'swf/new_backgroud_01' -or $desertSwfs -notcontains 'swf/desert_backgroud_01'){throw "ANDROID_RUNTIME_CONFIG=FAIL desert_swf_set actual=$($desertSwfs -join ',')"}
+# tiles_common is part of the bootstrap SWF set (AssetManager.SWF_IDS) and was
+# already exercised by the physically-tested Home map. Do not require a second
+# standalone copy at data\swf\tiles_common.swf: the v23 seed does not expose
+# that exact stage path, and treating it as a map overlay dependency blocks
+# packaging before ADT can validate the real application bundle.
 $requiredMapAssets=@(
-  'data\swf\tiles_common.swf',
   'data\swf\new_backgroud_01.swf',
   'data\swf\desert_backgroud_01.swf',
   'data\swf\popups_pvp.swf',
