@@ -2,7 +2,6 @@
 	import com.dchoc.graphics.DCResourceManager;
 	import flash.display.MovieClip;
 	import flash.events.MouseEvent;
-	import flash.utils.setTimeout;
 	import game.gui.StylizedHeaderClip;
 	import game.gui.TooltipMap;
 	import game.gui.button.ArmyButton;
@@ -26,7 +25,6 @@
 
 		private var mClosing: Boolean = false;
 
-		private var mPendingSwitchMapId: String;
 
 		public function WorldMapWindow() {
 			var _loc3_: MovieClip = null;
@@ -85,7 +83,6 @@
 		public function Activate(param1: Function): void {
 			var _loc2_: StylizedHeaderClip = null;
 			this.mClosing = false;
-			this.mPendingSwitchMapId = null;
 			this.mouseEnabled = true;
 			this.mouseChildren = true;
 			mDoneCallback = param1;
@@ -233,43 +230,31 @@
 			this.detachCampaignListeners();
 			_loc1_ = mDoneCallback;
 			mDoneCallback = null;
+			Utils.DiagEvent("WORLD_MAP_CLOSE","current=" + GameState.mInstance.mCurrentMapId + ";callback=" + Boolean(_loc1_));
 			if (_loc1_ != null) {
 				_loc1_((this as Object).constructor);
 			}
+			if (GameState.mInstance) GameState.mInstance.restoreGameplayInputAfterPopup();
 		}
 
 		private function goToArea(param1: String): void {
 			if (!param1 || param1.length == 0 || this.mClosing || WORLD_MAP_ID_LIST.indexOf(param1) < 0) {
+				Utils.DiagEvent("WORLD_MAP_AREA_REJECT","target=" + param1 + ";closing=" + this.mClosing);
 				return;
 			}
-			if (param1 == GameState.mInstance.mCurrentMapId) {
+			var game:GameState = GameState.mInstance;
+			Utils.DiagEvent("WORLD_MAP_AREA","from=" + game.mCurrentMapId + ";to=" + param1);
+			if (param1 == game.mCurrentMapId) {
 				this.requestClose();
 				return;
 			}
-			this.mPendingSwitchMapId = param1;
-			trace("[WORLD_MAP_SWITCH_REQUEST] from=" + GameState.mInstance.mCurrentMapId + " to=" + param1);
 			this.requestClose();
-			setTimeout(this.executePendingSwitch, 0);
-		}
-
-		private function executePendingSwitch(): void {
-			var _loc1_: String = this.mPendingSwitchMapId;
-			this.mPendingSwitchMapId = null;
-			if (!_loc1_ || _loc1_.length == 0 || !GameState.mInstance) {
-				return;
-			}
-			if (_loc1_ == GameState.mInstance.mCurrentMapId) {
-				return;
-			}
-			trace("[WORLD_MAP_SWITCH_DISPATCH] from=" + GameState.mInstance.mCurrentMapId + " to=" + _loc1_);
-			GameState.mInstance.executeSwitchMap(_loc1_, null);
+			game.requestWorldMapSwitch(param1);
 		}
 
 		private function closeClicked(param1: MouseEvent): void {
-			if (param1) {
-				param1.stopImmediatePropagation();
-			}
-			this.mPendingSwitchMapId = null;
+			if (param1) param1.stopImmediatePropagation();
+			Utils.DiagEvent("WORLD_MAP_CLOSE_CLICK","current=" + GameState.mInstance.mCurrentMapId);
 			this.requestClose();
 		}
 	}

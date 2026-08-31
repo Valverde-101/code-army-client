@@ -540,6 +540,12 @@
 			var _loc3_: Function = null;
 			var _loc4_: String = null;
 			var _loc2_: DCWindow = PopUpManager.getPopUp(param1);
+			if (!_loc2_) {
+				Utils.DiagEvent("POPUP_CLOSE_MISSING","class=" + String(param1));
+				this.mGame.restoreGameplayInputAfterPopup();
+				return;
+			}
+			Utils.DiagEvent("POPUP_CLOSE","class=" + String(param1));
 			if (FeatureTuner.USE_POPUP_CLOSING_TRANSITION_EFFECT) {
 				_loc3_ = Object(_loc2_).getCloseAnimation;
 				if (_loc2_ is PopUpWindow || _loc3_ != null) {
@@ -551,6 +557,7 @@
 			_loc2_.close();
 			PopUpManager.releasePopUp(param1);
 			MissionManager.increaseCounter("Close", _loc2_, 1);
+			this.mGame.restoreGameplayInputAfterPopup();
 		}
 
 		public function createHUD(): void {

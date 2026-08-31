@@ -149,6 +149,7 @@
       
       private function closeClicked(param1:MouseEvent) : void
       {
+         Utils.DiagEvent("PVP_DEBRIEF_CLOSE","win=" + GameState.mInstance.mPvPMatch.mWin + ";map=" + GameState.mInstance.mCurrentMapId);
          this.closeDialog();
          GameState.mInstance.endPvP();
       }
@@ -181,8 +182,9 @@
       
       private function newMach(param1:MouseEvent) : void
       {
-         GameState.mInstance.getHud().openPvPMatchUpDialog();
+         Utils.DiagEvent("PVP_DEBRIEF_PLAY_AGAIN","win=" + GameState.mInstance.mPvPMatch.mWin + ";map=" + GameState.mInstance.mCurrentMapId);
          this.closeDialog();
+         GameState.mInstance.endPvP(GameState.mInstance.openPvPMatchUpDialog);
       }
       
       protected function mouseDown(param1:MouseEvent) : void

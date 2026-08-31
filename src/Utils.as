@@ -15,6 +15,7 @@ package
    import flash.text.TextField;
    import flash.text.TextFormat;
    import flash.text.TextFormatAlign;
+   import flash.utils.getDefinitionByName;
    import game.gui.IconAdapter;
    import game.gui.button.ArmyButton;
    import game.gui.button.ArmyButtonSelected;
@@ -25,11 +26,50 @@ package
    
    public class Utils
    {
-       
+      private static var smDiagnosticsMarkerClass:Class;
+      private static var smDiagnosticsLookupAttempted:Boolean = false;
       
       public function Utils()
       {
          super();
+      }
+      
+      public static function DiagEvent(param1:String, param2:String = "") : void
+      {
+         try
+         {
+            if(!smDiagnosticsLookupAttempted)
+            {
+               smDiagnosticsLookupAttempted = true;
+               smDiagnosticsMarkerClass = getDefinitionByName("com.valverde.armyattack.diagnostics::DiagnosticsMarker") as Class;
+            }
+            if(smDiagnosticsMarkerClass != null)
+            {
+               smDiagnosticsMarkerClass["log"](param1,param2);
+               return;
+            }
+         }
+         catch(error:Error)
+         {
+         }
+         trace("[ARMY_DIAG] " + param1 + " " + param2);
+      }
+      
+      private static function instrumentButtonCallback(param1:String, param2:Function) : Function
+      {
+         return function(param3:*):void
+         {
+            var targetName:String = "";
+            try
+            {
+               if(param3 && param3.target) targetName = String(param3.target.name);
+            }
+            catch(error:Error)
+            {
+            }
+            DiagEvent("UI_BUTTON","name=" + param1 + ";target=" + targetName);
+            if(param2 != null) param2(param3);
+         };
       }
       
       public static function randRange(param1:Number, param2:Number) : Number
@@ -45,21 +85,21 @@ package
             return null;
          }
          _loc4_.mouseEnabled = true;
-         return new ArmyButton(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,param3);
+         return new ArmyButton(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,instrumentButtonCallback(param2,param3));
       }
       
       public static function createSelectableButton(param1:DisplayObjectContainer, param2:String, param3:Function) : ArmyButtonSelected
       {
          var _loc4_:MovieClip = null;
          (_loc4_ = param1.getChildByName(param2) as MovieClip).mouseEnabled = true;
-         return new ArmyButtonSelected(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,param3,null,null,null);
+         return new ArmyButtonSelected(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,instrumentButtonCallback(param2,param3),null,null,null);
       }
       
       public static function createResizingButton(param1:DisplayObjectContainer, param2:String, param3:Function) : ResizingButton
       {
          var _loc4_:MovieClip;
          (_loc4_ = param1.getChildByName(param2) as MovieClip).mouseEnabled = true;
-         return new ResizingButton(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,param3);
+         return new ResizingButton(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,instrumentButtonCallback(param2,param3));
       }
       
       public static function createFBIconResizingButton(param1:DisplayObjectContainer, param2:String, param3:Function) : ResizingIconButton
@@ -76,14 +116,14 @@ package
       {
          var _loc4_:MovieClip = null;
          (_loc4_ = param1.getChildByName(param2) as MovieClip).mouseEnabled = true;
-         return new ResizingIconButton(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,param3);
+         return new ResizingIconButton(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,instrumentButtonCallback(param2,param3));
       }
       
       public static function createResizingButtonSelected(param1:DisplayObjectContainer, param2:String, param3:Function) : ResizingButtonSelected
       {
          var _loc4_:MovieClip;
          (_loc4_ = param1.getChildByName(param2) as MovieClip).mouseEnabled = true;
-         return new ResizingButtonSelected(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,param3);
+         return new ResizingButtonSelected(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,instrumentButtonCallback(param2,param3));
       }
       
       public static function createResizingButtonSelectedForNewUI(param1:DisplayObjectContainer, param2:String, param3:Function) : ResizingButtonSelected

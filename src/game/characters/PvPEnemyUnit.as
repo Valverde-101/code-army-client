@@ -2,6 +2,8 @@ package game.characters
 {
    import game.actions.Action;
    import game.actions.ActionQueue;
+   import flash.geom.ColorTransform;
+   import flash.display.MovieClip;
    import game.actions.PvPEnemyMovingAction;
    import game.battlefield.MapData;
    import game.gui.TooltipHealth;
@@ -161,6 +163,21 @@ package game.characters
          mAttackSounds.load();
          mAttackSoundsSecondary.load();
          mMoveSounds.load();
+      }
+      
+      override protected function updateAnimation(param1:Boolean, param2:Boolean) : void
+      {
+         super.updateAnimation(param1,param2);
+         var animationIndex:int = getCurrentAnimationIndex();
+         if(animationIndex == AnimationController.CHARACTER_ANIMATION_MOVE || animationIndex == AnimationController.CHARACTER_ANIMATION_MOVE_UP)
+         {
+            var movingClip:MovieClip = mAnimationController.getCurrentAnimation();
+            if(movingClip)
+            {
+               movingClip.transform.colorTransform = new ColorTransform(0.68,0.74,0.92,1,0,0,0,0);
+               Utils.DiagEvent("PVP_ENEMY_VISUAL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";mode=opfor_move_dark");
+            }
+         }
       }
       
       override public function update(param1:int) : void

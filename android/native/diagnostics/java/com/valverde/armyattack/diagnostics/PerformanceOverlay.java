@@ -15,6 +15,7 @@ import android.os.Debug;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.util.Log;
 import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.View;
@@ -38,7 +39,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
@@ -50,6 +54,41 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public final class PerformanceOverlay {
+    private static final Object GAME_EVENT_LOCK = new Object();
+    private static final ArrayDeque<String> GAME_EVENTS = new ArrayDeque<String>();
+    private static final int MAX_GAME_EVENTS = 800;
+    private static final String GAME_EVENT_TAG = "ArmyAttackGame";
+
+    public static void recordGameEvent(String kind, String detail) {
+        try {
+            JSONObject event = new JSONObject();
+            event.put("utc", utcIso());
+            event.put("process_elapsed_ms", android.os.SystemClock.elapsedRealtime());
+            event.put("thread", Thread.currentThread().getName());
+            event.put("kind", kind == null ? "UNKNOWN" : kind);
+            event.put("detail", detail == null ? "" : detail);
+            String line = event.toString();
+            synchronized (GAME_EVENT_LOCK) {
+                while (GAME_EVENTS.size() >= MAX_GAME_EVENTS) GAME_EVENTS.removeFirst();
+                GAME_EVENTS.addLast(line);
+            }
+            Log.i(GAME_EVENT_TAG, (kind == null ? "UNKNOWN" : kind) + " " + (detail == null ? "" : detail));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void writeGameEvents(File dir) {
+        if (dir == null) return;
+        try {
+            List<String> snapshot;
+            synchronized (GAME_EVENT_LOCK) { snapshot = new ArrayList<String>(GAME_EVENTS); }
+            StringBuilder text = new StringBuilder();
+            for (String line : snapshot) text.append(line).append('\n');
+            writeText(new File(dir, "game-events.jsonl"), text.toString());
+        } catch (Throwable t) {
+            appendError(dir, "game_events", t);
+        }
+    }
     private static final AtomicBoolean BOOTSTRAPPED = new AtomicBoolean(false);
     private static final Map<Activity, PerformanceOverlay> INSTANCES = new WeakHashMap<Activity, PerformanceOverlay>();
 
@@ -96,6 +135,8 @@ public final class PerformanceOverlay {
     private static final long RECORD_SAMPLE_MS = 1000L;
     private static final long PANEL_SAMPLE_MS = 1500L;
     private static final long HEAVY_SAMPLE_MS = 5000L;
+    private static final long LIVE_RENDER_RECORDING_MS = 5000L;
+    private static final long LIVE_RENDER_IDLE_MS = 2500L;
 
     private FrameLayout root;
     private LinearLayout panel;
@@ -116,6 +157,7 @@ public final class PerformanceOverlay {
     private volatile long latestGcTimeMs = -1L;
     private volatile int latestThermal = -1;
     private long lastHeavySampleElapsedMs = 0L;
+    private long lastLiveRenderElapsedMs = 0L;
 
     private long lastCpuMs = -1L;
     private long lastWallMs = -1L;
@@ -175,8 +217,13 @@ public final class PerformanceOverlay {
             }
             scheduleHeavyMetrics(false);
             MetricSample sample = collectSample();
-            renderSample(sample);
             if (recording) persistSample(sample);
+            long now = android.os.SystemClock.elapsedRealtime();
+            long liveInterval = recording ? LIVE_RENDER_RECORDING_MS : LIVE_RENDER_IDLE_MS;
+            if (panelVisible && (lastLiveRenderElapsedMs == 0L || now - lastLiveRenderElapsedMs >= liveInterval)) {
+                renderSample(sample);
+                lastLiveRenderElapsedMs = now;
+            }
             long delay = recording ? RECORD_SAMPLE_MS : PANEL_SAMPLE_MS;
             main.postDelayed(this, delay);
         }
@@ -312,6 +359,7 @@ public final class PerformanceOverlay {
         lastCpuMs = -1L;
         lastWallMs = -1L;
         lastHeavySampleElapsedMs = 0L;
+        lastLiveRenderElapsedMs = 0L;
         resetFrameWindow();
         scheduleHeavyMetrics(true);
 
@@ -324,7 +372,8 @@ public final class PerformanceOverlay {
                         "Buttons are native Android views layered over AIR; the SWF bytecode is not modified.\n" +
                         "Use markers.jsonl to locate MARCAR LAG timestamps.\n" +
                         "STOP also captures threads.txt, proc-status.txt, smaps-rollup.txt and own-process logcat when Android permits it.\n" +
-                        "Search logs for PVP_, WORLD_MAP_, MAP_, OFFLINE_SWITCH_MAP and ARMY_DIAG markers.\n");
+                        "Search game-events.jsonl for UI_BUTTON, PVP_, WORLD_MAP_, MAP_, OFFLINE_SWITCH_MAP and ARMY_DIAG markers.\n" +
+                        "Live metrics text is throttled while recording so the profiler does not compete with AIR layout on the main thread.\n");
                     writeText(new File(dir, "device.json"), buildDeviceJson().toString(2));
                     writeText(sessionCsv,
                         "elapsed_ms,utc,cpu_onecore_pct,cpu_normalized_pct,pss_mb,java_used_mb,native_mb,gc_count,gc_time_ms,thermal,vsync_fps,jank_24ms,jank_50ms,max_frame_ms,cores\n");
@@ -546,6 +595,7 @@ public final class PerformanceOverlay {
         } catch (Throwable t) {
             appendError(dir, "thread_dump", t);
         }
+        writeGameEvents(dir);
         copyProcFile("/proc/self/status", new File(dir, "proc-status.txt"), 1024 * 1024);
         copyProcFile("/proc/self/smaps_rollup", new File(dir, "smaps-rollup.txt"), 1024 * 1024);
         captureOwnLogcat(dir);

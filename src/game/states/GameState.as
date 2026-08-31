@@ -273,6 +273,10 @@
 
 		private var mPendingOfflineOriginMapId: String;
 
+		private var mPendingOfflineSwitchCompletion: Function;
+
+		private var mPendingPvPReturnZoomIndex: int = -1;
+
 		private var mPendingPvPMapId: String;
 
 		private var mPendingPvPStartData: Object;
@@ -2946,32 +2950,39 @@
 			}
 		}
 
-		public function endPvP(): void {
-			var _loc1_: int = 0;
-			var _loc2_: String = null;
+		public function endPvP(param1: Function = null): void {
+			var _loc1_: String = null;
 			if (!FeatureTuner.USE_PVP_MATCH || !this.mPvPMatch) {
+				if (param1 != null) param1();
 				return;
 			}
-			if (this.mPvPHUD) {
-				this.changeFromPvPHUD();
-			}
-			_loc1_ = this.mZoomIndex;
-			_loc2_ = this.mPvPReturnMapId;
-			if (!_loc2_ || _loc2_.length == 0 || _loc2_.indexOf("pvp_") == 0) {
-				_loc2_ = "Home";
-			}
-			if (this.mCurrentMapId != _loc2_) {
-				this.executeSwitchMap(_loc2_, null);
-			}
-			this.setZoomIndex(_loc1_);
+			_loc1_ = this.mPvPReturnMapId;
+			if (!_loc1_ || _loc1_.length == 0 || _loc1_.indexOf("pvp_") == 0) _loc1_ = "Home";
+			Utils.DiagEvent("PVP_END_BEGIN","from=" + this.mCurrentMapId + ";return=" + _loc1_ + ";replay=" + Boolean(param1));
+			this.resetActions();
+			this.mActionWaitingConfirmation = null;
+			this.mActivatedPlayerUnit = null;
+			this.mActivatedEnemyUnit = null;
+			if (this.mPvPHUD) this.changeFromPvPHUD();
+			this.mPendingPvPReturnZoomIndex = 0;
 			this.mPvPMatch.mAI = null;
 			this.mPvPMatch.mOpponent = null;
 			this.mPvPMatch.mPlayerUnits = null;
 			this.mPvPMatch.mOpponentUnits = null;
 			this.mPvPMatch.mActivatedBooster = null;
 			this.mPvPReturnMapId = "Home";
+			if (this.mCurrentMapId != _loc1_) {
+				Utils.DiagEvent("PVP_END_RETURN_MAP","from=" + this.mCurrentMapId + ";to=" + _loc1_);
+				this.executeSwitchMap(_loc1_, null, false, param1);
+				return;
+			}
+			this.changeState(STATE_PLAY);
+			this.restoreGameplayInputAfterPopup();
+			if (this.mZoomLevels && this.mZoomLevels.length > 0) this.setZoomIndex(0);
+			this.mPendingPvPReturnZoomIndex = -1;
+			Utils.DiagEvent("PVP_END_COMMIT","map=" + this.mCurrentMapId + ";replay=" + Boolean(param1));
+			if (param1 != null) param1();
 		}
-
 		private function handleStartPvPMatch(param1: ServerCall): void {
 			var _loc2_: int = 0;
 			if (!FeatureTuner.USE_PVP_MATCH) {
@@ -3282,23 +3293,55 @@
 			this.mServer = new MyServer(this);
 		}
 
-		public function executeSwitchMap(param1: String, param2: Friend = null, param3: Boolean = false): void {
+		public function restoreGameplayInputAfterPopup(): void {
+			var modal:Boolean = PopUpManager.isModalPopupActive();
+			if (!modal) {
+				getMainClip().mouseChildren = true;
+				if (this.mHUD) this.mHUD.enableMouse(true);
+				if (this.mState == STATE_PLAY) disableMapPanning = false;
+			}
+			Utils.DiagEvent("GAMEPLAY_INPUT","map=" + this.mCurrentMapId + ";state=" + this.mState + ";modal=" + modal + ";mouseChildren=" + getMainClip().mouseChildren);
+		}
+
+		public function requestWorldMapSwitch(param1:String): void {
+			Utils.DiagEvent("WORLD_MAP_SWITCH_REQUEST","from=" + this.mCurrentMapId + ";to=" + param1);
+			if (!param1 || param1.length == 0 || GRAPHICS_MAP_ID_LIST.indexOf(param1) < 0) {
+				Utils.DiagEvent("WORLD_MAP_SWITCH_REJECT","target=" + param1 + ";reason=invalid_target");
+				this.restoreGameplayInputAfterPopup();
+				return;
+			}
+			if (param1 == this.mCurrentMapId) {
+				this.restoreGameplayInputAfterPopup();
+				return;
+			}
+			this.executeSwitchMap(param1, null);
+		}
+
+		public function executeSwitchMap(param1: String, param2: Friend = null, param3: Boolean = false, param4: Function = null): void {
 			var _loc4_: Object = null;
 			if (!param1 || param1.length == 0) {
+				Utils.DiagEvent("MAP_SWITCH_REJECT","reason=empty_target");
 				return;
 			}
 			if ((this.mVisitingFriend == param2 || this.mVisitingFriend == null && param2 == null) && param1 == this.mCurrentMapId) {
 				return;
 			}
 			if (Config.OFFLINE_MODE && !param2 && !param3) {
+				if (this.mPendingOfflineSwitchMapId) {
+					Utils.DiagEvent("MAP_SWITCH_REJECT","from=" + this.mCurrentMapId + ";to=" + param1 + ";reason=transition_busy;pending=" + this.mPendingOfflineSwitchMapId);
+					return;
+				}
 				if (!mConfig || !mConfig.MapSetup || !mConfig.MapSetup[param1]) {
 					trace("[MAP_SWITCH_REJECT] reason=missing_config target=" + param1);
+					Utils.DiagEvent("MAP_SWITCH_REJECT","target=" + param1 + ";reason=missing_config");
 					return;
 				}
 				this.mPendingOfflineOriginMapId = this.mCurrentMapId;
 				OfflineSave.saveOldMap();
 				this.mPendingOfflineSwitchMapId = param1;
+				this.mPendingOfflineSwitchCompletion = param4;
 				trace("[MAP_SWITCH_BEGIN] from=" + this.mPendingOfflineOriginMapId + " to=" + param1);
+				Utils.DiagEvent("MAP_SWITCH_BEGIN","from=" + this.mPendingOfflineOriginMapId + ";to=" + param1 + ";callback=" + Boolean(param4));
 				this.startLoading(param1);
 				this.waitForMapTilemap(param1, this.completeOfflineMapSwitch, this.failOfflineMapSwitch);
 				return;
@@ -3348,38 +3391,63 @@
 		private function completeOfflineMapSwitch(): void {
 			var _loc1_: String = this.mPendingOfflineSwitchMapId;
 			var _loc2_: String = this.mPendingOfflineOriginMapId;
+			var _loc3_: Function = this.mPendingOfflineSwitchCompletion;
 			trace("[MAP_SWITCH_APPLY_BEGIN] from=" + _loc2_ + " to=" + _loc1_);
+			Utils.DiagEvent("MAP_SWITCH_APPLY_BEGIN","from=" + _loc2_ + ";to=" + _loc1_);
 			this.mPendingOfflineSwitchMapId = null;
 			this.mPendingOfflineOriginMapId = null;
+			this.mPendingOfflineSwitchCompletion = null;
 			if (!_loc1_ || _loc1_.length == 0) {
 				this.stopLoading();
+				this.restoreGameplayInputAfterPopup();
 				return;
 			}
 			try {
 				this.mCurrentMapId = _loc1_;
 				this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(_loc1_), 0);
 				this.mVisitingFriend = null;
-				EnvEffectManager.destroy();
+				try { EnvEffectManager.destroy(); } catch (envDestroyError:Error) { Utils.DiagEvent("MAP_OPTIONAL_FAIL","phase=env_destroy;error=" + envDestroyError.message); }
+				Utils.DiagEvent("MAP_SWITCH_PHASE","phase=offline_save_begin;target=" + _loc1_);
 				OfflineSave.switchMap();
-				this.addNeighborAvatars();
+				Utils.DiagEvent("MAP_SWITCH_PHASE","phase=offline_save_end;target=" + _loc1_ + ";grid=" + (this.mMapData && this.mMapData.mGrid ? this.mMapData.mGrid.length : 0));
+				this.changeState(STATE_PLAY);
+				this.stopLoading();
+				this.restoreGameplayInputAfterPopup();
+				if (this.mPendingPvPReturnZoomIndex >= 0 && this.mZoomLevels && this.mZoomLevels.length > 0) {
+					this.setZoomIndex(Math.min(this.mPendingPvPReturnZoomIndex,this.mZoomLevels.length - 1));
+				}
+				this.mPendingPvPReturnZoomIndex = -1;
+				trace("[MAP_SWITCH_COMMIT] from=" + _loc2_ + " to=" + _loc1_ + " graphics=" + this.mCurrentMapGraphicsId);
+				Utils.DiagEvent("MAP_SWITCH_COMMIT","from=" + _loc2_ + ";to=" + _loc1_ + ";graphics=" + this.mCurrentMapGraphicsId + ";state=" + this.mState);
+			} catch (error: Error) {
+				trace("[MAP_TRANSITION_FAIL] from=" + _loc2_ + " to=" + _loc1_ + " error=" + error.message);
+				Utils.DiagEvent("MAP_TRANSITION_FAIL","from=" + _loc2_ + ";to=" + _loc1_ + ";error=" + error.message);
+				this.mPendingPvPReturnZoomIndex = -1;
+				this.recoverOfflineTransition(_loc2_, "map:" + error.message);
+				return;
+			}
+			try { this.addNeighborAvatars(); } catch (neighborError:Error) { Utils.DiagEvent("MAP_OPTIONAL_FAIL","phase=neighbors;error=" + neighborError.message); }
+			try { EnvEffectManager.init(); } catch (envInitError:Error) { Utils.DiagEvent("MAP_OPTIONAL_FAIL","phase=env_init;error=" + envInitError.message); }
+			try {
 				this.mCurrentMusic = this.getMapMusic();
 				ArmySoundManager.loadMusic(this.mCurrentMusic);
 				this.startMusic();
-				EnvEffectManager.init();
-				this.changeState(STATE_PLAY);
-				trace("[MAP_SWITCH_COMMIT] from=" + _loc2_ + " to=" + _loc1_ + " graphics=" + this.mCurrentMapGraphicsId);
-				this.stopLoading();
-			} catch (error: Error) {
-				trace("[MAP_TRANSITION_FAIL] from=" + _loc2_ + " to=" + _loc1_ + " error=" + error.message);
-				this.recoverOfflineTransition(_loc2_, "map:" + error.message);
+				Utils.DiagEvent("MAP_MUSIC_COMMIT","map=" + this.mCurrentMapId + ";music=" + this.mCurrentMusic);
+			} catch (musicError:Error) { Utils.DiagEvent("MAP_OPTIONAL_FAIL","phase=music;error=" + musicError.message); }
+			if (_loc3_ != null) {
+				Utils.DiagEvent("MAP_SWITCH_CALLBACK","map=" + this.mCurrentMapId);
+				_loc3_();
 			}
 		}
-
 		private function failOfflineMapSwitch(): void {
 			trace("[MAP_SWITCH_FAIL] from=" + this.mPendingOfflineOriginMapId + " to=" + this.mPendingOfflineSwitchMapId + " reason=resource_timeout");
 			this.mPendingOfflineSwitchMapId = null;
 			this.mPendingOfflineOriginMapId = null;
+			this.mPendingOfflineSwitchCompletion = null;
+			this.mPendingPvPReturnZoomIndex = -1;
+			Utils.DiagEvent("MAP_SWITCH_FAIL","reason=resource_timeout");
 			this.stopLoading();
+			this.restoreGameplayInputAfterPopup();
 			this.mCurrentMusic = this.getMapMusic();
 			ArmySoundManager.loadMusic(this.mCurrentMusic);
 			this.startMusic();
@@ -3566,9 +3634,12 @@
 				_loc1_ = "Home";
 			}
 			trace("[MAP_TRANSITION_RECOVER] target=" + _loc1_ + " reason=" + param2);
+			Utils.DiagEvent("MAP_TRANSITION_RECOVER","target=" + _loc1_ + ";reason=" + param2);
 			this.cancelPendingMapResourceWait();
 			this.mPendingOfflineSwitchMapId = null;
 			this.mPendingOfflineOriginMapId = null;
+			this.mPendingOfflineSwitchCompletion = null;
+			this.mPendingPvPReturnZoomIndex = -1;
 			this.mPendingPvPMapId = null;
 			this.mPendingPvPStartData = null;
 			if (this.mPvPHUD) {
@@ -3589,6 +3660,7 @@
 				trace("[MAP_TRANSITION_RECOVERY_FAIL] error=" + recoveryError.message);
 			}
 			this.stopLoading();
+			this.restoreGameplayInputAfterPopup();
 		}
 
 		public function executeReturnHome(): void {
@@ -3603,6 +3675,7 @@
 			var _loc3_: String = null;
 			this.mLoadingActive = true;
 			this.mLoadingTargetMapId = param1 && param1.length > 0 ? param1 : this.mCurrentMapId;
+			Utils.DiagEvent("LOADING_BEGIN","current=" + this.mCurrentMapId + ";target=" + this.mLoadingTargetMapId + ";state=" + this.mState);
 			getMainClip().mouseChildren = false;
 			this.cancelAllActions();
 			this.cancelTools();
@@ -3676,6 +3749,7 @@
 			}
 			getMainClip().mouseChildren = true;
 			trace("[MAP_INPUT_RESTORED] current=" + this.mCurrentMapId + " state=" + this.mState);
+			Utils.DiagEvent("LOADING_END","current=" + this.mCurrentMapId + ";state=" + this.mState + ";mouseChildren=" + getMainClip().mouseChildren);
 		}
 
 		public function addToWorld(param1: MapItem): void {

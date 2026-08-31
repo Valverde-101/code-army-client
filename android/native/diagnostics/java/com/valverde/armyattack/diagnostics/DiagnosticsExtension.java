@@ -41,6 +41,7 @@ public final class DiagnosticsExtension implements FREExtension {
             Map<String, FREFunction> functions = new HashMap<String, FREFunction>();
             functions.put("ping", new PingFunction());
             functions.put("shareZip", new ShareZipFunction());
+            functions.put("logEvent", new LogEventFunction());
             return functions;
         }
 
@@ -61,6 +62,21 @@ public final class DiagnosticsExtension implements FREExtension {
                 } catch (Throwable ignored) {
                     return null;
                 }
+            }
+        }
+    }
+
+    private static final class LogEventFunction implements FREFunction {
+        @Override
+        public FREObject call(final FREContext context, FREObject[] args) {
+            try {
+                String kind = args != null && args.length > 0 && args[0] != null ? args[0].getAsString() : "UNKNOWN";
+                String detail = args != null && args.length > 1 && args[1] != null ? args[1].getAsString() : "";
+                PerformanceOverlay.recordGameEvent(kind, detail);
+                return FREObject.newObject("OK");
+            } catch (Throwable t) {
+                try { return FREObject.newObject("ERROR:" + t.getClass().getSimpleName()); }
+                catch (Throwable ignored) { return null; }
             }
         }
     }

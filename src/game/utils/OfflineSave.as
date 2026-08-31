@@ -303,6 +303,7 @@
 			var map_id: String = GameState.mInstance.mCurrentMapId;
 			var savedMap: * = null;
 			trace("[OFFLINE_SWITCH_MAP_BEGIN] map=" + map_id + " has_saved=" + Boolean(mMaps[map_id]));
+			Utils.DiagEvent("OFFLINE_SWITCH_MAP_BEGIN","map=" + map_id + ";has_saved=" + Boolean(mMaps[map_id]));
 			GameState.mInstance.mLoadingStatesOver = false;
 			GameState.mInstance.mCurrentMapGraphicsId = Math.max(GameState.GRAPHICS_MAP_ID_LIST.indexOf(map_id), 0);
 			GameState.mInstance.mPlayerProfile.mInventory.getAreas();
@@ -318,7 +319,10 @@
 				fakeservercall["mData"]["missions_incomplete"] = mMissions["missions_incomplete"];
 				loadMap(savedMap);
 			} else {
+				Utils.DiagEvent("OFFLINE_MAP_PHASE","map=" + map_id + ";phase=init_empty_map");
 				GameState.mInstance.initMap(null, map_id);
+				GameState.mInstance.initObjects(null);
+				Utils.DiagEvent("OFFLINE_MAP_PHASE","map=" + map_id + ";phase=init_empty_objects_done");
 			}
 			GameState.mInstance.updateGrid();
 			GameState.mInstance.mScene.mFog.init();
@@ -335,6 +339,7 @@
 			}
 			GameState.mInstance.mLoadingStatesOver = true;
 			trace("[OFFLINE_SWITCH_MAP_END] map=" + map_id + " grid=" + (GameState.mInstance.mMapData && GameState.mInstance.mMapData.mGrid ? GameState.mInstance.mMapData.mGrid.length : 0));
+			Utils.DiagEvent("OFFLINE_SWITCH_MAP_END","map=" + map_id + ";grid=" + (GameState.mInstance.mMapData && GameState.mInstance.mMapData.mGrid ? GameState.mInstance.mMapData.mGrid.length : 0));
 		}
 
 		public static function generateSaveJson(): * {
