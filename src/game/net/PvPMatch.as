@@ -1,4 +1,4 @@
-﻿package game.net
+package game.net
 {
    import com.dchoc.graphics.DCResourceManager;
    import flash.geom.Point;
@@ -14,62 +14,43 @@
    import game.items.MapItem;
    import game.items.PlayerUnitItem;
    import game.states.GameState;
-   
+
    public class PvPMatch
    {
-      
       public static const ACTIONS_PER_TURN:int = 3;
-       
-      
+
       private var mGame:GameState;
-      
       public var mOpponent:PvPOpponent;
-      
       public var mSupplyCost:int;
-      
       public var mEnergyCost:int;
-      
       public var mPlayerUnits:Array;
-      
       public var mOpponentUnits:Array;
-      
       public var mTimestamp:Number;
-      
       public var mWin:Boolean;
-      
       public var mWinRewardMoney:int;
-      
       public var mWinRewardBadassXp:int;
-      
       public var mIngameBadassXp:int;
-      
       public var mIngameCollectibles:Array;
-      
       public var mActionsLeft:int;
-      
       public var mPlayerTurn:Boolean = true;
-      
       public var mTurnCounter:int;
-      
       public var mAI:PvPAI;
-      
       public var mActivatedBooster:BoosterItem;
-      
       private const TURN_DELAY:int = 2000;
-      
       private var mTurnChangeTimer:int;
-      
+      private var mDebriefingOpened:Boolean = false;
+
       public function PvPMatch()
       {
          super();
          this.mGame = GameState.mInstance;
       }
-      
+
       public function addIngameBaddassXp(param1:int) : void
       {
          this.mIngameBadassXp += param1;
       }
-      
+
       public function addIngameCollectible(param1:Item) : void
       {
          if(param1 != null)
@@ -77,7 +58,7 @@
             this.mIngameCollectibles.push(param1);
          }
       }
-      
+
       public function setResult(param1:Boolean) : void
       {
          this.mWin = param1;
@@ -87,7 +68,7 @@
             this.mWinRewardMoney = 0;
          }
       }
-      
+
       public function randomizeOpponentUnits() : void
       {
          var _loc3_:int = 0;
@@ -139,9 +120,10 @@
             fallbackIndex++;
          }
       }
-      
+
       public function initMatch(param1:Object) : void
       {
+         this.mDebriefingOpened = false;
          this.mTimestamp = param1.timestamp;
          this.mWin = false;
          this.mIngameBadassXp = 0;
@@ -150,11 +132,15 @@
          this.mPlayerTurn = true;
          this.mActionsLeft = ACTIONS_PER_TURN;
          this.mTurnCounter = 0;
+         this.mTurnChangeTimer = 0;
          var _loc2_:int = this.mOpponent.mBadassLevel;
          this.mAI = new PvPAI(this.mGame,this.mGame.mScene,GameState.mConfig.PvPAIWeakenings["" + Math.round(Math.min(50,Math.max(0,_loc2_)))]);
-         this.mGame.mPvPHUD.turnChanged(true);
+         if(this.mGame.mPvPHUD)
+         {
+            this.mGame.mPvPHUD.turnChanged(true);
+         }
       }
-      
+
       public function randomizeMap() : String
       {
          var _loc1_:String = null;
@@ -191,51 +177,51 @@
          }
          return _loc1_;
       }
-      
+
       public function getAttackUnitsString() : String
       {
-		 if(this.mPlayerUnits){
-         var _loc3_:PlayerUnitItem = null;
-         var _loc1_:* = "";
-         var _loc2_:int = 0;
-         while(_loc2_ < this.mPlayerUnits.length)
+         if(this.mPlayerUnits)
          {
-            _loc3_ = this.mPlayerUnits[_loc2_];
-            _loc1_ += _loc3_.mId;
-            if(_loc2_ < this.mPlayerUnits.length - 1)
+            var _loc3_:PlayerUnitItem = null;
+            var _loc1_:* = "";
+            var _loc2_:int = 0;
+            while(_loc2_ < this.mPlayerUnits.length)
             {
-               _loc1_ += ",";
+               _loc3_ = this.mPlayerUnits[_loc2_];
+               _loc1_ += _loc3_.mId;
+               if(_loc2_ < this.mPlayerUnits.length - 1)
+               {
+                  _loc1_ += ",";
+               }
+               _loc2_++;
             }
-            _loc2_++;
+            return _loc1_;
          }
-         return _loc1_;
-		 } else {
-			 return null;
-		 }
+         return null;
       }
-      
+
       public function getDefensiveUnitsString() : String
       {
-		 if(this.mOpponentUnits){
-         var _loc3_:EnemyUnitItem = null;
-         var _loc1_:* = "";
-         var _loc2_:int = 0;
-         while(_loc2_ < this.mOpponentUnits.length)
+         if(this.mOpponentUnits)
          {
-            _loc3_ = this.mOpponentUnits[_loc2_];
-            _loc1_ += _loc3_.mId;
-            if(_loc2_ < this.mOpponentUnits.length - 1)
+            var _loc3_:EnemyUnitItem = null;
+            var _loc1_:* = "";
+            var _loc2_:int = 0;
+            while(_loc2_ < this.mOpponentUnits.length)
             {
-               _loc1_ += ",";
+               _loc3_ = this.mOpponentUnits[_loc2_];
+               _loc1_ += _loc3_.mId;
+               if(_loc2_ < this.mOpponentUnits.length - 1)
+               {
+                  _loc1_ += ",";
+               }
+               _loc2_++;
             }
-            _loc2_++;
+            return _loc1_;
          }
-         return _loc1_;
-		 } else {
-			 return null;
-		 }
+         return null;
       }
-      
+
       public function getIngameCollectiblesString() : String
       {
          var _loc3_:CollectibleItem = null;
@@ -253,33 +239,45 @@
          }
          return _loc1_;
       }
-      
+
+      private function requestDebriefing(param1:Boolean) : void
+      {
+         if(this.mDebriefingOpened)
+         {
+            return;
+         }
+         this.mDebriefingOpened = true;
+         this.mActionsLeft = 0;
+         this.mTurnChangeTimer = 0;
+         this.mGame.openPvPDebriefing(param1);
+      }
+
       public function updateTurn(param1:int) : void
       {
+         if(this.mDebriefingOpened || !this.mGame || !this.mGame.mScene)
+         {
+            return;
+         }
          var _loc2_:IsometricScene = this.mGame.mScene;
+         var enemyCount:int = _loc2_.getEnemyUnits().length;
+         var playerCount:int = _loc2_.getPlayerAliveUnits().length;
+         if(enemyCount == 0 || playerCount == 0)
+         {
+            this.requestDebriefing(enemyCount == 0);
+            return;
+         }
          if(this.mPlayerTurn)
          {
-            if(_loc2_.getEnemyUnits().length > 0 && _loc2_.getPlayerAliveUnits().length > 0)
+            if(this.mActionsLeft <= 0)
             {
-               if(this.mActionsLeft <= 0)
-               {
-                  this.mTurnChangeTimer = this.TURN_DELAY;
-                  this.changeTurn();
-               }
-            }
-            else
-            {
-               this.mGame.openPvPDebriefing(_loc2_.getEnemyUnits().length == 0);
+               this.mTurnChangeTimer = this.TURN_DELAY;
+               this.changeTurn();
             }
          }
          else
          {
             this.mTurnChangeTimer -= param1;
-            if(_loc2_.getPlayerAliveUnits().length == 0 || _loc2_.getEnemyUnits().length == 0)
-            {
-               this.mGame.openPvPDebriefing(_loc2_.getEnemyUnits().length == 0);
-            }
-            else if(this.mActionsLeft > 0)
+            if(this.mActionsLeft > 0)
             {
                if(this.mTurnChangeTimer <= 0)
                {
@@ -294,27 +292,35 @@
             }
          }
       }
-      
+
       private function doEnemyAction() : void
       {
+         if(this.mDebriefingOpened)
+         {
+            return;
+         }
          if(!this.mAI)
          {
             this.mAI = new PvPAI(this.mGame,this.mGame.mScene,GameState.mConfig.PvPAIWeakenings["0"]);
          }
          this.mAI.makeMove();
       }
-      
+
       private function changeTurn() : void
       {
+         if(this.mDebriefingOpened)
+         {
+            return;
+         }
          this.mActionsLeft = ACTIONS_PER_TURN;
          this.mPlayerTurn = !this.mPlayerTurn;
-         this.mGame.mPvPHUD.mTextUpdateRequired = true;
-         this.mGame.mPvPHUD.turnChanged(this.mPlayerTurn);
-         if(PvPAI.AI_DEBUG)
+         if(this.mGame.mPvPHUD)
          {
+            this.mGame.mPvPHUD.mTextUpdateRequired = true;
+            this.mGame.mPvPHUD.turnChanged(this.mPlayerTurn);
          }
       }
-      
+
       public function initObjects() : void
       {
          var _loc2_:Renderable = null;
@@ -371,7 +377,7 @@
                               _loc15_ = _loc8_[_loc11_] as Object;
                               if(_loc3_.SpawningAreaType == "ObstacleSpawning")
                               {
-								 _loc4_ = ItemManager.getItem(_loc15_.ID,_loc15_.Type) as MapItem
+                                 _loc4_ = ItemManager.getItem(_loc15_.ID,_loc15_.Type) as MapItem;
                                  if(!_loc4_)
                                  {
                                     break;
@@ -424,8 +430,11 @@
                            _loc7_.splice(_loc6_,1);
                            _loc19_ = _loc17_.length * Math.random();
                            _loc4_ = ItemManager.getItem(_loc17_[_loc19_],"PvPEnemyUnit") as MapItem;
-                           _loc2_ = _loc1_.createObject(_loc4_,new Point(0,0));
-                           _loc2_.setPos(_loc1_.getCenterPointXOfCell(_loc5_),_loc1_.getCenterPointYOfCell(_loc5_),0);
+                           if(_loc4_)
+                           {
+                              _loc2_ = _loc1_.createObject(_loc4_,new Point(0,0));
+                              _loc2_.setPos(_loc1_.getCenterPointXOfCell(_loc5_),_loc1_.getCenterPointYOfCell(_loc5_),0);
+                           }
                            _loc18_++;
                         }
                      }
@@ -467,10 +476,13 @@
                            _loc6_ = _loc7_.length * Math.random();
                            _loc5_ = _loc7_[_loc6_];
                            _loc7_.splice(_loc6_,1);
-                           _loc19_ = (_loc19_ = 4 * Math.random()) * 2;
+                           _loc19_ = int(4 * Math.random()) * 2;
                            _loc4_ = ItemManager.getItem(_loc21_[_loc19_],_loc21_[_loc19_ + 1]) as MapItem;
-                           _loc2_ = _loc1_.createObject(_loc4_,new Point(0,0));
-                           _loc2_.setPos(_loc1_.getCenterPointXOfCell(_loc5_),_loc1_.getCenterPointYOfCell(_loc5_),0);
+                           if(_loc4_)
+                           {
+                              _loc2_ = _loc1_.createObject(_loc4_,new Point(0,0));
+                              _loc2_.setPos(_loc1_.getCenterPointXOfCell(_loc5_),_loc1_.getCenterPointYOfCell(_loc5_),0);
+                           }
                            _loc22_++;
                         }
                      }
