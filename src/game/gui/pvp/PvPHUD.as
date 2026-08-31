@@ -763,6 +763,20 @@
 		}
 
 		public function openPvPDebriefingDialog(): void {
+			if (Config.OFFLINE_MODE) {
+				try {
+					var debriefClass:Class = DCResourceManager.getInstance().getSWFClass("swf/popups_pvp", "popup_pvp_loot");
+					if (debriefClass != null) {
+						trace("[PVP_DEBRIEF_OPEN] mode=embedded symbol=popup_pvp_loot");
+						this.openDialog(PvPDebriefingDialog, [this.closeDialog, this.mGame.openPvPMatchUpDialog], null, true);
+						this.cancelTools();
+						return;
+					}
+				} catch (error:Error) {
+					trace("[PVP_DEBRIEF_EMBEDDED_FAIL] error=" + error.message);
+				}
+			}
+			trace("[PVP_DEBRIEF_OPEN] mode=resource");
 			this.openDialogIfResourceLoaded("swf/popups_pvp", PvPDebriefingDialog, [this.closeDialog, this.mGame.openPvPMatchUpDialog]);
 			this.cancelTools();
 		}

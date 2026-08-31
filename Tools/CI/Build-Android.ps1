@@ -294,6 +294,7 @@ $embeddedSymbols=@(
   @{Name='world_map';Symbol='map'},
   @{Name='pvp_matchup';Symbol='popup_pvp'},
   @{Name='pvp_combat_setup';Symbol='popup_pvp_armies'},
+  @{Name='pvp_debrief';Symbol='popup_pvp_loot'},
   @{Name='pvp_hud';Symbol='hud_pvp'},
   @{Name='pvp_turn_shift';Symbol='hud_pvp_turn_shift'}
 )
@@ -303,6 +304,27 @@ foreach($check in $embeddedSymbols){
   Write-Host "ANDROID_EMBEDDED_SWF_SYMBOL=PASS name=$($check.Name) symbol=$($check.Symbol)"
 }
 Write-Host "ANDROID_EMBEDDED_SWF_MODEL=PASS logical_swfs=embedded root_swf=$appContentSwf dump=$symbolDumpPath"
+
+$pvpUiAssets=@(
+  'fire_boost_plus_1.png','fire_boost_plus_2.png','fire_boost_plus_3.png',
+  'shield_boost_plus_1.png','shield_boost_plus_2.png','shield_boost_plus_3.png',
+  'range_boost_plus_1.png','range_boost_plus_2.png','range_boost_plus_3.png',
+  'win.png','lose.png'
+)
+foreach($assetName in $pvpUiAssets){
+  $assetPath=Join-Path $stage ('data\icons\pvp_ui_icons\'+$assetName)
+  if(-not(Test-Path -LiteralPath $assetPath)){throw "ANDROID_PVP_UI_ASSET=FAIL missing=$assetName path=$assetPath"}
+  $bytes=@(Get-Content -LiteralPath $assetPath -Encoding Byte -TotalCount 8)
+  $pngSig=@(137,80,78,71,13,10,26,10)
+  if($bytes.Count -ne 8){throw "ANDROID_PVP_UI_ASSET=FAIL short_file=$assetName"}
+  for($sigIndex=0;$sigIndex -lt 8;$sigIndex++){
+    if([int]$bytes[$sigIndex] -ne $pngSig[$sigIndex]){throw "ANDROID_PVP_UI_ASSET=FAIL invalid_png=$assetName index=$sigIndex"}
+  }
+  $assetSize=(Get-Item -LiteralPath $assetPath).Length
+  if($assetSize -lt 100){throw "ANDROID_PVP_UI_ASSET=FAIL suspicious_size=$assetName size=$assetSize"}
+  Write-Host "ANDROID_PVP_UI_ASSET=PASS name=$assetName size=$assetSize"
+}
+
 
 function Get-NormalizedTileCellCount([string]$Path){
   $raw=Get-Content -LiteralPath $Path -Raw

@@ -849,13 +849,15 @@
 				}
 			}
 			if (_loc2_) {
-				this.updateActions(smGlobalDeltaTime);
-				if (this.mState == STATE_PVP) {
-					if (FeatureTuner.USE_PVP_MATCH) {
-						if (this.mCurrentAction == null) {
-							if (this.mMainActionQueue.mActions.length == 0) {
-								this.mPvPMatch.updateTurn(param1);
-							}
+				var pvpTerminal:Boolean = this.mState == STATE_PVP && FeatureTuner.USE_PVP_MATCH && this.mPvPMatch && this.mPvPMatch.checkTerminalState();
+				if (pvpTerminal) {
+					this.resetActions();
+					this.mActionWaitingConfirmation = null;
+				} else {
+					this.updateActions(smGlobalDeltaTime);
+					if (this.mState == STATE_PVP && FeatureTuner.USE_PVP_MATCH) {
+						if (this.mCurrentAction == null && this.mMainActionQueue.mActions.length == 0) {
+							this.mPvPMatch.updateTurn(param1);
 						}
 					}
 				}
@@ -1276,8 +1278,11 @@
 			if (!FeatureTuner.USE_PVP_MATCH || !this.mPlayerProfile || !this.mPvPMatch) {
 				return;
 			}
-			if (Config.OFFLINE_MODE && this.mPlayerProfile.mGlobalUnitCounts == null) {
-				OfflineSave.startEmptyPvPProgress();
+			if (Config.OFFLINE_MODE) {
+				OfflineSave.ensureOfflinePvPBoosters();
+				if (this.mPlayerProfile.mGlobalUnitCounts == null) {
+					OfflineSave.startEmptyPvPProgress();
+				}
 			}
 			if (this.mPlayerProfile.mGlobalUnitCounts == null || !this.getHud()) {
 				return;
@@ -1292,6 +1297,9 @@
 			var _loc2_: String = null;
 			var _loc3_: Object = null;
 			if (FeatureTuner.USE_PVP_MATCH) {
+				trace("[PVP_DEBRIEF_COMMIT] win=" + param1 + " map=" + this.mCurrentMapId);
+				this.resetActions();
+				this.mActionWaitingConfirmation = null;
 				this.mPvPMatch.setResult(param1);
 				this.mPlayerProfile.addBaddassXp(this.mPvPMatch.mWinRewardBadassXp);
 				this.mPlayerProfile.addMoney(this.mPvPMatch.mWinRewardMoney);

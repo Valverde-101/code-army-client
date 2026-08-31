@@ -1,5 +1,7 @@
 package game.gui.pvp
 {
+   import flash.display.DisplayObject;
+   import flash.display.DisplayObjectContainer;
    import flash.display.MovieClip;
    import flash.display.Sprite;
    import flash.events.MouseEvent;
@@ -76,7 +78,7 @@ package game.gui.pvp
       
       private function usePressed(param1:MouseEvent) : void
       {
-         var _loc2_:int = this.mCursorPos - Math.max(0,PANEL_COUNT - this.mBoosterInventory.length / 2);
+         var _loc2_:int = this.mCursorPos;
          var _loc3_:int = 0;
          while(_loc3_ < PANEL_COUNT)
          {
@@ -135,35 +137,73 @@ package game.gui.pvp
          this.mButtonRightFull.setEnabled(_loc2_);
       }
       
+      private function setPanelQuantity(param1:DisplayObjectContainer, param2:int) : void
+      {
+         var _loc2_:DisplayObject = null;
+         var _loc3_:TextField = null;
+         var _loc4_:String = null;
+         var _loc5_:int = 0;
+         if(!param1)
+         {
+            return;
+         }
+         while(_loc5_ < param1.numChildren)
+         {
+            _loc2_ = param1.getChildAt(_loc5_);
+            if(_loc2_ is TextField)
+            {
+               _loc3_ = _loc2_ as TextField;
+               _loc4_ = _loc3_.name ? _loc3_.name.toLowerCase() : "";
+               if(_loc3_.text == "99" || _loc4_.indexOf("count") >= 0 || _loc4_.indexOf("amount") >= 0 || _loc4_.indexOf("quantity") >= 0)
+               {
+                  _loc3_.text = param2 > 0 ? String(param2) : "";
+               }
+            }
+            else if(_loc2_ is DisplayObjectContainer)
+            {
+               this.setPanelQuantity(_loc2_ as DisplayObjectContainer,param2);
+            }
+            _loc5_++;
+         }
+      }
+
       public function addToScreen() : void
       {
          var _loc3_:MovieClip = null;
          var _loc4_:ArmyButton = null;
          var _loc5_:ShopItem = null;
+         var _loc6_:MovieClip = null;
+         var _loc7_:int = 0;
          this.mBoosterInventory = GameState.mInstance.mPlayerProfile.mInventory.getBoosters();
-         var _loc1_:int = this.mCursorPos - Math.max(0,PANEL_COUNT - this.mBoosterInventory.length / 2);
+         var itemCount:int = int(this.mBoosterInventory.length / 2);
+         this.mCursorPos = Math.min(this.mCursorPos,Math.max(0,itemCount - PANEL_COUNT));
+         var _loc1_:int = this.mCursorPos;
          var _loc2_:int = 0;
          while(_loc2_ < PANEL_COUNT)
          {
             _loc3_ = this.mBoosterFrames[_loc2_];
             _loc4_ = this.mBoosterButtons[_loc2_];
+            _loc6_ = this.mBasePanel.getChildByName("Powerup_0" + (_loc2_ + 1)) as MovieClip;
             Utils.removeAllChildren(_loc3_);
-            if(_loc1_ < this.mBoosterInventory.length / 2 && _loc1_ >= 0)
+            if(_loc1_ < itemCount)
             {
-               _loc5_ = this.mBoosterInventory[_loc1_ * 2];
+               _loc5_ = this.mBoosterInventory[_loc1_ * 2] as ShopItem;
+               _loc7_ = int(this.mBoosterInventory[_loc1_ * 2 + 1]);
+               this.setPanelQuantity(_loc6_,_loc7_);
                IconLoader.addIcon(_loc3_,_loc5_,this.iconLoaded);
-               _loc4_.setEnabled(true);
+               _loc4_.setEnabled(_loc7_ > 0);
             }
             else
             {
-               Utils.removeAllChildren(_loc3_);
+               this.setPanelQuantity(_loc6_,0);
                _loc4_.setEnabled(false);
             }
             _loc1_++;
             _loc2_++;
          }
+         trace("[PVP_BOOSTER_BAR] item_count=" + itemCount + " cursor=" + this.mCursorPos);
       }
-      
+
       private function iconLoaded(param1:Sprite) : void
       {
          Utils.scaleIcon(param1,this.mIconSize,this.mIconSize);

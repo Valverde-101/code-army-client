@@ -483,6 +483,25 @@
 			return player_unit_count
 		}
 
+		public static function ensureOfflinePvPBoosters(): void {
+			if (!Config.OFFLINE_MODE || !GameState.mInstance || !GameState.mInstance.mPlayerProfile || !GameState.mInstance.mPlayerProfile.mInventory) {
+				return;
+			}
+			var inventory: Inventory = GameState.mInstance.mPlayerProfile.mInventory;
+			var boosterIds: Array = ["Damage1", "Damage2", "Damage3", "Health5", "Health10", "Health15", "Range1", "Range2", "Range3"];
+			var boosterId: String = null;
+			var booster: Item = null;
+			var seeded: int = 0;
+			for each (boosterId in boosterIds) {
+				booster = ItemManager.getItem(boosterId, "Booster");
+				if (booster && inventory.getNumberOfItems(booster) <= 0) {
+					inventory.addItems(booster, 3);
+					seeded++;
+				}
+			}
+			trace("[OFFLINE_PVP_BOOSTERS] visible_entries=" + int(inventory.getBoosters().length / 2) + " seeded=" + seeded);
+		}
+
 		public static function startEmptyPvPProgress(): void {
 			var fakedata: * = {};
 
@@ -505,6 +524,7 @@
 			PvPOpponentCollection.smCollection = new PvPOpponentCollection();
 			GameState.mInstance.mPlayerProfile.setupPvPData(fakedata);
 			GameState.mInstance.mPlayerProfile.setupGlobalUnitCounts(fakedata);
+			ensureOfflinePvPBoosters();
 		}
 
 		public static function loadMap(mapdata: * ): void {

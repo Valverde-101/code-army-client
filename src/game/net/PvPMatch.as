@@ -249,23 +249,52 @@ package game.net
          this.mDebriefingOpened = true;
          this.mActionsLeft = 0;
          this.mTurnChangeTimer = 0;
-         this.mGame.openPvPDebriefing(param1);
+         trace("[PVP_DEBRIEF_REQUEST] win=" + param1 + " turn=" + this.mTurnCounter);
+         try
+         {
+            this.mGame.openPvPDebriefing(param1);
+         }
+         catch(error:Error)
+         {
+            trace("[PVP_DEBRIEF_FAIL] error=" + error.message);
+            this.mDebriefingOpened = false;
+            if(this.mGame)
+            {
+               this.mGame.endPvP();
+            }
+         }
+      }
+
+      public function checkTerminalState() : Boolean
+      {
+         if(this.mDebriefingOpened)
+         {
+            return true;
+         }
+         if(!this.mGame || !this.mGame.mScene)
+         {
+            return false;
+         }
+         var enemyCount:int = this.mGame.mScene.getPvPEnemyAliveUnits().length;
+         var playerCount:int = this.mGame.mScene.getPlayerAliveUnits().length;
+         if(enemyCount == 0 || playerCount == 0)
+         {
+            trace("[PVP_TERMINAL] enemies_alive=" + enemyCount + " players_alive=" + playerCount + " turn=" + this.mTurnCounter + " actions=" + this.mActionsLeft);
+            this.requestDebriefing(enemyCount == 0);
+            return true;
+         }
+         return false;
       }
 
       public function updateTurn(param1:int) : void
       {
-         if(this.mDebriefingOpened || !this.mGame || !this.mGame.mScene)
+         if(this.checkTerminalState())
          {
             return;
          }
          var _loc2_:IsometricScene = this.mGame.mScene;
-         var enemyCount:int = _loc2_.getEnemyUnits().length;
+         var enemyCount:int = _loc2_.getPvPEnemyAliveUnits().length;
          var playerCount:int = _loc2_.getPlayerAliveUnits().length;
-         if(enemyCount == 0 || playerCount == 0)
-         {
-            this.requestDebriefing(enemyCount == 0);
-            return;
-         }
          if(this.mPlayerTurn)
          {
             if(this.mActionsLeft <= 0)
