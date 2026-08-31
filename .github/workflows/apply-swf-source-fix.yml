@@ -1,0 +1,54 @@
+name: Apply verified SWF source fix
+
+on:
+  push:
+    branches:
+      - chore/local-army-bootstrap-20260827
+    paths:
+      - '.github/workflows/apply-swf-source-fix.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: army-attack-source-fix-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply reproducible tooltip timer lifecycle fix
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual -ne '${{ github.sha }}'){throw "SOURCE_FIX_HEAD=FAIL expected=${{ github.sha }} actual=$actual"}
+          & '.\Tools\SWF\Apply-IsometricTooltipTimerFix.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE
+          & '.\Tools\CI\Test-PowerShellSyntax.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE
+          git diff --check
+          git diff --exit-code -- src/game/isometric/IsometricScene.as Tools/CI/Test-AndroidRuntimePatch.ps1 *> $null
+          if($LASTEXITCODE -eq 0){throw 'SOURCE_FIX=FAIL no_source_diff'}
+      - name: Commit only verified source and regression
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git fetch origin chore/local-army-bootstrap-20260827
+          $remote=(git rev-parse origin/chore/local-army-bootstrap-20260827).Trim()
+          if($remote -ne '${{ github.sha }}'){throw "STALE_SOURCE_FIX=FAIL expected=${{ github.sha }} remote=$remote"}
+          $changed=@(git diff --name-only)
+          $allowed=@('src/game/isometric/IsometricScene.as','Tools/CI/Test-AndroidRuntimePatch.ps1')
+          foreach($file in $changed){if($allowed -notcontains $file){throw "SOURCE_FIX_SCOPE=FAIL unexpected=$file"}}
+          foreach($file in $allowed){if($changed -notcontains $file){throw "SOURCE_FIX_SCOPE=FAIL missing=$file"}}
+          git config user.name 'Army Attack CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- src/game/isometric/IsometricScene.as Tools/CI/Test-AndroidRuntimePatch.ps1
+          git commit -m 'perf(scene): make tooltip timer one-shot'
+          git push origin HEAD:chore/local-army-bootstrap-20260827
+          Write-Host "SOURCE_FIX=PASS sha=$((git rev-parse HEAD).Trim())"
