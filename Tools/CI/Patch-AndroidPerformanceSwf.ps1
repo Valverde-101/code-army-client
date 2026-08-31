@@ -112,7 +112,7 @@ function Convert-GameStateSourceForFFDec([string]$Source,[string]$Destination){
   $text=$text -replace 'PermissionStatus\.GRANTED', '"granted"'
   $text=$text -replace '(?m)(\w+)\s*:\s*PermissionEvent\b', '$1:*'
   if($text -match 'CONFIG::'){throw "SWF_PERF_PATCH=FAIL config_directive_survived source=$Source"}
-  if($text -match '\bPermissionEvent\b|\bPermissionStatus\b'){throw "SWF_PERF_PATCH=FAIL air_permission_type_survived source=$Source"}
+  if($text -cmatch '\bPermissionEvent\b|\bPermissionStatus\b'){throw "SWF_PERF_PATCH=FAIL air_permission_type_survived source=$Source"}
   Set-Content -LiteralPath $Destination -Value $text -Encoding UTF8
   Write-Host "FFDEC_AIR_PERMISSION_SHIM=PASS event=permissionStatus granted=granted"
   Write-Host "FFDEC_SOURCE_PREPROCESS=PASS class=game.states.GameState target=BUILD_FOR_MOBILE_AIR path=$Destination"
