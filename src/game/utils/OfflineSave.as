@@ -302,6 +302,7 @@
 		public static function switchMap(): void {
 			var map_id: String = GameState.mInstance.mCurrentMapId;
 			var savedMap: * = null;
+			trace("[OFFLINE_SWITCH_MAP_BEGIN] map=" + map_id + " has_saved=" + Boolean(mMaps[map_id]));
 			GameState.mInstance.mLoadingStatesOver = false;
 			GameState.mInstance.mCurrentMapGraphicsId = Math.max(GameState.GRAPHICS_MAP_ID_LIST.indexOf(map_id), 0);
 			GameState.mInstance.mPlayerProfile.mInventory.getAreas();
@@ -333,6 +334,7 @@
 				GameState.mInstance.mHUD.changeWaterVisibility(false);
 			}
 			GameState.mInstance.mLoadingStatesOver = true;
+			trace("[OFFLINE_SWITCH_MAP_END] map=" + map_id + " grid=" + (GameState.mInstance.mMapData && GameState.mInstance.mMapData.mGrid ? GameState.mInstance.mMapData.mGrid.length : 0));
 		}
 
 		public static function generateSaveJson(): * {

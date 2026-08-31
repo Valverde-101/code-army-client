@@ -27,12 +27,14 @@ import android.widget.TextView;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
+import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -320,7 +322,9 @@ public final class PerformanceOverlay {
                     writeText(new File(dir, "README.txt"),
                         "Army Attack Android performance session\n" +
                         "Buttons are native Android views layered over AIR; the SWF bytecode is not modified.\n" +
-                        "Use markers.jsonl to locate MARCAR LAG timestamps.\n");
+                        "Use markers.jsonl to locate MARCAR LAG timestamps.\n" +
+                        "STOP also captures threads.txt, proc-status.txt, smaps-rollup.txt and own-process logcat when Android permits it.\n" +
+                        "Search logs for PVP_, WORLD_MAP_, MAP_, OFFLINE_SWITCH_MAP and ARMY_DIAG markers.\n");
                     writeText(new File(dir, "device.json"), buildDeviceJson().toString(2));
                     writeText(sessionCsv,
                         "elapsed_ms,utc,cpu_onecore_pct,cpu_normalized_pct,pss_mb,java_used_mb,native_mb,gc_count,gc_time_ms,thermal,vsync_fps,jank_24ms,jank_50ms,max_frame_ms,cores\n");
@@ -356,6 +360,7 @@ public final class PerformanceOverlay {
         io.execute(new Runnable() {
             @Override public void run() {
                 try {
+                    captureProcessDiagnostics(dir);
                     JSONObject summary = new JSONObject();
                     summary.put("schema_version", 1);
                     summary.put("session_id", sessionId);
@@ -523,6 +528,72 @@ public final class PerformanceOverlay {
                 }
             }
         });
+    }
+
+    private static void captureProcessDiagnostics(File dir) {
+        if (dir == null) return;
+        try {
+            StringBuilder threads = new StringBuilder();
+            Map<Thread, StackTraceElement[]> all = Thread.getAllStackTraces();
+            for (Map.Entry<Thread, StackTraceElement[]> entry : all.entrySet()) {
+                Thread thread = entry.getKey();
+                threads.append('"').append(thread.getName()).append('"').append(" id=").append(thread.getId()).append(" state=").append(thread.getState()).append('\n');
+                StackTraceElement[] stack = entry.getValue();
+                if (stack != null) for (StackTraceElement frame : stack) threads.append("    at ").append(frame.toString()).append('\n');
+                threads.append('\n');
+            }
+            writeText(new File(dir, "threads.txt"), threads.toString());
+        } catch (Throwable t) {
+            appendError(dir, "thread_dump", t);
+        }
+        copyProcFile("/proc/self/status", new File(dir, "proc-status.txt"), 1024 * 1024);
+        copyProcFile("/proc/self/smaps_rollup", new File(dir, "smaps-rollup.txt"), 1024 * 1024);
+        captureOwnLogcat(dir);
+    }
+
+    private static void copyProcFile(String source, File destination, int maxBytes) {
+        BufferedInputStream in = null;
+        FileOutputStream out = null;
+        try {
+            File src = new File(source);
+            if (!src.exists()) return;
+            in = new BufferedInputStream(new FileInputStream(src));
+            out = new FileOutputStream(destination, false);
+            byte[] buffer = new byte[8192];
+            int total = 0;
+            int read;
+            while ((read = in.read(buffer)) != -1 && total < maxBytes) {
+                int allowed = Math.min(read, maxBytes - total);
+                out.write(buffer, 0, allowed);
+                total += allowed;
+            }
+        } catch (Throwable t) {
+            appendError(destination.getParentFile(), "proc_capture:" + source, t);
+        } finally {
+            try { if (in != null) in.close(); } catch (Throwable ignored) {}
+            try { if (out != null) out.close(); } catch (Throwable ignored) {}
+        }
+    }
+
+    private static void captureOwnLogcat(File dir) {
+        if (Build.VERSION.SDK_INT < 24) return;
+        Process process = null;
+        BufferedReader reader = null;
+        try {
+            process = new ProcessBuilder("logcat", "-d", "-v", "threadtime", "--pid=" + android.os.Process.myPid()).redirectErrorStream(true).start();
+            reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder();
+            String line;
+            final int cap = 2 * 1024 * 1024;
+            while ((line = reader.readLine()) != null && out.length() < cap) out.append(line).append('\n');
+            process.waitFor();
+            writeText(new File(dir, "logcat-own-process.txt"), out.toString());
+        } catch (Throwable t) {
+            appendError(dir, "logcat_own_process", t);
+        } finally {
+            try { if (reader != null) reader.close(); } catch (Throwable ignored) {}
+            if (process != null) try { process.destroy(); } catch (Throwable ignored) {}
+        }
     }
 
     private void renderSample(MetricSample s) {

@@ -55,9 +55,14 @@ $patchSpecs=@(
   [ordered]@{Class='game.characters.AnimationController';Source='src\game\characters\AnimationController.as';Log='ffdec-feature-animation-controller.log'},
   [ordered]@{Class='Utils';Source='src\Utils.as';Log='ffdec-performance-utils.log'},
   [ordered]@{Class='game.utils.OfflineSave';Source='src\game\utils\OfflineSave.as';Log='ffdec-feature-offlinesave.log'},
-  [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
-  [ordered]@{Class='game.gui.GiveFilePermissionDialog';Source='src\game\gui\GiveFilePermissionDialog.as';Log='ffdec-feature-save-permission.log'},
   [ordered]@{Class='game.net.PvPMatch';Source='src\game\net\PvPMatch.as';Log='ffdec-feature-pvp-match.log'},
+  [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
+  [ordered]@{Class='game.gameElements.LootReward';Source='src\game\gameElements\LootReward.as';Log='ffdec-feature-pvp-loot.log'},
+  [ordered]@{Class='game.actions.PvPAttackEnemyAction';Source='src\game\actions\PvPAttackEnemyAction.as';Log='ffdec-feature-pvp-attack.log'},
+  [ordered]@{Class='game.actions.PvPAttackEnemyInstallationAction';Source='src\game\actions\PvPAttackEnemyInstallationAction.as';Log='ffdec-feature-pvp-installation-attack.log'},
+  [ordered]@{Class='game.actions.PvPFireMissionAction';Source='src\game\actions\PvPFireMissionAction.as';Log='ffdec-feature-pvp-firemission.log'},
+  [ordered]@{Class='game.gui.GameHUD';Source='src\game\gui\GameHUD.as';Log='ffdec-feature-gamehud.log'},
+  [ordered]@{Class='game.gui.GiveFilePermissionDialog';Source='src\game\gui\GiveFilePermissionDialog.as';Log='ffdec-feature-save-permission.log'},
   [ordered]@{Class='game.gui.popups.WorldMapWindow';Source='src\game\gui\popups\WorldMapWindow.as';Log='ffdec-feature-worldmap.log'},
   [ordered]@{Class='game.gui.pvp.PvPMatchUpDialog';Source='src\game\gui\pvp\PvPMatchUpDialog.as';Log='ffdec-feature-pvp-matchup.log'},
   [ordered]@{Class='game.gui.pvp.PvPCombatSetupDialog';Source='src\game\gui\pvp\PvPCombatSetupDialog.as';Log='ffdec-feature-pvp-combat.log'},
@@ -132,7 +137,7 @@ $tempSources=New-Object System.Collections.Generic.List[string]
 for($i=0;$i -lt $patchSpecs.Count;$i++){
   $spec=$patchSpecs[$i]
   $source=Join-Path $RepoRoot $spec.Source
-  if($spec.Class -in @('game.states.GameState','game.gui.GiveFilePermissionDialog')){
+  if($spec.Class -in @('game.states.GameState','game.gui.GameHUD','game.gui.GiveFilePermissionDialog')){
     $leafClass=[System.IO.Path]::GetFileNameWithoutExtension([string]$spec.Source)
     $ffdecSource=Join-Path $outDir ($leafClass + '.mobile.ffdec.as')
     Remove-Item -LiteralPath $ffdecSource -Force -ErrorAction SilentlyContinue
