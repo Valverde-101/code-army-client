@@ -65,7 +65,8 @@ if($scene -ne $originalScene){Set-Content -LiteralPath $scenePath -Value $scene 
 $test=Get-Content -LiteralPath $testPath -Raw
 $originalTest=$test
 if($test -notmatch "tooltip_timer_one_shot"){
-  $anchor="$audit=Join-Path `$RepoRoot 'Tools\\CI\\Audit-SwfCore.ps1'"
+  # Literal anchor: never interpolate $audit/$RepoRoot under StrictMode.
+  $anchor='$audit=Join-Path $RepoRoot ''Tools\\CI\\Audit-SwfCore.ps1'''
   if(-not $test.Contains($anchor)){throw 'TOOLTIP_TIMER_FIX=FAIL regression_anchor_missing'}
   $checks=@'
 Require-Contains $scene 'private static const TOOLTIP_TIMEOUT_MS: int = 1000;' 'tooltip_timer_fixed_wall_clock_timeout'
