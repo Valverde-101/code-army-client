@@ -276,16 +276,52 @@ if($desertSwfs -notcontains 'swf/new_backgroud_01' -or $desertSwfs -notcontains 
 # that exact stage path, and treating it as a map overlay dependency blocks
 # packaging before ADT can validate the real application bundle.
 $requiredMapAssets=@(
-  'data\swf\new_backgroud_01.swf',
-  'data\swf\desert_backgroud_01.swf',
-  'data\swf\popups_pvp.swf',
-  'data\swf\map.swf'
+  'new_backgroud_01.swf',
+  'desert_backgroud_01.swf',
+  'popups_pvp.swf',
+  'map.swf'
 )
-foreach($relative in $requiredMapAssets){
-  $asset=Join-Path $stage $relative
-  if(-not(Test-Path -LiteralPath $asset)){throw "ANDROID_MAP_ASSET=FAIL missing=$relative"}
-  Write-Host "ANDROID_MAP_ASSET=PASS path=$relative size=$((Get-Item -LiteralPath $asset).Length)"
+$mapAssetDest=Join-Path $stage 'data\swf'
+New-Item -ItemType Directory -Force -Path $mapAssetDest|Out-Null
+$mapAssetSearchRoots=@(
+  [pscustomobject]@{Name='seed_v23';Path=$seedExtract},
+  [pscustomobject]@{Name='published_v23_2';Path=$publishedGameRoot},
+  [pscustomobject]@{Name='principal_repo';Path=(Join-Path $RepoRoot 'src\data')}
+)
+foreach($assetName in $requiredMapAssets){
+  $dest=Join-Path $mapAssetDest $assetName
+  if(-not(Test-Path -LiteralPath $dest)){
+    $selected=$null
+    $selectedRoot=$null
+    foreach($searchRoot in $mapAssetSearchRoots){
+      if(-not(Test-Path -LiteralPath $searchRoot.Path)){continue}
+      $found=@(Get-ChildItem -LiteralPath $searchRoot.Path -Recurse -File -Filter $assetName -ErrorAction SilentlyContinue |
+        Where-Object{$_.FullName -notmatch '[\\/]mods[\\/]'} |
+        Sort-Object FullName)
+      if($found.Count -eq 0){continue}
+      $hashes=@($found|ForEach-Object{(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}|Sort-Object -Unique)
+      if($hashes.Count -ne 1){
+        throw "ANDROID_MAP_ASSET=FAIL ambiguous name=$assetName root=$($searchRoot.Name) candidates=$($found.FullName -join ';') hashes=$($hashes -join ',')"
+      }
+      $selected=$found[0]
+      $selectedRoot=$searchRoot.Name
+      break
+    }
+    if(-not $selected){
+      throw "ANDROID_MAP_ASSET=FAIL missing=$assetName searched=$($mapAssetSearchRoots.Path -join ';')"
+    }
+    Copy-Item -LiteralPath $selected.FullName -Destination $dest -Force
+    Write-Host "ANDROID_MAP_ASSET_STAGE=PASS name=$assetName source=$selectedRoot source_path=$($selected.FullName) dest=$dest"
+  }
+  $info=Get-Item -LiteralPath $dest
+  if($info.Length -le 8){throw "ANDROID_MAP_ASSET=FAIL invalid_size name=$assetName size=$($info.Length)"}
+  $header=[System.IO.File]::ReadAllBytes($dest)[0..2]
+  $signature=[System.Text.Encoding]::ASCII.GetString($header)
+  if($signature -notin @('FWS','CWS','ZWS')){throw "ANDROID_MAP_ASSET=FAIL invalid_swf name=$assetName signature=$signature"}
+  $hash=(Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant()
+  Write-Host "ANDROID_MAP_ASSET=PASS name=$assetName path=data\swf\$assetName size=$($info.Length) sha256=$hash signature=$signature"
 }
+
 function Get-NormalizedTileCellCount([string]$Path){
   $raw=Get-Content -LiteralPath $Path -Raw
   $cells=New-Object System.Collections.Generic.List[string]
