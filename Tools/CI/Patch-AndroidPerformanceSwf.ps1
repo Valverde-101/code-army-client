@@ -104,9 +104,17 @@ function Convert-GameStateSourceForFFDec([string]$Source,[string]$Destination){
   }
   if($null -ne $configMode){throw "SWF_PERF_PATCH=FAIL unterminated_config_block source=$Source mode=$configMode"}
   $text=$result -join [Environment]::NewLine
-  $text=$text -replace '(?m)^(\s*)import flash\.permissions\.PermissionStatus\s*$', '$1import flash.permissions.PermissionStatus;'
+  # FFDec's experimental AS3 compiler does not resolve AIR 24+ permission-only
+  # types from the mobile SDK. Preserve runtime semantics in this temporary
+  # source without changing the canonical GameState implementation.
+  $text=$text -replace '(?m)^\s*import flash\.permissions\.PermissionStatus\s*;?\s*$', ''
+  $text=$text -replace 'PermissionEvent\.PERMISSION_STATUS', '"permissionStatus"'
+  $text=$text -replace 'PermissionStatus\.GRANTED', '"granted"'
+  $text=$text -replace '(?m)(\w+)\s*:\s*PermissionEvent\b', '$1:*'
   if($text -match 'CONFIG::'){throw "SWF_PERF_PATCH=FAIL config_directive_survived source=$Source"}
+  if($text -match '\bPermissionEvent\b|\bPermissionStatus\b'){throw "SWF_PERF_PATCH=FAIL air_permission_type_survived source=$Source"}
   Set-Content -LiteralPath $Destination -Value $text -Encoding UTF8
+  Write-Host "FFDEC_AIR_PERMISSION_SHIM=PASS event=permissionStatus granted=granted"
   Write-Host "FFDEC_SOURCE_PREPROCESS=PASS class=game.states.GameState target=BUILD_FOR_MOBILE_AIR path=$Destination"
 }
 
