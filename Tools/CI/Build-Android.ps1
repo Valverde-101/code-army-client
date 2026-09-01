@@ -281,7 +281,9 @@ if(-not(Test-Path -LiteralPath $resourceManagerSource)){throw "ANDROID_EMBEDDED_
 if(-not(Test-Path -LiteralPath $dummyConfig)){throw "ANDROID_EMBEDDED_SWF_MODEL=FAIL dummy_config_missing=$dummyConfig"}
 $resourceManagerText=Get-Content -LiteralPath $resourceManagerSource -Raw
 if(-not $resourceManagerText.Contains('this.loadTextFile("../config/dummy.json",param2);')){throw 'ANDROID_EMBEDDED_SWF_MODEL=FAIL swf_dummy_shim_missing'}
-if(-not $resourceManagerText.Contains('return getDefinitionByName(_loc3_) as Class;')){throw 'ANDROID_EMBEDDED_SWF_MODEL=FAIL global_class_lookup_missing'}
+$hasDirectEmbeddedLookup=$resourceManagerText.Contains('return getDefinitionByName(_loc3_) as Class;')
+$hasInstrumentedEmbeddedLookup=$resourceManagerText.Contains('resolved = getDefinitionByName(_loc3_) as Class;') -and $resourceManagerText.Contains('return resolved;')
+if(-not($hasDirectEmbeddedLookup -or $hasInstrumentedEmbeddedLookup)){throw 'ANDROID_EMBEDDED_SWF_MODEL=FAIL global_class_lookup_missing'}
 
 $symbolDumpPath=Join-Path $buildRoot 'ffdec-performance-dumpas3.log'
 if(-not(Test-Path -LiteralPath $symbolDumpPath)){throw "ANDROID_EMBEDDED_SWF_MODEL=FAIL symbol_dump_missing=$symbolDumpPath"}
