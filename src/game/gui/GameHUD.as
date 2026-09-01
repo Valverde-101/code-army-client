@@ -130,6 +130,7 @@
 		private static const DEBUG_HUD: Boolean = false;
 
 		private var mMobileLayoutHeight:Number = 750;
+		private var mMobileRightMenuBaseY:Number = 0;
 		private static const MOBILE_PULL_OUT_TOP_SAFE:Number = 72;
 		private static const MOBILE_PULL_OUT_BOTTOM_SAFE:Number = 8;
 
@@ -721,13 +722,21 @@
 
 		private function enterFrame(param1: Event): void {
 			CONFIG::BUILD_FOR_MOBILE_AIR {
-				this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
+				if (this.mPullOutMenuState == this.STATE_MENU_OPEN) {
+					this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
+				}
 			}
 			if (this.mPullOutMenuFrame.currentFrameLabel == "Normal") {
 				this.mPullOutMenuFrame.stop();
 				this.mPullOutMenuFrame.removeEventListener(Event.ENTER_FRAME, this.enterFrame);
 			} else if (this.mPullOutMenuFrame.currentFrame == this.mPullOutMenuFrame.totalFrames) {
 				this.mPullOutMenuFrame.gotoAndStop(1);
+				CONFIG::BUILD_FOR_MOBILE_AIR {
+					if (this.mPullOutMenuState == this.STATE_MENU_CLOSED) {
+						this.mPullOutMenuFrame.y = this.mMobileRightMenuBaseY;
+						Utils.DiagEvent("HUD_RIGHT_CLOSE_RESET","y=" + this.mPullOutMenuFrame.y + ";frame=" + this.mPullOutMenuFrame.currentFrame);
+					}
+				}
 				this.mPullOutMenuFrame.removeEventListener(Event.ENTER_FRAME, this.enterFrame);
 			}
 		}
@@ -977,6 +986,7 @@
 				this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);
 				this.mButtonPullOutFrame.y = Math.max(0,localHeight - this.mButtonPullOutFrame.height);
 				this.mPullOutMenuFrame.y = Math.max(0,localHeight - this.mPullOutMenuFrame.height);
+				this.mMobileRightMenuBaseY = this.mPullOutMenuFrame.y;
 				this.constrainMobilePullOut(this.mPullOutMissionFrame,"missions");
 				this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
 

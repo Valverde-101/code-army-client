@@ -58,8 +58,15 @@ package game.gameElements
             if(FeatureTuner.USE_FIRE_CALL_EFFECTS)
             {
                _loc5_ = _loc3_.getSWFClass(_loc4_,param1.getIconGraphics());
-               this.mAnim = new _loc5_();
-               addChild(this.mAnim);
+               if(_loc5_ != null)
+               {
+                  this.mAnim = new _loc5_();
+                  addChild(this.mAnim);
+               }
+               else
+               {
+                  Utils.DiagEvent("FIREMISSION_GRAPHICS_MISS","mission=" + param1.mId + ";resource=" + _loc4_ + ";symbol=" + param1.getIconGraphics());
+               }
             }
          }
          else
@@ -124,8 +131,15 @@ package game.gameElements
          if(FeatureTuner.USE_FIRE_CALL_EFFECTS)
          {
             _loc3_ = _loc2_.getSWFClass(this.mItem.getIconGraphicsFile(),this.mItem.getIconGraphics());
-            this.mAnim = new _loc3_();
-            addChild(this.mAnim);
+            if(_loc3_ != null)
+            {
+               this.mAnim = new _loc3_();
+               addChild(this.mAnim);
+            }
+            else
+            {
+               Utils.DiagEvent("FIREMISSION_GRAPHICS_MISS","mission=" + this.mItem.mId + ";resource=" + this.mItem.getIconGraphicsFile() + ";symbol=" + this.mItem.getIconGraphics());
+            }
          }
          if(this.mStarted)
          {
@@ -182,7 +196,7 @@ package game.gameElements
          {
             return;
          }
-         if(FeatureTuner.USE_FIRE_CALL_EFFECTS)
+         if(FeatureTuner.USE_FIRE_CALL_EFFECTS && this.mAnim)
          {
             this.mAnim.gotoAndStop(1);
          }
@@ -195,7 +209,7 @@ package game.gameElements
          {
             return false;
          }
-         if(!FeatureTuner.USE_FIRE_CALL_EFFECTS)
+         if(!FeatureTuner.USE_FIRE_CALL_EFFECTS || !this.mAnim)
          {
             return true;
          }
@@ -217,7 +231,7 @@ package game.gameElements
          {
             return;
          }
-         if(!FeatureTuner.USE_FIRE_CALL_EFFECTS)
+         if(!FeatureTuner.USE_FIRE_CALL_EFFECTS || !this.mAnim)
          {
             return;
          }
@@ -305,7 +319,6 @@ package game.gameElements
                this.mShakeEffect.update();
             }
          }
-         this.mAnim = null;
       }
    }
 }

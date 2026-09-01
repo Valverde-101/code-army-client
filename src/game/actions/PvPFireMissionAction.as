@@ -30,11 +30,53 @@ package game.actions
       {
          return true;
       }
+
+      override public function start() : void
+      {
+         Utils.DiagEvent("PVP_FIREMISSION_START","mission=" + (mItem ? mItem.mId : "null") + ";cell=" + (mGC ? mGC.mPosI + "," + mGC.mPosJ : "null"));
+         try
+         {
+            super.start();
+         }
+         catch(error:Error)
+         {
+            Utils.DiagEvent("PVP_FIREMISSION_START_ERROR","mission=" + (mItem ? mItem.mId : "null") + ";error=" + error.errorID + ";message=" + error.message);
+            this.executeFallback();
+            skip();
+         }
+      }
+
+      private function executeFallback() : void
+      {
+         var target:Renderable = mGC ? mGC.mCharacter as Renderable : null;
+         if(target is PlayerUnit)
+         {
+            damageOwnUnit(PlayerUnit(target));
+         }
+         else if(target is PlayerBuildingObject)
+         {
+            if(!(target is ResourceBuildingObject || target is SignalObject))
+            {
+               damageOwnBuilding(PlayerBuildingObject(target));
+            }
+         }
+         else if(target is PlayerInstallationObject)
+         {
+            damageOwnInstallation(PlayerInstallationObject(target));
+         }
+         else if(target is PvPEnemyUnit)
+         {
+            this.attackUnit(PvPEnemyUnit(target));
+         }
+         GameState.mInstance.updateGrid();
+         Utils.DiagEvent("PVP_FIREMISSION_FALLBACK","mission=" + (mItem ? mItem.mId : "null") + ";target=" + (target && target.mItem ? target.mItem.mId : "none"));
+      }
       
       override protected function execute() : void
       {
          var _loc2_:Renderable = null;
          var _loc1_:GameState = GameState.mInstance;
+         Utils.DiagEvent("PVP_FIREMISSION_EXECUTE","mission=" + (mItem ? mItem.mId : "null") + ";targets=" + (mTargets ? mTargets.length : 0));
          for each(_loc2_ in mTargets)
          {
             if(_loc2_.mScene)
@@ -60,8 +102,8 @@ package game.actions
                }
             }
          }
-         mObject.destroy();
          _loc1_.updateGrid();
+         Utils.DiagEvent("PVP_FIREMISSION_RESULT","mission=" + (mItem ? mItem.mId : "null") + ";result=applied");
       }
       
       private function attackUnit(param1:PvPEnemyUnit) : void

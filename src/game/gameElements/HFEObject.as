@@ -19,6 +19,9 @@
 	public class HFEObject extends PlayerBuildingObject {
 
 		protected static const MAX_HFEOBJECTS_ANIMATED: int = 10;
+		private static const HARVEST_TARGET_FPS:Number = 30;
+		private static const HARVEST_MAX_CATCHUP_FRAMES:int = 1;
+		private static const HARVEST_DIAGNOSTIC_INTERVAL_MS:int = 2000;
 
 		protected static var smAnimationsOn: Boolean = true;
 
@@ -235,14 +238,25 @@
 
 		private function checkHarvestFrame(param1: Event): void {
 			var _loc2_: MovieClip = param1.target as MovieClip;
-			var nowMs:int = getTimer();
-			if (_loc2_ && this.mHarvestAnimationStartMs > 0 && nowMs - this.mHarvestAnimationLastDiagMs >= 1000) {
-				this.mHarvestAnimationLastDiagMs = nowMs;
-				var elapsedMs:int = Math.max(1,nowMs - this.mHarvestAnimationStartMs);
-				var effectiveFps:Number = _loc2_.currentFrame * 1000 / elapsedMs;
-				Utils.DiagEvent("HFE_HARVEST_PROGRESS","item=" + mItem.mId + ";frame=" + _loc2_.currentFrame + "/" + _loc2_.totalFrames + ";elapsed_ms=" + elapsedMs + ";effective_fps=" + effectiveFps.toFixed(2) + ";stage_fps=" + (_loc2_.stage ? _loc2_.stage.frameRate : 0));
+			if (!_loc2_ || this.mHarvestAnimationStartMs <= 0) {
+				return;
 			}
-			if (_loc2_ && _loc2_.currentFrame >= _loc2_.totalFrames) {
+			var nowMs:int = getTimer();
+			var elapsedMs:int = Math.max(1,nowMs - this.mHarvestAnimationStartMs);
+			var expectedFrame:int = Math.min(_loc2_.totalFrames,1 + int(elapsedMs * HARVEST_TARGET_FPS / 1000));
+			var lagFrames:int = expectedFrame - _loc2_.currentFrame;
+			if (lagFrames > 1 && _loc2_.currentFrame < _loc2_.totalFrames) {
+				var catchupTarget:int = Math.min(_loc2_.totalFrames,_loc2_.currentFrame + HARVEST_MAX_CATCHUP_FRAMES);
+				if (catchupTarget > _loc2_.currentFrame) {
+					_loc2_.gotoAndPlay(catchupTarget);
+				}
+			}
+			if (nowMs - this.mHarvestAnimationLastDiagMs >= HARVEST_DIAGNOSTIC_INTERVAL_MS) {
+				this.mHarvestAnimationLastDiagMs = nowMs;
+				var effectiveFps:Number = _loc2_.currentFrame * 1000 / elapsedMs;
+				Utils.DiagEvent("HFE_HARVEST_PROGRESS","item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";frame=" + _loc2_.currentFrame + "/" + _loc2_.totalFrames + ";expected_frame=" + expectedFrame + ";lag_frames=" + Math.max(0,lagFrames) + ";elapsed_ms=" + elapsedMs + ";effective_fps=" + effectiveFps.toFixed(2) + ";stage_fps=" + (_loc2_.stage ? _loc2_.stage.frameRate : 0));
+			}
+			if (_loc2_.currentFrame >= _loc2_.totalFrames) {
 				this.removeHarvestClip();
 			}
 		}

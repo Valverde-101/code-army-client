@@ -500,6 +500,14 @@
 			this.mPlacePressed = false;
 		}
 
+		private function shouldCommitPlacement():Boolean {
+			var pointerCommit:Boolean = FeatureTuner.USE_MOUSE_FOR_PLACE_ITEMS;
+			CONFIG::BUILD_FOR_MOBILE_AIR {
+				pointerCommit = false;
+			}
+			return this.mPlacePressed || pointerCommit;
+		}
+
 		public function mouseUp(param1: MouseEvent): void {
 			var _loc2_: Boolean = false;
 			var _loc3_: GridCell = null;
@@ -529,7 +537,7 @@
 								this.mPlacePressed = false;
 							}
 
-							if (_loc2_ && (this.mPlacePressed || FeatureTuner.USE_MOUSE_FOR_PLACE_ITEMS)) {
+							if (_loc2_ && this.shouldCommitPlacement()) {
 								this.mGame.objectPlaced(this.mObjectBeingMoved, this.mObjectBeingMovedStartX, this.mObjectBeingMovedStartY);
 								this.mGame.inventoryItemUsed();
 								this.exitMoveMode();
@@ -539,11 +547,11 @@
 							if (this.isInLegalPlacementArea(this.mObjectBeingMoved)) {
 								this.setVisiblePlacementButton(true);
 								if (this.mGame.mState == GameState.STATE_PLACE_ITEM && this.mObjectBeingMoved.mItem is ShopItem && ShopItem(this.mObjectBeingMoved.mItem).getCostPremium() > 0) {
-									if (this.mPlacePressed || FeatureTuner.USE_MOUSE_FOR_PLACE_ITEMS) {
+									if this.shouldCommitPlacement() {
 										this.mGame.externalCallBuyItem(this.mObjectBeingMoved.mItem as ShopItem);
 									}
 								} else if (this.mFlagDrag || this.mGame.mState != GameState.STATE_MOVE_ITEM) {
-									if (this.mPlacePressed || FeatureTuner.USE_MOUSE_FOR_PLACE_ITEMS) {
+									if this.shouldCommitPlacement() {
 										this.placeObjectBeingMoved();
 									}
 								}
