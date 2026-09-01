@@ -25,6 +25,27 @@ jobs:
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 25
     steps:
+      - name: Bootstrap portable Git
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $candidates=@()
+          $g=Get-Command git.exe -ErrorAction SilentlyContinue
+          if($g){$candidates+=$g.Source}
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){
+              $candidates+=@(
+                (Join-Path $drive.Root 'AndroidBuild\Tools\Git\cmd\git.exe'),
+                (Join-Path $drive.Root 'AndroidBuild\PortableGit\cmd\git.exe')
+              )
+            }
+          }
+          $git=$candidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          if(-not $git){throw 'PRECHECK_GIT=FAIL component=TOOLCHAIN operation=resolve_portable_git expected=AndroidBuild portable Git actual=missing'}
+          (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH="$(Split-Path -Parent $git);$env:PATH"
+          Write-Host "PRECHECK_GIT=PASS path=$git"
+
       - name: Checkout exact HEAD
         uses: actions/checkout@v4
         with:
@@ -36,24 +57,8 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $actual=(git rev-parse HEAD).Trim()
-          if($actual -ne $env:EXPECTED_SOURCE_SHA){throw "EXACT_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$actual"}
-          Write-Host "EXACT_HEAD=PASS sha=$actual"
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){
-              $candidate=Join-Path $drive.Root 'AndroidBuild'
-              if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}
-            }
-          }
-          if(-not $root){throw 'PRECHECK=FAIL component=ANDROIDBUILD_ROOT operation=discover expected=portable_root actual=missing'}
-          $adb=Join-Path $root 'AndroidSDK\platform-tools\adb.exe'
-          if(-not(Test-Path -LiteralPath $adb)){throw "ADB_DEVICE=FAIL component=ADB operation=portable_path expected=$adb actual=missing"}
-          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "ADB_EXE=$adb"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "PRECHECK_GITHUB=PASS repository=$env:GITHUB_REPOSITORY run=$env:GITHUB_RUN_ID"
-          Write-Host "RUNNER_ASSIGNMENT=PASS runner=$env:RUNNER_NAME"
-          Write-Host "ADB_PATH=PASS path=$adb"
+          & '.\Tools\CI\Precheck-AndroidPhysical.ps1' -ExpectedSha $env:EXPECTED_SOURCE_SHA
+          if($LASTEXITCODE -ne 0){throw "PHYSICAL_PRECHECK=FAIL exit=$LASTEXITCODE"}
 
       - name: Wait for exact validated APK
         shell: powershell
@@ -98,4 +103,8 @@ jobs:
           Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
           if($env:ANDROID_APK_PATH){Write-Host "APK_PATH=$env:ANDROID_APK_PATH"}
           if($env:ANDROID_APK_SHA256){Write-Host "APK_SHA256=$env:ANDROID_APK_SHA256"}
-          Write-Host "PHYSICAL_EVIDENCE_ROOT=$(Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\physical")"
+          if($env:ANDROIDBUILD_ROOT){
+            Write-Host "PHYSICAL_EVIDENCE_ROOT=$(Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\physical")"
+          } else {
+            Write-Host "PHYSICAL_EVIDENCE_ROOT=UNAVAILABLE precheck_failed"
+          }
