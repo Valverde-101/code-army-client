@@ -31,6 +31,8 @@
 
 		private var mHarvestAnimationStartMs:int = 0;
 
+		private var mHarvestAnimationLastDiagMs:int = 0;
+
 
 		public function HFEObject(param1: int, param2: IsometricScene, param3: MapItem, param4: Point, param5: DisplayObject = null, param6: String = null) {
 			super(param1, param2, param3, param4, param5, param6);
@@ -218,6 +220,7 @@
 				this.mHarvestAnimation.mouseEnabled = false;
 				mScene.mSceneHud.addChild(this.mHarvestAnimation);
 				this.mHarvestAnimationStartMs = getTimer();
+				this.mHarvestAnimationLastDiagMs = this.mHarvestAnimationStartMs;
 				var timelineFps:Number = this.mHarvestAnimation.stage && this.mHarvestAnimation.stage.frameRate > 0 ? this.mHarvestAnimation.stage.frameRate : 0;
 				this.mHarvestAnimation.gotoAndPlay(1);
 				Utils.DiagEvent("HFE_HARVEST_ANIMATION","phase=start;item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";frames=" + this.mHarvestAnimation.totalFrames + ";stage_fps=" + timelineFps + ";mode=native_timeline");
@@ -232,6 +235,13 @@
 
 		private function checkHarvestFrame(param1: Event): void {
 			var _loc2_: MovieClip = param1.target as MovieClip;
+			var nowMs:int = getTimer();
+			if (_loc2_ && this.mHarvestAnimationStartMs > 0 && nowMs - this.mHarvestAnimationLastDiagMs >= 1000) {
+				this.mHarvestAnimationLastDiagMs = nowMs;
+				var elapsedMs:int = Math.max(1,nowMs - this.mHarvestAnimationStartMs);
+				var effectiveFps:Number = _loc2_.currentFrame * 1000 / elapsedMs;
+				Utils.DiagEvent("HFE_HARVEST_PROGRESS","item=" + mItem.mId + ";frame=" + _loc2_.currentFrame + "/" + _loc2_.totalFrames + ";elapsed_ms=" + elapsedMs + ";effective_fps=" + effectiveFps.toFixed(2) + ";stage_fps=" + (_loc2_.stage ? _loc2_.stage.frameRate : 0));
+			}
 			if (_loc2_ && _loc2_.currentFrame >= _loc2_.totalFrames) {
 				this.removeHarvestClip();
 			}

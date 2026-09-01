@@ -236,6 +236,7 @@ public final class PerformanceOverlay {
     private static final long HEAVY_SAMPLE_MS = 5000L;
     private static final long LIVE_RENDER_RECORDING_MS = 5000L;
     private static final long LIVE_RENDER_IDLE_MS = 2500L;
+    private static final long FLIGHT_RECORDER_FLUSH_MS = 5000L;
 
     private FrameLayout root;
     private LinearLayout panel;
@@ -257,6 +258,7 @@ public final class PerformanceOverlay {
     private volatile int latestThermal = -1;
     private long lastHeavySampleElapsedMs = 0L;
     private long lastLiveRenderElapsedMs = 0L;
+    private long lastFlightRecorderFlushElapsedMs = 0L;
 
     private long lastCpuMs = -1L;
     private long lastWallMs = -1L;
@@ -325,6 +327,10 @@ public final class PerformanceOverlay {
             MetricSample sample = collectSample();
             if (recording) persistSample(sample);
             long now = android.os.SystemClock.elapsedRealtime();
+            if (recording && (lastFlightRecorderFlushElapsedMs == 0L || now - lastFlightRecorderFlushElapsedMs >= FLIGHT_RECORDER_FLUSH_MS)) {
+                lastFlightRecorderFlushElapsedMs = now;
+                flushFlightRecorderAsync();
+            }
             long liveInterval = recording ? LIVE_RENDER_RECORDING_MS : LIVE_RENDER_IDLE_MS;
             if (panelVisible && (lastLiveRenderElapsedMs == 0L || now - lastLiveRenderElapsedMs >= liveInterval)) {
                 renderSample(sample);
@@ -443,6 +449,8 @@ public final class PerformanceOverlay {
         });
 
         activity.addContentView(root, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        startSession();
+        recordGameEvent("AUTO_FLIGHT_RECORDER", "started_on_activity_attach");
     }
 
     private void startSession() {
@@ -469,6 +477,7 @@ public final class PerformanceOverlay {
         lastWallMs = -1L;
         lastHeavySampleElapsedMs = 0L;
         lastLiveRenderElapsedMs = 0L;
+        lastFlightRecorderFlushElapsedMs = 0L;
         resetFrameWindow();
         scheduleHeavyMetrics(true);
 
@@ -477,8 +486,9 @@ public final class PerformanceOverlay {
             @Override public void run() {
                 try {
                     writeText(new File(dir, "README.txt"),
-                        "Army Attack Android performance session\n" +
-                        "Buttons are native Android views layered over AIR; the SWF bytecode is not modified.\n" +
+                        "Army Attack Android always-on flight recorder\n" +
+                        "Recording starts automatically when the game activity attaches; PERF only controls visibility/manual markers.\n" +
+                        "Buttons are native Android views layered over AIR; the SWF bytecode is not modified by this recorder.\n" +
                         "Use markers.jsonl to locate MARCAR LAG timestamps.\n" +
                         "STOP also captures threads.txt, proc-status.txt, smaps-rollup.txt and own-process logcat when Android permits it.\n" +
                         "Search game-events.jsonl for UI_BUTTON, PVP_, WORLD_MAP_, MAP_, OFFLINE_SWITCH_MAP, SWF_, ANIMATION_, HFE_ and TILEMAP_ markers.\n" +
@@ -783,6 +793,18 @@ public final class PerformanceOverlay {
                 s.thermal, fpsText, s.jank24, s.jank50, s.maxFrameMs
             )
         );
+    }
+
+    private void flushFlightRecorderAsync() {
+        final File dir = sessionDir;
+        if (dir == null) return;
+        io.execute(new Runnable() {
+            @Override public void run() {
+                writeGameEvents(dir);
+                writeGameEventSummary(dir);
+                writeFrameSpikes(dir);
+            }
+        });
     }
 
     private void ensureSampleLoop() {

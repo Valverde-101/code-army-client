@@ -223,6 +223,14 @@ package com.dchoc.GUI
       {
          if(param1 == this.mEnabled)
          {
+            if(!this.USE_BUTTON_STATES_ANIM)
+            {
+               this.playAnim(param1 ? BUTTON_FRAME_NAME_UP : BUTTON_FRAME_NAME_DISABLED_UP);
+               if(!param1)
+               {
+                  this.hideHelper();
+               }
+            }
             return;
          }
          this.mEnabled = param1;
@@ -241,7 +249,6 @@ package com.dchoc.GUI
       public function terminateAnimations() : void
       {
          this.mButton.stop();
-         this.freezeStaticTimelines(this.mButton);
          this.mCurrentPlayedLabel = null;
          this.mButton.removeEventListener(Event.ENTER_FRAME,this.enterFrame);
       }
@@ -424,34 +431,6 @@ package com.dchoc.GUI
          }
       }
       
-      private function freezeStaticTimelines(param1:DisplayObjectContainer) : void
-      {
-         var child:Object = null;
-         var childContainer:DisplayObjectContainer = null;
-         var i:int = 0;
-         if(param1 == null)
-         {
-            return;
-         }
-         while(i < param1.numChildren)
-         {
-            child = param1.getChildAt(i);
-            if(child is MovieClip)
-            {
-               (child as MovieClip).stop();
-            }
-            if(child is DisplayObjectContainer)
-            {
-               childContainer = child as DisplayObjectContainer;
-               if(childContainer.numChildren > 0)
-               {
-                  this.freezeStaticTimelines(childContainer);
-               }
-            }
-            i++;
-         }
-      }
-      
       public function playAnim(param1:String) : void
       {
          if(this.mButton.currentLabel == null || this.mButton.currentLabel.length == 0)
@@ -473,7 +452,6 @@ package com.dchoc.GUI
          else
          {
             this.mButton.gotoAndStop(param1);
-            this.freezeStaticTimelines(this.mButton);
          }
          this.setText(this.buttonText,this.buttonTextFieldName);
       }

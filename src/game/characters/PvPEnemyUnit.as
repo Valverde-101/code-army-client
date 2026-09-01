@@ -96,6 +96,20 @@ package game.characters
          mContainer.mouseChildren = false;
          mContainer.mouseEnabled = false;
          this.mResolvedGraphicsArray = param3.mGraphicsArray ? param3.mGraphicsArray.concat() : new Array();
+         var graphicsIndex:int = 0;
+         var graphicsSource:String = null;
+         var graphicsSlash:int = 0;
+         var graphicsResource:String = null;
+         var graphicsSymbol:String = null;
+         while(graphicsIndex < this.mResolvedGraphicsArray.length)
+         {
+            graphicsSource = this.mResolvedGraphicsArray[graphicsIndex] == null ? "" : String(this.mResolvedGraphicsArray[graphicsIndex]);
+            graphicsSlash = graphicsSource.lastIndexOf("/");
+            graphicsResource = graphicsSlash >= 0 ? graphicsSource.slice(0,graphicsSlash) : "";
+            graphicsSymbol = graphicsSlash >= 0 ? graphicsSource.slice(graphicsSlash + 1) : graphicsSource;
+            Utils.DiagEvent("PVP_ENEMY_GRAPHICS_ENTRY","unit=" + this.mUnitId + ";animation=" + graphicsIndex + ";source=" + graphicsSource + ";resource=" + graphicsResource + ";symbol=" + graphicsSymbol + ";expected_opfor=" + (graphicsResource == "swf/units_opfor"));
+            graphicsIndex++;
+         }
          initAnimations(this.mResolvedGraphicsArray);
          Utils.DiagEvent("PVP_ENEMY_GRAPHICS_RESOLVED","unit=" + this.mUnitId + ";entries=" + this.mResolvedGraphicsArray.length + ";mode=config_exact");
          setPos(500,500,0);

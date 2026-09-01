@@ -60,6 +60,16 @@ package com.dchoc.graphics
 
       private var mSwfAliasRiskLogged:Object = new Object();
 
+      private var mSwfClassResolveLogged:Object = new Object();
+
+      private var mSwfLoadRequestLogged:Object = new Object();
+
+      private var mSwfClassResourceDomainCount:int = 0;
+
+      private var mSwfClassFallbackCount:int = 0;
+
+      private var mSwfClassHitCount:int = 0;
+
       private var mLastSwfStatsAt:int = 0;
       
       public function DCResourceManager()
@@ -125,6 +135,11 @@ package com.dchoc.graphics
          }
          if(_loc7_ == "swf")
          {
+            if(!this.mSwfLoadRequestLogged[param2])
+            {
+               this.mSwfLoadRequestLogged[param2] = true;
+               Utils.DiagEvent("SWF_LOAD_REQUEST","resource=" + param2 + ";url=" + param1 + ";mode=embedded_symbols");
+            }
             if(Config.DEBUG_MODE)
             {
             }
@@ -228,12 +243,12 @@ package com.dchoc.graphics
       
       public function getLoadedSWFAppDomain(param1:String) : ApplicationDomain
       {
-         var _loc2_:Loader = this.mUnloader[param1];
-         if(_loc2_ == null)
+         var _loc2_:Object = this.mUnloader[param1];
+         if(!(_loc2_ is Loader))
          {
             return null;
          }
-         return _loc2_.contentLoaderInfo.applicationDomain;
+         return (_loc2_ as Loader).contentLoaderInfo.applicationDomain;
       }
       
       private function emitSwfResourceStats(param1:Boolean = false) : void
@@ -244,7 +259,7 @@ package com.dchoc.graphics
             return;
          }
          this.mLastSwfStatsAt = now;
-         Utils.DiagEvent("SWF_RESOURCE_STATS","lookups=" + this.mSwfLookupCount + ";misses=" + this.mSwfLookupMissCount + ";alias_risk=" + this.mSwfAliasRiskCount + ";pending=" + this.mFileCountToLoad + ";total_requests=" + this.mTotalFileCountToLoad);
+         Utils.DiagEvent("SWF_RESOURCE_STATS","lookups=" + this.mSwfLookupCount + ";hits=" + this.mSwfClassHitCount + ";resource_domain=" + this.mSwfClassResourceDomainCount + ";global_fallback=" + this.mSwfClassFallbackCount + ";misses=" + this.mSwfLookupMissCount + ";alias_risk=" + this.mSwfAliasRiskCount + ";pending=" + this.mFileCountToLoad + ";total_requests=" + this.mTotalFileCountToLoad);
       }
 
       public function getSWFClass(param1:String, param2:String = null) : Class
@@ -253,6 +268,10 @@ package com.dchoc.graphics
          var _loc3_:String = null;
          var aliasKey:String = null;
          var resolved:Class = null;
+         var resourceDomain:ApplicationDomain = null;
+         var domainMode:String = "global_fallback";
+         var resolveKey:String = null;
+         var startedAt:int = getTimer();
          if(!param2)
          {
             if(!param1)
@@ -278,16 +297,51 @@ package com.dchoc.graphics
                Utils.DiagEvent("SWF_ALIAS_RISK","resource=" + param1 + ";symbol=" + _loc3_ + ";lookup=" + this.mSwfLookupCount);
             }
          }
-         try
+         resourceDomain = this.getLoadedSWFAppDomain(param1);
+         if(resourceDomain != null)
          {
-            resolved = getDefinitionByName(_loc3_) as Class;
+            try
+            {
+               if(resourceDomain.hasDefinition(_loc3_))
+               {
+                  resolved = resourceDomain.getDefinition(_loc3_) as Class;
+                  domainMode = "resource";
+                  this.mSwfClassResourceDomainCount++;
+               }
+               else
+               {
+                  Utils.DiagEvent("SWF_RESOURCE_SYMBOL_MISS","resource=" + param1 + ";symbol=" + _loc3_);
+               }
+            }
+            catch(domainError:Error)
+            {
+               Utils.DiagEvent("SWF_RESOURCE_DOMAIN_ERROR","resource=" + param1 + ";symbol=" + _loc3_ + ";error=" + domainError.errorID);
+            }
          }
-         catch(error:Error)
+         if(resolved == null)
          {
-            this.mSwfLookupMissCount++;
-            Utils.DiagEvent("SWF_CLASS_MISS","resource=" + param1 + ";symbol=" + _loc3_ + ";lookups=" + this.mSwfLookupCount + ";misses=" + this.mSwfLookupMissCount + ";error=" + error.errorID);
-            this.emitSwfResourceStats(true);
-            throw error;
+            try
+            {
+               resolved = getDefinitionByName(_loc3_) as Class;
+               this.mSwfClassFallbackCount++;
+            }
+            catch(error:Error)
+            {
+               this.mSwfLookupMissCount++;
+               Utils.DiagEvent("SWF_CLASS_MISS","resource=" + param1 + ";symbol=" + _loc3_ + ";domain=" + domainMode + ";elapsed_ms=" + (getTimer() - startedAt) + ";lookups=" + this.mSwfLookupCount + ";misses=" + this.mSwfLookupMissCount + ";error=" + error.errorID);
+               this.emitSwfResourceStats(true);
+               throw error;
+            }
+         }
+         if(resolved != null)
+         {
+            this.mSwfClassHitCount++;
+            resolveKey = param1 + "|" + _loc3_ + "|" + domainMode;
+            if(!this.mSwfClassResolveLogged[resolveKey])
+            {
+               this.mSwfClassResolveLogged[resolveKey] = true;
+               Utils.DiagEvent("SWF_CLASS_RESOLVED","resource=" + param1 + ";symbol=" + _loc3_ + ";domain=" + domainMode + ";elapsed_ms=" + (getTimer() - startedAt));
+            }
          }
          this.emitSwfResourceStats(false);
          return resolved;
@@ -485,6 +539,10 @@ package com.dchoc.graphics
          _loc2_.removeEventListener(IOErrorEvent.IO_ERROR,this.errorTextLoad);
          this.mList[_loc3_] = _loc2_.data;
          this.mLoaded[_loc3_] = true;
+         if(_loc3_.indexOf("swf/") == 0)
+         {
+            Utils.DiagEvent("SWF_LOAD_COMPLETE","resource=" + _loc3_ + ";mode=embedded_symbols;bytes=" + _loc2_.bytesLoaded);
+         }
          delete this.mResolver[_loc2_.name];
          this.mUnloader[_loc3_] = _loc2_;
          dispatchEvent(new Event(_loc3_ + EVENT_COMPLETE_SINGLE_FILE));

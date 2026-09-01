@@ -841,13 +841,6 @@
 			this.mIngameHUDClip.removeChild(_loc2_);
 		}
 
-		private function alignBottomVisual(param1: DisplayObject, param2: Number): void {
-			if (!param1 || !this.mIngameHUDClip_BOTTOM) {
-				return;
-			}
-			var bounds: Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);
-			param1.y += param2 - bounds.bottom;
-		}
 		// This is the alignment test code for the resize function.
 		/*
       public function resize(param1:int, param2:int) : void
@@ -916,76 +909,55 @@
       */
 
 		CONFIG::BUILD_FOR_MOBILE_AIR { // MOBILE
-			// This is the scaling code for the resize function.
 			public function resize(param1: int, param2: int): void {
 				var _loc7_: PopUpWindow = null;
-				var _loc3_: int = Math.max(param1 - this.GAME_HUD_WIDTH, 0);
-				var _loc4_: int = Math.max(param2 - 750, 0);
-				var _loc5_: Number = 0;
-				var _loc6_: int = this.mResourceFrame.width + 2;
+				var scaleFactor: Number = Math.min(Math.min((param1 + 10) / 1024,param2 / 750),1);
+				if (scaleFactor <= 0) {
+					scaleFactor = 1;
+				}
+				var localWidth:Number = param1 / scaleFactor;
+				var localHeight:Number = param2 / scaleFactor;
 
-				_loc5_ = _loc6_ >> 3;
-
-				// Ensure mIngameHUDClip stays within bounds
-				this.mIngameHUDClip.x = 0;
-				this.mIngameHUDClip.y = 0; // Keep the top bar at the top of the screen.
-				
-				// CALCULATING SCALE FACTOR
-
-				// Scale only the top bar elements based on the stage width (param1)
-				var scaleFactorWidth: Number = (param1 + 10) / this.GAME_HUD_WIDTH;
-				// Scale the height based on the percentage increase from the original height
-				var scaleFactorHeight: Number = (param2 + 150) / 680; // Assuming 680 is the original height
-				
-				var scaleFactor:Number = Math.min(scaleFactorWidth, scaleFactorHeight); // Ensure there is no distortion
-
-				// APPLYING SCALE FACTOR
-
-				// Scale top bar elements based on the percentage increase from the original width and height
 				this.mIngameHUDClip.scaleX = scaleFactor;
 				this.mIngameHUDClip.scaleY = scaleFactor;
-
-				// Scale the bottom bar elements based on the percentage increase from the original width and height
-				this.mButtonPullOutMissionFrame.scaleX = scaleFactor;
-				this.mButtonPullOutMissionFrame.scaleY = scaleFactor;
-				this.mButtonPullOutFrame.scaleX = scaleFactor;
-				this.mButtonPullOutFrame.scaleY = scaleFactor;
-				this.mPullOutMissionFrame.scaleX = scaleFactor;
-				this.mPullOutMissionFrame.scaleY = scaleFactor;
-				this.mPullOutMenuFrame.scaleX = scaleFactor;
-				this.mPullOutMenuFrame.scaleY = scaleFactor;
-				
-				// POSITION ELEMENTS
-				
-				// Center the top bar
 				this.mIngameHUDClip.x = Math.max(0,(param1 - this.mIngameHUDClip.width) / 2);
-	
-				// Ensure mIngameHUDClip_BOTTOM stays within bounds
+				this.mIngameHUDClip.y = 0;
+
 				this.mIngameHUDClip_BOTTOM.x = 0;
-				// Keep the bottom bar at the bottom of the screen by setting the y position to the new height - the old height
-				this.mIngameHUDClip_BOTTOM.y = 0;		
+				this.mIngameHUDClip_BOTTOM.y = 0;
+				this.mIngameHUDClip_BOTTOM.scaleX = scaleFactor;
+				this.mIngameHUDClip_BOTTOM.scaleY = scaleFactor;
+
+				this.mButtonPullOutMissionFrame.scaleX = 1;
+				this.mButtonPullOutMissionFrame.scaleY = 1;
+				this.mButtonPullOutFrame.scaleX = 1;
+				this.mButtonPullOutFrame.scaleY = 1;
+				this.mPullOutMissionFrame.scaleX = 1;
+				this.mPullOutMissionFrame.scaleY = 1;
+				this.mPullOutMenuFrame.scaleX = 1;
+				this.mPullOutMenuFrame.scaleY = 1;
 
 				this.mPullOutMissionFrame.x = 0;
 				this.mButtonPullOutMissionFrame.x = 0;
-				this.mButtonPullOutFrame.x = Math.max(0, param1 - this.mButtonPullOutFrame.width);
-				this.mPullOutMenuFrame.x = param1;
+				this.mButtonPullOutFrame.x = Math.max(0,localWidth - this.mButtonPullOutFrame.width);
+				this.mPullOutMenuFrame.x = localWidth;
 
-				this.alignBottomVisual(this.mButtonPullOutMissionFrame, param2);
-				this.alignBottomVisual(this.mPullOutMissionFrame, param2);
-				this.alignBottomVisual(this.mButtonPullOutFrame, param2);
-				this.alignBottomVisual(this.mPullOutMenuFrame, param2);
+				this.mButtonPullOutMissionFrame.y = Math.max(0,localHeight - this.mButtonPullOutMissionFrame.height);
+				this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);
+				this.mButtonPullOutFrame.y = Math.max(0,localHeight - this.mButtonPullOutFrame.height);
+				this.mPullOutMenuFrame.y = Math.max(0,localHeight - this.mPullOutMenuFrame.height);
 
 				this.mHudButtonShop.setX(this.mButtonPullOutMissionFrame.x + this.mButtonPullOutMissionFrame.width + 20);
 				this.mHudButtonSave.setX(this.mHudButtonShop.getX() + this.mHudButtonShop.getWidth());
 				this.mButtonMap.setX(this.mHudButtonSave.getX() + this.mHudButtonSave.getWidth());
 				this.mButtonPvp.setX(this.mButtonMap.getX() + this.mButtonMap.getWidth());
 
-				this.alignBottomVisual(this.mHudButtonShop.getMovieClip(), param2);
-				this.alignBottomVisual(this.mHudButtonSave.getMovieClip(), param2);
-				this.alignBottomVisual(this.mButtonMap.getMovieClip(), param2);
-				this.alignBottomVisual(this.mButtonPvp.getMovieClip(), param2);
+				this.mHudButtonShop.setY(Math.max(0,localHeight - this.mHudButtonShop.getHeight()) + 3);
+				this.mHudButtonSave.setY(Math.max(0,localHeight - this.mHudButtonSave.getHeight()) + 3);
+				this.mButtonMap.setY(Math.max(0,localHeight - this.mButtonMap.getHeight()) + 3);
+				this.mButtonPvp.setY(Math.max(0,localHeight - this.mButtonPvp.getHeight()) + 3);
 
-				Utils.DiagEvent("HUD_MOBILE_LAYOUT","stage=" + param1 + "x" + param2 + ";scale=" + scaleFactor + ";bottom_parent_y=" + this.mIngameHUDClip_BOTTOM.y + ";shop_global_y=" + this.mHudButtonShop.getGlobalY() + ";right_frame_y=" + this.mButtonPullOutFrame.y);
+				Utils.DiagEvent("HUD_MOBILE_LAYOUT","stage=" + param1 + "x" + param2 + ";scale=" + scaleFactor + ";local=" + int(localWidth) + "x" + int(localHeight) + ";bottom_parent_scale=" + this.mIngameHUDClip_BOTTOM.scaleY + ";shop_global_y=" + this.mHudButtonShop.getGlobalY() + ";right_frame_global_y=" + this.mButtonPullOutFrame.localToGlobal(new Point()).y);
 
 				if (!this.keyCoordinates) {
 					this.keyCoordinates = new Array();
@@ -1000,19 +972,9 @@
 				this.mToolBox.x = this.TOOLBOX_BOTTOM_X;
 				this.mToolBox.y = this.mButtonPullOutFrame.y - (this.mToolBox.height >> 1);
 
-				
-			// THE TOOLBOX IS JUST THE BOX NOT THE GEAR AND STUFF INSIDE
-			// Position the toolbox on the right side of the screen
-			//this.TOOLBOX_BOTTOM_X = param1 - this.mToolBox.width;
-			//this.TOOLBOX_TOP_X = param1 - this.mButtonPullOutFrame.width;
-			//this.mToolBox.x = param1 - (4 * this.mToolBox.width);
-			//this.mToolBox.y = this.mButtonPullOutFrame.y - (this.mToolBox.height >> 1) - 200;
-			
-
 				var _loc8_: Array = null;
 				var _loc9_: * = (_loc8_ = PopUpManager.getPopups()).length;
 				var _loc10_: int = 0;
-
 				while (_loc10_ < _loc9_) {
 					if (_loc7_ = _loc8_[_loc10_] as PopUpWindow) {
 						if (_loc7_.parent) {
