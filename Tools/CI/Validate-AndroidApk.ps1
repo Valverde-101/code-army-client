@@ -15,12 +15,15 @@ $apk=Get-Item -LiteralPath $ApkPath
 $apkSha=(Get-FileHash -LiteralPath $ApkPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $referencePath=Join-Path $AndroidBuildRoot "Builds\code-army-client\$ExpectedSha\android-upstream-v21.1\reference.json"
 $provenancePath=Join-Path $reportRoot 'BUILD-PROVENANCE.json'
+$patchManifestPath=Join-Path $reportRoot 'SWF-PERFORMANCE-PATCH.json'
 $publishedReportPath=Join-Path $reportRoot 'published\PUBLISHED-CONTENT.json'
 if(-not (Test-Path -LiteralPath $referencePath)){throw "APK_VALIDATE=FAIL reference_missing=$referencePath"}
 if(-not (Test-Path -LiteralPath $provenancePath)){throw "APK_VALIDATE=FAIL provenance_missing=$provenancePath"}
+if(-not (Test-Path -LiteralPath $patchManifestPath)){throw "APK_VALIDATE=FAIL patch_manifest_missing=$patchManifestPath"}
 if(-not (Test-Path -LiteralPath $publishedReportPath)){throw "APK_VALIDATE=FAIL published_report_missing=$publishedReportPath"}
 $reference=Get-Content -LiteralPath $referencePath -Raw|ConvertFrom-Json
 $prov=Get-Content -LiteralPath $provenancePath -Raw|ConvertFrom-Json
+$patchManifest=Get-Content -LiteralPath $patchManifestPath -Raw|ConvertFrom-Json
 $published=Get-Content -LiteralPath $publishedReportPath -Raw|ConvertFrom-Json
 
 $expectedSwfSha=([string]$prov.swf_sha256).ToLowerInvariant()
@@ -121,16 +124,21 @@ if(([string]$prov.swf_source_sha256).ToLowerInvariant() -ne $canonicalSwfSha){$f
 if(([string]$prov.swf_sha256).ToLowerInvariant() -eq $canonicalSwfSha){$failures.Add('swf_output_not_patched')}
 if($seedHash -ne ([string]$prov.swf_sha256).ToLowerInvariant()){$failures.Add("apk_swf_sha expected=$($prov.swf_sha256) actual=$seedHash")}
 if(-not [bool]$prov.swf_performance_patched){$failures.Add('swf_performance_patched=false')}
-if([string]$prov.performance_patch_version -ne 'mobile-engine-v3.9-map-resource-lifecycle'){$failures.Add("performance_patch_version=$($prov.performance_patch_version)")}
-$patchClasses=@($prov.performance_patch_classes)
-$allowedPatchClasses=@('game.battlefield.TileMapGraphic','game.isometric.IsometricScene','game.battlefield.MapData','game.isometric.characters.IsometricCharacter','game.characters.AnimationController','Utils','game.utils.OfflineSave','game.states.GameState','game.gui.GiveFilePermissionDialog','game.net.PvPMatch','game.gui.popups.WorldMapWindow','game.gui.pvp.PvPMatchUpDialog','game.gui.pvp.PvPCombatSetupDialog','game.gui.pvp.PvPBoosterBar','game.gui.pvp.PvPHUD')
-foreach($requiredPatchClass in $allowedPatchClasses){
+$manifestPatchVersion=[string]$patchManifest.patch_version
+if([string]::IsNullOrWhiteSpace($manifestPatchVersion) -or $manifestPatchVersion -notmatch '^mobile-engine-v\d+\.\d+-[a-z0-9-]+$'){$failures.Add("performance_patch_manifest_version=$manifestPatchVersion")}
+if([string]$patchManifest.tested_sha -ne $ExpectedSha){$failures.Add("performance_patch_manifest_sha expected=$ExpectedSha actual=$($patchManifest.tested_sha)")}
+if([string]$prov.performance_patch_version -ne $manifestPatchVersion){$failures.Add("performance_patch_version provenance=$($prov.performance_patch_version) manifest=$manifestPatchVersion")}
+if(([string]$patchManifest.source_swf.sha256).ToLowerInvariant() -ne $canonicalSwfSha){$failures.Add("performance_patch_source_sha=$($patchManifest.source_swf.sha256)")}
+if(([string]$patchManifest.output_swf.sha256).ToLowerInvariant() -ne $seedHash){$failures.Add("performance_patch_output_sha expected=$seedHash actual=$($patchManifest.output_swf.sha256)")}
+$patchClasses=@($prov.performance_patch_classes|ForEach-Object{[string]$_})
+$manifestPatchClasses=@($patchManifest.classes|ForEach-Object{[string]$_.name})
+foreach($requiredPatchClass in $manifestPatchClasses){
   if($patchClasses -notcontains $requiredPatchClass){$failures.Add("performance_patch_class_missing=$requiredPatchClass")}
 }
 foreach($actualPatchClass in $patchClasses){
-  if($allowedPatchClasses -notcontains [string]$actualPatchClass){$failures.Add("performance_patch_class_unexpected=$actualPatchClass")}
+  if($manifestPatchClasses -notcontains [string]$actualPatchClass){$failures.Add("performance_patch_class_unexpected=$actualPatchClass")}
 }
-if($patchClasses.Count -ne $allowedPatchClasses.Count){$failures.Add("performance_patch_class_count expected=$($allowedPatchClasses.Count) actual=$($patchClasses.Count)")}
+if($patchClasses.Count -ne $manifestPatchClasses.Count){$failures.Add("performance_patch_class_count expected=$($manifestPatchClasses.Count) actual=$($patchClasses.Count)")}
 if([string]$prov.render_mode -ne $ExpectedRenderMode){$failures.Add("render_mode expected=$ExpectedRenderMode actual=$($prov.render_mode)")}
 if(-not [bool]$prov.native_performance_overlay){$failures.Add('native_performance_overlay=false')}
 if(-not [bool]$prov.diagnostics_ane_packaged){$failures.Add('diagnostics_ane_packaged=false')}
@@ -170,6 +178,8 @@ $report=[ordered]@{
   root_swf_count=$rootSwfEntries.Count
   swf_source_original=$true
   swf_performance_patched=[bool]$prov.swf_performance_patched
+  performance_patch_version=$manifestPatchVersion
+  performance_patch_class_count=$manifestPatchClasses.Count
   render_mode=[string]$prov.render_mode
   native_performance_overlay=[bool]$prov.native_performance_overlay
   native_performance_overlay_mode=[string]$prov.native_performance_overlay_mode
@@ -243,7 +253,7 @@ if($promotedSha -ne $apkSha){throw "APK_PROMOTION=FAIL expected=$apkSha actual=$
 $meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sha=[string]$prov.binary_seed_source_sha;apk_path=$promoted;apk_size=(Get-Item $promoted).Length;apk_sha256=$promotedSha;package_name=$package;build_tier=$buildTier}
 "$promoted.json"|ForEach-Object{$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $_ -Encoding UTF8}
 if($env:GITHUB_ENV){"PROMOTED_CANDIDATE_PATH=$promoted"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
-Write-Host "SWF_PERFORMANCE_PATCH_VALIDATE=PASS source_sha256=$canonicalSwfSha patched_sha256=$seedHash version=mobile-engine-v3.9-map-resource-lifecycle"
+Write-Host "SWF_PERFORMANCE_PATCH_VALIDATE=PASS source_sha256=$canonicalSwfSha patched_sha256=$seedHash version=$manifestPatchVersion classes=$($manifestPatchClasses.Count)"
 Write-Host "NATIVE_PERF_OVERLAY_VALIDATE=PASS provider=DiagnosticsProvider authority=air.army.attack.armyattackdiagnostics render_mode=$ExpectedRenderMode"
 Write-Host "BASE_ONLY_VALIDATE=PASS modern_v23_2=true profiles=0 selector=false diagnostics_ane=true root_swf=$seedEntryPath swf_source_original=true swf_performance_patched=true"
 Write-Host "APK_VALIDATE=PASS"
