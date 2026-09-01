@@ -58,6 +58,27 @@ public final class PerformanceOverlay {
     private static final ArrayDeque<String> GAME_EVENTS = new ArrayDeque<String>();
     private static final int MAX_GAME_EVENTS = 3000;
     private static final String GAME_EVENT_TAG = "ArmyAttackGame";
+    private static final Object FRAME_SPIKE_LOCK = new Object();
+    private static final ArrayDeque<FrameSpike> FRAME_SPIKES = new ArrayDeque<FrameSpike>();
+    private static final int MAX_FRAME_SPIKES = 500;
+    private static volatile String LAST_GAME_EVENT_KIND = "";
+    private static volatile String LAST_GAME_EVENT_DETAIL = "";
+    private static volatile long LAST_GAME_EVENT_ELAPSED_MS = -1L;
+
+    private static final class FrameSpike {
+        final long elapsedMs;
+        final double frameMs;
+        final String eventKind;
+        final String eventDetail;
+        final long eventAgeMs;
+        FrameSpike(long elapsedMs, double frameMs, String eventKind, String eventDetail, long eventAgeMs) {
+            this.elapsedMs = elapsedMs;
+            this.frameMs = frameMs;
+            this.eventKind = eventKind;
+            this.eventDetail = eventDetail;
+            this.eventAgeMs = eventAgeMs;
+        }
+    }
 
     public static void recordGameEvent(String kind, String detail) {
         try {
@@ -67,6 +88,9 @@ public final class PerformanceOverlay {
             event.put("thread", Thread.currentThread().getName());
             event.put("kind", kind == null ? "UNKNOWN" : kind);
             event.put("detail", detail == null ? "" : detail);
+            LAST_GAME_EVENT_KIND = kind == null ? "UNKNOWN" : kind;
+            LAST_GAME_EVENT_DETAIL = detail == null ? "" : detail;
+            LAST_GAME_EVENT_ELAPSED_MS = android.os.SystemClock.elapsedRealtime();
             String line = event.toString();
             synchronized (GAME_EVENT_LOCK) {
                 while (GAME_EVENTS.size() >= MAX_GAME_EVENTS) GAME_EVENTS.removeFirst();
@@ -74,6 +98,55 @@ public final class PerformanceOverlay {
             }
             Log.i(GAME_EVENT_TAG, (kind == null ? "UNKNOWN" : kind) + " " + (detail == null ? "" : detail));
         } catch (Throwable ignored) {
+        }
+    }
+
+    private static void clearFrameSpikes() {
+        synchronized (FRAME_SPIKE_LOCK) { FRAME_SPIKES.clear(); }
+    }
+
+    private static void recordFrameSpike(long deltaNs) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        long eventAt = LAST_GAME_EVENT_ELAPSED_MS;
+        long age = eventAt < 0L ? -1L : Math.max(0L, now - eventAt);
+        FrameSpike spike = new FrameSpike(now, deltaNs / 1_000_000.0, LAST_GAME_EVENT_KIND, LAST_GAME_EVENT_DETAIL, age);
+        synchronized (FRAME_SPIKE_LOCK) {
+            while (FRAME_SPIKES.size() >= MAX_FRAME_SPIKES) FRAME_SPIKES.removeFirst();
+            FRAME_SPIKES.addLast(spike);
+        }
+    }
+
+    private static void writeFrameSpikes(File dir) {
+        if (dir == null) return;
+        try {
+            List<FrameSpike> snapshot;
+            synchronized (FRAME_SPIKE_LOCK) { snapshot = new ArrayList<FrameSpike>(FRAME_SPIKES); }
+            StringBuilder text = new StringBuilder();
+            int over50 = 0;
+            int over100 = 0;
+            double maxMs = 0.0;
+            for (FrameSpike spike : snapshot) {
+                JSONObject row = new JSONObject();
+                row.put("process_elapsed_ms", spike.elapsedMs);
+                row.put("frame_ms", spike.frameMs);
+                row.put("nearest_game_event_kind", spike.eventKind == null ? "" : spike.eventKind);
+                row.put("nearest_game_event_detail", spike.eventDetail == null ? "" : spike.eventDetail);
+                row.put("nearest_game_event_age_ms", spike.eventAgeMs);
+                text.append(row.toString()).append('\n');
+                if (spike.frameMs >= 50.0) over50++;
+                if (spike.frameMs >= 100.0) over100++;
+                if (spike.frameMs > maxMs) maxMs = spike.frameMs;
+            }
+            writeText(new File(dir, "frame-spikes.jsonl"), text.toString());
+            JSONObject summary = new JSONObject();
+            summary.put("threshold_ms", 33);
+            summary.put("retained_spikes", snapshot.size());
+            summary.put("over_50ms", over50);
+            summary.put("over_100ms", over100);
+            summary.put("max_frame_ms", maxMs);
+            writeText(new File(dir, "frame-spikes-summary.json"), summary.toString(2));
+        } catch (Throwable t) {
+            appendError(dir, "frame_spikes", t);
         }
     }
 
@@ -196,7 +269,9 @@ public final class PerformanceOverlay {
     private long maxFrameNsWindow = 0L;
     private long totalSamples = 0L;
     private long totalJank24 = 0L;
+    private long totalJank33 = 0L;
     private long totalJank50 = 0L;
+    private long totalJank100 = 0L;
     private long maxFrameNsSession = 0L;
 
     private File sessionDir;
@@ -222,10 +297,15 @@ public final class PerformanceOverlay {
                         jank24Window++;
                         totalJank24++;
                     }
+                    if (delta >= 33_000_000L) {
+                        totalJank33++;
+                        recordFrameSpike(delta);
+                    }
                     if (delta >= 50_000_000L) {
                         jank50Window++;
                         totalJank50++;
                     }
+                    if (delta >= 100_000_000L) totalJank100++;
                     if (delta > maxFrameNsWindow) maxFrameNsWindow = delta;
                     if (delta > maxFrameNsSession) maxFrameNsSession = delta;
                 }
@@ -380,8 +460,11 @@ public final class PerformanceOverlay {
         sessionStartElapsed = android.os.SystemClock.elapsedRealtime();
         totalSamples = 0L;
         totalJank24 = 0L;
+        totalJank33 = 0L;
         totalJank50 = 0L;
+        totalJank100 = 0L;
         maxFrameNsSession = 0L;
+        clearFrameSpikes();
         lastCpuMs = -1L;
         lastWallMs = -1L;
         lastHeavySampleElapsedMs = 0L;
@@ -398,7 +481,8 @@ public final class PerformanceOverlay {
                         "Buttons are native Android views layered over AIR; the SWF bytecode is not modified.\n" +
                         "Use markers.jsonl to locate MARCAR LAG timestamps.\n" +
                         "STOP also captures threads.txt, proc-status.txt, smaps-rollup.txt and own-process logcat when Android permits it.\n" +
-                        "Search game-events.jsonl for UI_BUTTON, PVP_, WORLD_MAP_, MAP_, OFFLINE_SWITCH_MAP, SWF_, ANIMATION_ and TILEMAP_ markers.\n" +
+                        "Search game-events.jsonl for UI_BUTTON, PVP_, WORLD_MAP_, MAP_, OFFLINE_SWITCH_MAP, SWF_, ANIMATION_, HFE_ and TILEMAP_ markers.\n" +
+                        "frame-spikes.jsonl records every >=33ms frame and correlates it with the nearest preceding SWF/game event.\n" +
                         "MARCAR LAG captures an immediate lag-snapshots/ thread, proc, memory and own-process logcat snapshot near the hitch.\n" +
                         "Live metrics text is throttled while recording so the profiler does not compete with AIR layout on the main thread.\n");
                     writeText(new File(dir, "device.json"), buildDeviceJson().toString(2));
@@ -431,7 +515,9 @@ public final class PerformanceOverlay {
         final long duration = elapsedSessionMs();
         final long samples = totalSamples;
         final long j24 = totalJank24;
+        final long j33 = totalJank33;
         final long j50 = totalJank50;
+        final long j100 = totalJank100;
         final double maxMs = maxFrameNsSession / 1_000_000.0;
         io.execute(new Runnable() {
             @Override public void run() {
@@ -445,7 +531,9 @@ public final class PerformanceOverlay {
                     summary.put("duration_ms", duration);
                     summary.put("samples", samples);
                     summary.put("jank_24ms_total", j24);
+                    summary.put("jank_33ms_total", j33);
                     summary.put("jank_50ms_total", j50);
+                    summary.put("jank_100ms_total", j100);
                     summary.put("max_frame_ms", maxMs);
                     writeText(new File(dir, "session.json"), summary.toString(2));
                 } catch (Throwable t) {
@@ -629,6 +717,7 @@ public final class PerformanceOverlay {
         }
         writeGameEvents(dir);
         writeGameEventSummary(dir);
+        writeFrameSpikes(dir);
         copyProcFile("/proc/self/status", new File(dir, "proc-status.txt"), 1024 * 1024);
         copyProcFile("/proc/self/stat", new File(dir, "proc-stat.txt"), 1024 * 1024);
         copyProcFile("/proc/self/sched", new File(dir, "proc-sched.txt"), 1024 * 1024);

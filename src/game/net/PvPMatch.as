@@ -370,6 +370,30 @@ package game.net
          return false;
       }
 
+      public function passPlayerTurn() : Boolean
+      {
+         if(this.mDebriefingOpened || !this.mPlayerTurn)
+         {
+            Utils.DiagEvent("PVP_PASS_TURN_REJECT","debrief=" + this.mDebriefingOpened + ";player_turn=" + this.mPlayerTurn + ";actions=" + this.mActionsLeft);
+            return false;
+         }
+         if(this.checkTerminalState())
+         {
+            return false;
+         }
+         if(this.mGame)
+         {
+            this.mGame.cancelAllPlayerActions();
+            this.mGame.resetActions();
+            this.mGame.mActionWaitingConfirmation = null;
+            this.mGame.mActivatedPlayerUnit = null;
+         }
+         Utils.DiagEvent("PVP_PASS_TURN","turn=" + this.mTurnCounter + ";actions_before=" + this.mActionsLeft);
+         this.mActionsLeft = 0;
+         this.changeTurn();
+         return true;
+      }
+
       public function updateTurn(param1:int) : void
       {
          if(this.checkTerminalState())

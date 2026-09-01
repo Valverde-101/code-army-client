@@ -954,7 +954,7 @@
 				// Ensure mIngameHUDClip_BOTTOM stays within bounds
 				this.mIngameHUDClip_BOTTOM.x = 0;
 				// Keep the bottom bar at the bottom of the screen by setting the y position to the new height - the old height
-				this.mIngameHUDClip_BOTTOM.y = Math.min(0,param2 - 750);		
+				this.mIngameHUDClip_BOTTOM.y = 0;		
 
 				this.mPullOutMissionFrame.x = 0;
 				this.mButtonPullOutMissionFrame.x = 0;
@@ -975,6 +975,8 @@
 				this.mHudButtonSave.setY(Math.max(0, Math.min(param2 - this.mHudButtonSave.getHeight())) + 3);
 				this.mButtonMap.setY(Math.max(0, Math.min(param2 - this.mButtonMap.getHeight())) + 3);
 				this.mButtonPvp.setY(Math.max(0, Math.min(param2 - this.mButtonPvp.getHeight())) + 3);
+
+				Utils.DiagEvent("HUD_MOBILE_LAYOUT","stage=" + param1 + "x" + param2 + ";scale=" + scaleFactor + ";bottom_parent_y=" + this.mIngameHUDClip_BOTTOM.y + ";shop_global_y=" + this.mHudButtonShop.getGlobalY() + ";right_frame_y=" + this.mButtonPullOutFrame.y);
 
 				if (!this.keyCoordinates) {
 					this.keyCoordinates = new Array();

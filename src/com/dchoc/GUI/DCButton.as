@@ -423,6 +423,34 @@ package com.dchoc.GUI
          }
       }
       
+      private function freezeStaticTimelines(param1:DisplayObjectContainer) : void
+      {
+         var child:Object = null;
+         var childContainer:DisplayObjectContainer = null;
+         var i:int = 0;
+         if(param1 == null)
+         {
+            return;
+         }
+         while(i < param1.numChildren)
+         {
+            child = param1.getChildAt(i);
+            if(child is MovieClip)
+            {
+               (child as MovieClip).gotoAndStop((child as MovieClip).currentFrame);
+            }
+            if(child is DisplayObjectContainer)
+            {
+               childContainer = child as DisplayObjectContainer;
+               if(childContainer.numChildren > 0)
+               {
+                  this.freezeStaticTimelines(childContainer);
+               }
+            }
+            i++;
+         }
+      }
+      
       public function playAnim(param1:String) : void
       {
          if(this.mButton.currentLabel == null || this.mButton.currentLabel.length == 0)
@@ -444,6 +472,7 @@ package com.dchoc.GUI
          else
          {
             this.mButton.gotoAndStop(param1);
+            this.freezeStaticTimelines(this.mButton);
          }
          this.setText(this.buttonText,this.buttonTextFieldName);
       }

@@ -142,7 +142,7 @@ package game.characters
                   }
                   else if(_loc5_.indexOf("good_sniper_") == 0)
                   {
-                     _loc6_ = "pvp_premium_infantry_" + _loc5_.substr("good_sniper_".length);
+                     _loc6_ = "pvp_good_sniper_" + _loc5_.substr("good_sniper_".length);
                   }
                }
                if(_loc6_ != null)

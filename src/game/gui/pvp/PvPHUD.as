@@ -2,6 +2,7 @@
 	import com.dchoc.GUI.DCButton;
 	import com.dchoc.graphics.DCResourceManager;
 	import flash.display.DisplayObject;
+	import flash.display.DisplayObjectContainer;
 	import flash.display.MovieClip;
 	import flash.display.Sprite;
 	import flash.events.Event;
@@ -107,6 +108,8 @@
 		private var mStatusFrame: MovieClip;
 
 		private var mButtonRetreat: ArmyButton;
+
+		private var mButtonCancelAction: ArmyButton;
 
 		private var mButtonRetreatText: TextField;
 
@@ -235,6 +238,13 @@
 			this.mTurnNumberText = new AutoTextField(this.mStatusFrame.getChildByName("Text_Turn_Value") as TextField);
 			this.mActionsLeftText = new AutoTextField(this.mStatusFrame.getChildByName("Text_Actions_Value") as TextField);
 			this.mButtonRetreat = this.addButton(this.mStatusFrame, "Button_Quit", this.buttonRetreatPressed);
+			var cancelClip:MovieClip = this.findMovieClipByName(this.mIngameHUDClip,"Button_Cancel");
+			if(cancelClip != null && cancelClip.parent is DisplayObjectContainer)
+			{
+				cancelClip.mouseEnabled = true;
+				this.mButtonCancelAction = new ArmyButton(cancelClip.parent as DisplayObjectContainer,cancelClip,DCButton.BUTTON_TYPE_ICON,null,null,null,null,null,this.buttonCancelActionPressed);
+			}
+			this.showCancelButton(true);
 			this.updateStatusTexts();
 			this.mBoosterBar = new PvPBoosterBar(this.mBottomFrame);
 			
@@ -292,6 +302,7 @@
 			this.mIngameHUDClip.addChild(this.mTurnChangeClip);
 			this.mTurnChangeClip.y = this.mIngameHUDClip.height / 2;
 			new DisplayObjectTransition(DisplayObjectTransition.ATTENTION_UP, this.mTurnChangeClip, DisplayObjectTransition.TYPE_DISAPPEAR);
+			this.showCancelButton(true);
 			this.mTextUpdateRequired = true;
 		}
 
@@ -357,7 +368,32 @@
 			}
 		}
 
-		public function showCancelButton(param1: Boolean): void {}
+		public function showCancelButton(param1: Boolean): void {
+			if(this.mButtonCancelAction)
+			{
+				this.mButtonCancelAction.setVisible(param1);
+				this.mButtonCancelAction.setEnabled(param1 && this.mGame && this.mGame.mPvPMatch && this.mGame.mPvPMatch.mPlayerTurn);
+			}
+		}
+
+		private function findMovieClipByName(param1:DisplayObjectContainer,param2:String):MovieClip {
+			var direct:MovieClip = null;
+			var child:DisplayObject = null;
+			var found:MovieClip = null;
+			var i:int = 0;
+			if(param1 == null) return null;
+			direct = param1.getChildByName(param2) as MovieClip;
+			if(direct != null) return direct;
+			while(i < param1.numChildren) {
+				child = param1.getChildAt(i);
+				if(child is DisplayObjectContainer) {
+					found = this.findMovieClipByName(child as DisplayObjectContainer,param2);
+					if(found != null) return found;
+				}
+				i++;
+			}
+			return null;
+		}
 
 		private function addButton(param1: MovieClip, param2: String, param3: Function): ArmyButton {
 			var _loc4_: MovieClip;
@@ -372,12 +408,20 @@
 			GameState.mInstance.openPvPDebriefing(false);
 		}
 
+		private function buttonCancelActionPressed(param1:MouseEvent):void {
+			if(!this.mGame || !this.mGame.mPvPMatch) return;
+			Utils.DiagEvent("PVP_PASS_TURN_BUTTON","turn=" + this.mGame.mPvPMatch.mTurnCounter + ";actions=" + this.mGame.mPvPMatch.mActionsLeft + ";player_turn=" + this.mGame.mPvPMatch.mPlayerTurn);
+			this.cancelTools();
+			this.mGame.mPvPMatch.passPlayerTurn();
+			this.showCancelButton(true);
+		}
+
 		public function cancelTools(): void {
 			this.mGame.cancelTools();
 			this.mGame.cancelDecoPurchase();
 			CursorManager.getInstance().hideCursorImages();
 			this.mGame.mScene.mMapGUIEffectsLayer.clearHighlights();
-			this.showCancelButton(false);
+			this.showCancelButton(true);
 		}
 
 		public function setZoomIndicator(param1: int): void {
