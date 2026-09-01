@@ -545,7 +545,9 @@ public final class PerformanceOverlay {
             @Override public void run() {
                 try {
                     captureProcessDiagnostics(dir);
-                    flushFlightRecorderAsync(true);
+                    writeGameEvents(dir);
+                    writeGameEventSummary(dir);
+                    writeFrameSpikes(dir);
                     File cacheDir = new File(activity.getCacheDir(), "armyattack-diagnostics");
                     if (!cacheDir.exists() && !cacheDir.mkdirs()) throw new IllegalStateException("mkdir cache");
                     final File zip = new File(cacheDir, "ArmyAttack-perf-" + utcCompact() + ".zip");
