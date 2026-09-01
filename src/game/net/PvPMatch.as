@@ -551,6 +551,7 @@ package game.net
                               }
                               else if(_loc3_.SpawningAreaType == "PowerUpSpawning")
                               {
+                                 Utils.DiagEvent("PVP_POWERUP_SPAWN_CONFIG","id=" + _loc15_.ID + ";chance=" + _loc12_ + ";amount=" + _loc13_ + ";i=" + _loc5_.mPosI + ";j=" + _loc5_.mPosJ);
                                  _loc1_.addPowerUpToMap(_loc15_.ID,_loc5_);
                               }
                            }

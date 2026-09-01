@@ -129,6 +129,10 @@
 
 		private static const DEBUG_HUD: Boolean = false;
 
+		private var mMobileLayoutHeight:Number = 750;
+		private static const MOBILE_PULL_OUT_TOP_SAFE:Number = 72;
+		private static const MOBILE_PULL_OUT_BOTTOM_SAFE:Number = 8;
+
 		public static var isPauseButtonClicked: Boolean = false;
 
 		private static const TOOLBOX_INDEX_SELL: int = 0;
@@ -716,6 +720,7 @@
 		}
 
 		private function enterFrame(param1: Event): void {
+			CONFIG::BUILD_FOR_MOBILE_AIR { this.constrainMobilePullOut(this.mPullOutMenuFrame,"right"); }
 			if (this.mPullOutMenuFrame.currentFrameLabel == "Normal") {
 				this.mPullOutMenuFrame.stop();
 				this.mPullOutMenuFrame.removeEventListener(Event.ENTER_FRAME, this.enterFrame);
@@ -755,6 +760,7 @@
 		}
 
 		private function enterFrameMission(param1: Event): void {
+			CONFIG::BUILD_FOR_MOBILE_AIR { this.constrainMobilePullOut(this.mPullOutMissionFrame,"missions"); }
 			if (this.mPullOutMissionFrame.currentFrameLabel == "Normal") {
 				this.mPullOutMissionFrame.visible = true;
 				this.mPullOutMissionFrame.stop();
@@ -841,6 +847,26 @@
 			this.mIngameHUDClip.removeChild(_loc2_);
 		}
 
+		private function constrainMobilePullOut(param1:MovieClip, param2:String):void {
+			if(!param1 || !this.mIngameHUDClip_BOTTOM) return;
+			var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);
+			var topSafe:Number = MOBILE_PULL_OUT_TOP_SAFE;
+			var bottomSafe:Number = Math.max(topSafe,this.mMobileLayoutHeight - MOBILE_PULL_OUT_BOTTOM_SAFE);
+			var available:Number = bottomSafe - topSafe;
+			var deltaY:Number = 0;
+			if(bounds.height <= available) {
+				if(bounds.top < topSafe) deltaY = topSafe - bounds.top;
+				if(bounds.bottom + deltaY > bottomSafe) deltaY -= bounds.bottom + deltaY - bottomSafe;
+			} else if(bounds.top < topSafe) {
+				deltaY = topSafe - bounds.top;
+			}
+			if(Math.abs(deltaY) >= 0.5) {
+				param1.y += deltaY;
+				var adjusted:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);
+				Utils.DiagEvent("HUD_MOBILE_PULL_OUT_CLAMP","panel=" + param2 + ";dy=" + deltaY + ";top=" + adjusted.top + ";bottom=" + adjusted.bottom + ";viewport_h=" + this.mMobileLayoutHeight);
+			}
+		}
+
 		// This is the alignment test code for the resize function.
 		/*
       public function resize(param1:int, param2:int) : void
@@ -917,6 +943,7 @@
 				}
 				var localWidth:Number = param1 / scaleFactor;
 				var localHeight:Number = param2 / scaleFactor;
+				this.mMobileLayoutHeight = localHeight;
 
 				this.mIngameHUDClip.scaleX = scaleFactor;
 				this.mIngameHUDClip.scaleY = scaleFactor;
@@ -946,6 +973,8 @@
 				this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);
 				this.mButtonPullOutFrame.y = Math.max(0,localHeight - this.mButtonPullOutFrame.height);
 				this.mPullOutMenuFrame.y = Math.max(0,localHeight - this.mPullOutMenuFrame.height);
+				this.constrainMobilePullOut(this.mPullOutMissionFrame,"missions");
+				this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
 
 				this.mHudButtonShop.setX(this.mButtonPullOutMissionFrame.x + this.mButtonPullOutMissionFrame.width + 20);
 				this.mHudButtonSave.setX(this.mHudButtonShop.getX() + this.mHudButtonShop.getWidth());

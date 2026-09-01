@@ -3242,6 +3242,7 @@
 			}
 			this.mMapData.mUpdateRequired = true;
 			this.updateGrid();
+			this.mScene.refreshPlacedRenderable(param1);
 		}
 
 		public function inventoryItemUsed(): void {

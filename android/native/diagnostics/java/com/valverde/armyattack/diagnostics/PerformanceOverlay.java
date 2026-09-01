@@ -394,27 +394,15 @@ public final class PerformanceOverlay {
 
         LinearLayout row1 = new LinearLayout(activity);
         row1.setOrientation(LinearLayout.HORIZONTAL);
-        Button start = button("INICIAR");
-        start.setContentDescription("army_perf_start");
         Button mark = button("MARCAR LAG");
         mark.setContentDescription("army_perf_mark");
-        row1.addView(start, weighted());
-        row1.addView(mark, weighted());
-        panel.addView(row1);
-
-        LinearLayout row2 = new LinearLayout(activity);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
-        Button stop = button("DETENER");
-        stop.setContentDescription("army_perf_stop");
         Button zip = button("ZIP");
         zip.setContentDescription("army_perf_zip");
-        row2.addView(stop, weighted());
-        row2.addView(zip, weighted());
-        panel.addView(row2);
+        row1.addView(mark, weighted());
+        row1.addView(zip, weighted());
+        panel.addView(row1);
 
-        statusView = text(sessionDir != null
-                ? "Sesión anterior recuperada. Puedes pulsar ZIP tras reiniciar la app."
-                : "Profiler detenido. Toca INICIAR antes de jugar.", 12f, Color.rgb(170, 220, 170));
+        statusView = text("REGISTRO SIEMPRE ACTIVO · PERF muestra métricas, marca lag o comparte una copia ZIP.", 12f, Color.rgb(170, 220, 170));
         statusView.setPadding(0, dp(8), 0, 0);
         panel.addView(statusView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -431,18 +419,12 @@ public final class PerformanceOverlay {
                 if (panelVisible) ensureSampleLoop();
             }
         });
-        start.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { startSession(); }
-        });
         mark.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 if (!recording) startSession();
                 mark("LAG");
                 status("LAG marcado en " + elapsedSessionMs() + " ms");
             }
-        });
-        stop.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { stopSession(); }
         });
         zip.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { shareLatest(); }
@@ -490,7 +472,7 @@ public final class PerformanceOverlay {
                         "Recording starts automatically when the game activity attaches; PERF only controls visibility/manual markers.\n" +
                         "Buttons are native Android views layered over AIR; the SWF bytecode is not modified by this recorder.\n" +
                         "Use markers.jsonl to locate MARCAR LAG timestamps.\n" +
-                        "STOP also captures threads.txt, proc-status.txt, smaps-rollup.txt and own-process logcat when Android permits it.\n" +
+                        "ZIP captures a live snapshot without stopping the always-on recorder, including threads/proc/memory when Android permits it.\n" +
                         "Search game-events.jsonl for UI_BUTTON, PVP_, WORLD_MAP_, MAP_, OFFLINE_SWITCH_MAP, SWF_, ANIMATION_, HFE_ and TILEMAP_ markers.\n" +
                         "frame-spikes.jsonl records every >=33ms frame and correlates it with the nearest preceding SWF/game event.\n" +
                         "MARCAR LAG captures an immediate lag-snapshots/ thread, proc, memory and own-process logcat snapshot near the hitch.\n" +
@@ -555,18 +537,15 @@ public final class PerformanceOverlay {
     }
 
     private void shareLatest() {
-        if (sessionDir == null) {
-            startSession();
-            mark("SNAPSHOT");
-            stopSession();
-        } else if (recording) {
-            stopSession();
-        }
+        if (sessionDir == null || !recording) startSession();
+        mark("SHARE");
         final File dir = sessionDir;
-        status("Preparando ZIP…");
+        status("Preparando ZIP sin detener el registro…");
         io.execute(new Runnable() {
             @Override public void run() {
                 try {
+                    captureProcessDiagnostics(dir);
+                    flushFlightRecorderAsync(true);
                     File cacheDir = new File(activity.getCacheDir(), "armyattack-diagnostics");
                     if (!cacheDir.exists() && !cacheDir.mkdirs()) throw new IllegalStateException("mkdir cache");
                     final File zip = new File(cacheDir, "ArmyAttack-perf-" + utcCompact() + ".zip");

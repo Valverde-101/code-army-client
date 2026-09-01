@@ -182,7 +182,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.12-hud-flightrecorder-swf-provenance'
+  patch_version='mobile-engine-v3.13-hud-placement-alwayson-pvp-traces'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -250,10 +250,16 @@ $manifest=[ordered]@{
     'mainmap_player_building_passive_10hz',
     'mainmap_viewport_recull_128px_threshold',
     'mainmap_viewport_fallback_recull_20_frames',
-    'mainmap_spatial_audio_refresh_10hz'
+    'mainmap_spatial_audio_refresh_10hz',
+    'mobile_hud_pullout_visible_bounds_clamp',
+    'placement_immediate_visibility_commit',
+    'pvp_move_visual_runtime_trace',
+    'pvp_loot_runtime_trace',
+    'pvp_powerup_spawn_runtime_trace',
+    'perf_overlay_always_on_no_start_stop'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.12-hud-flightrecorder-swf-provenance source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.13-hud-placement-alwayson-pvp-traces source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

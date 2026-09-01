@@ -106,8 +106,16 @@ package game.actions
          if(_loc5_)
          {
             _loc7_ = (_loc1_.mItem as TargetItem).getRandomItemDrop();
-            _loc3_.addLootReward(_loc7_,1,_loc1_.getContainer());
-            _loc2_.mPvPMatch.addIngameCollectible(_loc7_);
+            Utils.DiagEvent("PVP_LOOT_ROLL","unit=" + _loc1_.mUnitId + ";item=" + (_loc7_ ? _loc7_.mId : "null") + ";badass_xp=" + _loc6_);
+            if(_loc7_)
+            {
+               _loc3_.addLootReward(_loc7_,1,_loc1_.getContainer());
+               _loc2_.mPvPMatch.addIngameCollectible(_loc7_);
+            }
+            else
+            {
+               Utils.DiagEvent("PVP_LOOT_ROLL_EMPTY","unit=" + _loc1_.mUnitId);
+            }
          }
          var _loc8_:int = getCombinedDamage();
          if(!mActor && Boolean(mCharacterActors))

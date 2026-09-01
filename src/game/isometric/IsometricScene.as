@@ -3451,7 +3451,10 @@
 		public function addLootReward(param1: Item, param2: int, param3: DisplayObject): void {
 			var _loc4_: int = 0;
 			var _loc5_: LootReward = null;
-			if (param1 != null) {
+			if(this.mGame && this.mGame.mState == GameState.STATE_PVP) {
+				Utils.DiagEvent("PVP_LOOT_SPAWN","item=" + (param1 ? param1.mId : "null") + ";amount=" + param2 + ";source=" + Boolean(param3));
+			}
+			if (param1 != null && param3 != null) {
 				_loc4_ = 50;
 				if (param1.mId == "Energy" || param1.mId == "SocialXP") {
 					_loc4_ = 5;
@@ -4357,10 +4360,24 @@
 		public function addPowerUpToMap(param1: String, param2: GridCell): PowerUpObject {
 			var _loc4_: PowerUpObject = null;
 			var _loc3_: MapItem = ItemManager.getItem(param1, "PowerUp") as MapItem;
-			if (_loc3_) {
-				return this.createObject(_loc3_, new Point(param2.mPosI, param2.mPosJ)) as PowerUpObject;
+			if (_loc3_ && param2) {
+				_loc4_ = this.createObject(_loc3_, new Point(param2.mPosI, param2.mPosJ)) as PowerUpObject;
+				Utils.DiagEvent("PVP_POWERUP_SPAWN","id=" + param1 + ";i=" + param2.mPosI + ";j=" + param2.mPosJ + ";created=" + Boolean(_loc4_));
+				return _loc4_;
 			}
+			Utils.DiagEvent("PVP_POWERUP_SPAWN_MISS","id=" + param1 + ";cell=" + Boolean(param2) + ";config=" + Boolean(_loc3_));
 			return null;
+		}
+
+		public function refreshPlacedRenderable(param1:Renderable):void {
+			if(!param1) return;
+			var clip:DisplayObject = param1.getContainer();
+			if(clip) clip.visible = true;
+			param1.mVisible = true;
+			this.mViewportDirty = true;
+			this.mSortDirty = true;
+			if(!Config.DISABLE_SORT) this.sortAll(true,true);
+			Utils.DiagEvent("PLACEMENT_VISIBILITY_COMMIT","item=" + (param1.mItem ? param1.mItem.mId : "") + ";x=" + param1.mX + ";y=" + param1.mY + ";visible=" + Boolean(clip && clip.visible) + ";attached=" + Boolean(clip && clip.parent));
 		}
 
 		public function addRewardedPlayerUnit(param1: PlayerUnitItem, param2: GridCell): void {
@@ -4489,6 +4506,7 @@
 				}
 			}
 			if (param2.mPowerUp) {
+				Utils.DiagEvent("PVP_POWERUP_PICKUP_CELL","id=" + (param2.mPowerUp.mItem ? param2.mPowerUp.mItem.mId : "") + ";unit=" + (param1.mItem ? param1.mItem.mId : "") + ";i=" + param2.mPosI + ";j=" + param2.mPosJ);
 				param2.mPowerUp.execute(param1);
 				this.removeObject(param2.mPowerUp, true, false);
 			}
