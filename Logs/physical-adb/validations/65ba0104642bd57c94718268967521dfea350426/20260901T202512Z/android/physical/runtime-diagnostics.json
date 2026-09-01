@@ -1,0 +1,10 @@
+﻿{
+    "tested_sha":  "65ba0104642bd57c94718268967521dfea350426",
+    "apk_sha256":  "acec6f22768e071a34f490487a9272fc9f214b8b8fe46fe2c5220cae181f217f",
+    "result":  "SKIPPED_WITH_REASON",
+    "reason":  "no_authorized_device",
+    "game_event_count":  0,
+    "swf_event_count":  0,
+    "generated_utc":  "2026-09-01T20:24:24.3843809Z"
+}
+
