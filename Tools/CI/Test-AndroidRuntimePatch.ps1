@@ -277,7 +277,7 @@ Require-Contains $gameHud 'Math.min(Math.min((param1 + 10) / 1024,param2 / 750),
 Require-Contains $gameHud 'HUD_MOBILE_LAYOUT' 'mobile_hud_layout_is_instrumented'
 Require-Contains $gameHud 'HUD_MOBILE_PULL_OUT_CLAMP' 'mobile_hud_pullout_is_visible_bounds_clamped'
 Require-Contains $gameHud 'if (this.mPullOutMenuState == this.STATE_MENU_OPEN)' 'right_hud_clamp_only_applies_while_open'
-Require-Contains $gameHud 'HUD_RIGHT_CLOSE_RESET' 'right_hud_close_resets_authored_base_position'
+Require-Contains $gameHud 'HUD_RIGHT_CLOSE_HIDDEN' 'right_hud_close_resets_authored_base_position'
 Require-Contains $gameHud 'this.mPullOutMenuState == this.STATE_MENU_OPEN && this.mPullOutMenuFrame.currentFrameLabel == "Normal"' 'right_hud_normal_label_only_stops_open_animation'
 Require-Contains $gameHud 'this.mPullOutMenuState == this.STATE_MENU_CLOSED && this.mPullOutMenuFrame.currentFrame == this.mPullOutMenuFrame.totalFrames' 'right_hud_close_runs_to_authored_terminal_frame'
 Require-Contains $gameHud 'constrainMobilePullOut(this.mPullOutMissionFrame,"missions")' 'mobile_mission_pullout_clamped_during_animation'
