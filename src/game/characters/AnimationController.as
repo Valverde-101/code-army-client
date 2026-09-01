@@ -4,6 +4,7 @@ package game.characters
    import flash.display.DisplayObject;
    import flash.display.MovieClip;
    import flash.events.Event;
+   import flash.utils.getTimer;
    import game.isometric.elements.Renderable;
     import game.isometric.characters.IsometricCharacter;
    
@@ -68,11 +69,41 @@ package game.characters
       private var mIsPlaying:Boolean = false;
       
       private var mDirectionTargets:Array;
+
+      private static var smActiveControllers:int = 0;
+
+      private static var smCreatedControllers:int = 0;
+
+      private static var smMaterializedClips:int = 0;
+
+      private static var smAnimationChanges:int = 0;
+
+      private static var smPlayCalls:int = 0;
+
+      private static var smDirectionChanges:int = 0;
+
+      private static var smLastStatsAt:int = 0;
+
+      private var mDiagnosticsDestroyed:Boolean = false;
       
       public function AnimationController(param1:Renderable)
       {
          super();
          this.mOwner = param1;
+         smActiveControllers++;
+         smCreatedControllers++;
+         this.emitAnimationStats(false);
+      }
+
+      private function emitAnimationStats(param1:Boolean = false) : void
+      {
+         var now:int = getTimer();
+         if(!param1 && now - smLastStatsAt < 5000)
+         {
+            return;
+         }
+         smLastStatsAt = now;
+         Utils.DiagEvent("ANIMATION_STATS","active_controllers=" + smActiveControllers + ";created_total=" + smCreatedControllers + ";materialized_total=" + smMaterializedClips + ";changes_total=" + smAnimationChanges + ";plays_total=" + smPlayCalls + ";direction_changes_total=" + smDirectionChanges);
       }
       
       public function loadAnimations(param1:Array) : void
@@ -103,6 +134,8 @@ package game.characters
                if((_loc10_ = _loc2_.getSWFClass(_loc4_,_loc3_)) != null)
                {
                   _loc9_.addChild(new _loc10_());
+                  smMaterializedClips++;
+                  this.emitAnimationStats(false);
                }
             }
             else
@@ -146,6 +179,8 @@ package game.characters
                   if((_loc7_ = _loc2_.getSWFClass(_loc4_,_loc3_)) != null)
                   {
                      (_loc8_ = this.mAnimations[_loc6_] as MovieClip).addChild(new _loc7_());
+                     smMaterializedClips++;
+                     this.emitAnimationStats(false);
                      this.mDirectionTargets[_loc6_] = null;
                      _loc8_.visible = true;
                   }
@@ -186,6 +221,8 @@ package game.characters
          {
          }
          this.mCurrentAnimation = param1;
+         smAnimationChanges++;
+         this.emitAnimationStats(false);
          return true;
       }
       
@@ -256,6 +293,8 @@ package game.characters
          {
             return;
          }
+         smDirectionChanges++;
+         this.emitAnimationStats(false);
          if(param1 == DIR_RIGHT || param1 == DIR_LEFT)
          {
             while(i < this.mAnimations.length)
@@ -385,6 +424,8 @@ package game.characters
          var _loc5_:int = 0;
          var _loc6_:MovieClip = null;
          this.mIsPlaying = true;
+         smPlayCalls++;
+         this.emitAnimationStats(false);
          (this.mAnimations[this.mCurrentAnimation] as MovieClip).gotoAndPlay(1);
          var _loc1_:int = 0;
          while(_loc1_ < (this.mAnimations[this.mCurrentAnimation] as MovieClip).numChildren)
@@ -475,6 +516,15 @@ package game.characters
       
       public function destroy() : void
       {
+         if(!this.mDiagnosticsDestroyed)
+         {
+            this.mDiagnosticsDestroyed = true;
+            if(smActiveControllers > 0)
+            {
+               smActiveControllers--;
+            }
+            this.emitAnimationStats(false);
+         }
          var _loc1_:String = null;
          var _loc2_:String = null;
          var _loc3_:MovieClip = null;

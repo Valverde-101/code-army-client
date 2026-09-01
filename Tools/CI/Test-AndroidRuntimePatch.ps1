@@ -85,9 +85,13 @@ $desertRows=@($desertTile -split "\r?\n" | Where-Object { $_.Trim().Length -gt 0
 if($desertRows.Count -ne 73){throw "REGRESSION=FAIL check=desert_tilemap_rows expected=73 actual=$($desertRows.Count)"}
 for($i=0;$i -lt $desertRows.Count;$i++){
   $cells=@($desertRows[$i].Split(',') | Where-Object { $_.Trim().Length -gt 0 })
-  if($cells.Count -ne 71){throw "REGRESSION=FAIL check=desert_tilemap_width row=$($i+1) expected=71 actual=$($cells.Count)"}
+  $expectedWidth=if($i -eq 29 -or $i -eq 30){72}else{71}
+  if($cells.Count -ne $expectedWidth){throw "REGRESSION=FAIL check=desert_tilemap_width row=$($i+1) expected=$expectedWidth actual=$($cells.Count)"}
+  if($expectedWidth -eq 72 -and $cells[71].Trim() -ne '99'){throw "REGRESSION=FAIL check=desert_legacy_padding row=$($i+1) expected=99 actual=$($cells[71])"}
 }
-Write-Host 'REGRESSION_CHECK=PASS name=desert_tilemap_rectangular_71x73'
+Write-Host 'REGRESSION_CHECK=PASS name=desert_tilemap_legacy_padding_71x73_plus2'
+Require-Contains $mapData 'legacy_desert_flat_padding' 'desert_legacy_flattening_preserves_authored_alignment'
+Require-Contains $mapData 'TILEMAP_LEGACY_PADDING expected=2' 'desert_legacy_padding_fails_fast_if_partial'
 Require-Contains $animation 'notifyOwnerAnimationReady' 'animation_materialization_refreshes_owner'
 Require-Contains $character 'public function refreshStatusHints(): void' 'unit_status_placeholders_refreshed_immediately'
 Require-Contains $world 'private function requestClose(): void' 'worldmap_close_is_idempotent'
@@ -176,10 +180,21 @@ Require-Contains $game 'MAP_MUSIC_COMMIT' 'desert_music_occurs_after_core_map_co
 Require-Contains $diagMarker 'nativeContext.call("logEvent"' 'swf_native_diagnostics_bridge'
 Require-Contains $diagExtension 'functions.put("logEvent", new LogEventFunction());' 'ane_exposes_log_event'
 Require-Contains $perfOverlay 'game-events.jsonl' 'performance_zip_contains_game_events'
+Require-Contains $perfOverlay 'game-events-summary.json' 'performance_zip_summarizes_game_events'
+Require-Contains $perfOverlay 'lag-snapshots' 'performance_lag_marker_captures_immediate_snapshot'
+Require-Contains $perfOverlay 'proc-sched.txt' 'performance_zip_captures_process_scheduler_state'
 Require-Contains $perfOverlay 'LIVE_RENDER_RECORDING_MS = 5000L' 'profiler_live_text_throttled'
+Require-Contains $resourceManager 'SWF_RESOURCE_STATS' 'swf_resource_lookup_stats_instrumented'
+Require-Contains $resourceManager 'SWF_ALIAS_RISK' 'swf_alias_risk_instrumented'
+Require-Contains $resourceManager 'SWF_CLASS_MISS' 'swf_class_miss_instrumented'
+Require-Contains $animation 'ANIMATION_STATS' 'animation_churn_stats_instrumented'
+Require-Contains $swfPatch "Class='com.dchoc.graphics.DCResourceManager'" 'swf_patch_includes_resource_manager_diagnostics'
 Require-Contains $utils 'DiagEvent("UI_BUTTON"' 'central_button_events_instrumented'
 Require-Contains $pvpEnemy '"opfor_move_dark"' 'pvp_enemy_movement_preserves_visual_identity'
 Require-Contains $pvpEnemy 'resolveOpforGraphics' 'pvp_enemy_generic_symbols_remapped_to_opfor'
+Require-Contains $pvpEnemy 'this.mResolvedGraphicsArray = this.resolveOpforGraphics(param3.mGraphicsArray);' 'pvp_enemy_resolved_graphics_are_loaded'
+Require-Contains $pvpEnemy 'initAnimations(this.mResolvedGraphicsArray);' 'pvp_enemy_animation_controller_uses_opfor_graphics'
+Require-NotContains $pvpEnemy 'initAnimations(param3.mGraphicsArray);' 'pvp_enemy_original_graphics_bypass_removed'
 Require-Contains $pvpEnemy 'pvp_premium_infantry_' 'pvp_enemy_sniper_has_dark_fallback'
 Require-Contains $pvpEnemy '_loc7_ = _loc6_[_loc8_] as PlayerUnit;' 'pvp_enemy_ai_assigns_candidate_before_range_check'
 Require-Contains $pvpEnemy '(_loc9_ = _loc7_.getCell()) != null' 'pvp_enemy_ai_guards_candidate_cell'
@@ -189,4 +204,4 @@ $audit=Join-Path $RepoRoot 'Tools\CI\Audit-SwfCore.ps1'
 if(-not(Test-Path -LiteralPath $audit)){throw "REGRESSION=FAIL missing=Tools/CI/Audit-SwfCore.ps1"}
 & $audit -RepoRoot $RepoRoot
 Write-Host 'REGRESSION_CHECK=PASS name=swf_core_audit_reproducible'
-Write-Host 'REGRESSION=PASS suite=android-runtime-v3.16-state-machine-native-events-performance'
+Write-Host 'REGRESSION=PASS suite=android-runtime-v3.17-opfor-desert-alignment-swf-telemetry'

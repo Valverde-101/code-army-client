@@ -56,7 +56,7 @@ import java.util.zip.ZipOutputStream;
 public final class PerformanceOverlay {
     private static final Object GAME_EVENT_LOCK = new Object();
     private static final ArrayDeque<String> GAME_EVENTS = new ArrayDeque<String>();
-    private static final int MAX_GAME_EVENTS = 800;
+    private static final int MAX_GAME_EVENTS = 3000;
     private static final String GAME_EVENT_TAG = "ArmyAttackGame";
 
     public static void recordGameEvent(String kind, String detail) {
@@ -87,6 +87,32 @@ public final class PerformanceOverlay {
             writeText(new File(dir, "game-events.jsonl"), text.toString());
         } catch (Throwable t) {
             appendError(dir, "game_events", t);
+        }
+    }
+
+    private static void writeGameEventSummary(File dir) {
+        if (dir == null) return;
+        try {
+            List<String> snapshot;
+            synchronized (GAME_EVENT_LOCK) { snapshot = new ArrayList<String>(GAME_EVENTS); }
+            JSONObject counts = new JSONObject();
+            int parsed = 0;
+            for (String line : snapshot) {
+                try {
+                    JSONObject event = new JSONObject(line);
+                    String kind = event.optString("kind", "UNKNOWN");
+                    counts.put(kind, counts.optInt(kind, 0) + 1);
+                    parsed++;
+                } catch (Throwable ignored) {}
+            }
+            JSONObject summary = new JSONObject();
+            summary.put("generated_utc", utcIso());
+            summary.put("retained_events", snapshot.size());
+            summary.put("parsed_events", parsed);
+            summary.put("counts_by_kind", counts);
+            writeText(new File(dir, "game-events-summary.json"), summary.toString(2));
+        } catch (Throwable t) {
+            appendError(dir, "game_event_summary", t);
         }
     }
     private static final AtomicBoolean BOOTSTRAPPED = new AtomicBoolean(false);
@@ -372,7 +398,8 @@ public final class PerformanceOverlay {
                         "Buttons are native Android views layered over AIR; the SWF bytecode is not modified.\n" +
                         "Use markers.jsonl to locate MARCAR LAG timestamps.\n" +
                         "STOP also captures threads.txt, proc-status.txt, smaps-rollup.txt and own-process logcat when Android permits it.\n" +
-                        "Search game-events.jsonl for UI_BUTTON, PVP_, WORLD_MAP_, MAP_, OFFLINE_SWITCH_MAP and ARMY_DIAG markers.\n" +
+                        "Search game-events.jsonl for UI_BUTTON, PVP_, WORLD_MAP_, MAP_, OFFLINE_SWITCH_MAP, SWF_, ANIMATION_ and TILEMAP_ markers.\n" +
+                        "MARCAR LAG captures an immediate lag-snapshots/ thread, proc, memory and own-process logcat snapshot near the hitch.\n" +
                         "Live metrics text is throttled while recording so the profiler does not compete with AIR layout on the main thread.\n");
                     writeText(new File(dir, "device.json"), buildDeviceJson().toString(2));
                     writeText(sessionCsv,
@@ -489,6 +516,11 @@ public final class PerformanceOverlay {
                     marker.put("elapsed_ms", elapsed);
                     marker.put("type", type);
                     appendText(new File(dir, "markers.jsonl"), marker.toString() + "\n");
+                    if ("LAG".equals(type)) {
+                        File lagDir = new File(new File(dir, "lag-snapshots"), "lag-" + elapsed);
+                        if (!lagDir.exists()) lagDir.mkdirs();
+                        captureProcessDiagnostics(lagDir);
+                    }
                 } catch (Throwable t) {
                     appendError(dir, "marker", t);
                 }
@@ -596,7 +628,10 @@ public final class PerformanceOverlay {
             appendError(dir, "thread_dump", t);
         }
         writeGameEvents(dir);
+        writeGameEventSummary(dir);
         copyProcFile("/proc/self/status", new File(dir, "proc-status.txt"), 1024 * 1024);
+        copyProcFile("/proc/self/stat", new File(dir, "proc-stat.txt"), 1024 * 1024);
+        copyProcFile("/proc/self/sched", new File(dir, "proc-sched.txt"), 1024 * 1024);
         copyProcFile("/proc/self/smaps_rollup", new File(dir, "smaps-rollup.txt"), 1024 * 1024);
         captureOwnLogcat(dir);
     }

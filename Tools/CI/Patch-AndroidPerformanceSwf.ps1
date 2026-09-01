@@ -53,6 +53,7 @@ $patchSpecs=@(
   [ordered]@{Class='game.battlefield.MapData';Source='src\game\battlefield\MapData.as';Log='ffdec-feature-mapdata.log'},
   [ordered]@{Class='game.isometric.characters.IsometricCharacter';Source='src\game\isometric\characters\IsometricCharacter.as';Log='ffdec-feature-character-hints.log'},
   [ordered]@{Class='game.characters.AnimationController';Source='src\game\characters\AnimationController.as';Log='ffdec-feature-animation-controller.log'},
+  [ordered]@{Class='com.dchoc.graphics.DCResourceManager';Source='src\com\dchoc\graphics\DCResourceManager.as';Log='ffdec-feature-resource-manager.log'},
   [ordered]@{Class='Utils';Source='src\Utils.as';Log='ffdec-performance-utils.log'},
   [ordered]@{Class='game.characters.PvPEnemyUnit';Source='src\game\characters\PvPEnemyUnit.as';Log='ffdec-feature-pvp-enemy-visual.log'},
   [ordered]@{Class='game.utils.OfflineSave';Source='src\game\utils\OfflineSave.as';Log='ffdec-feature-offlinesave.log'},

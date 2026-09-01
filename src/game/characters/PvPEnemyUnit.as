@@ -95,7 +95,8 @@ package game.characters
          mSpeed = 300;
          mContainer.mouseChildren = false;
          mContainer.mouseEnabled = false;
-         initAnimations(param3.mGraphicsArray);
+         this.mResolvedGraphicsArray = this.resolveOpforGraphics(param3.mGraphicsArray);
+         initAnimations(this.mResolvedGraphicsArray);
          setPos(500,500,0);
          updateAnimation(true,false);
          mVisible = false;
@@ -125,7 +126,7 @@ package game.characters
                _loc4_ = _loc3_.lastIndexOf("/");
                _loc5_ = _loc4_ >= 0 ? _loc3_.substr(_loc4_ + 1) : _loc3_;
                _loc6_ = null;
-               if(_loc5_.indexOf("pvp_") != 0)
+               if(_loc2_ != AnimationController.CHARACTER_ANIMATION_AIRDROP && _loc5_.indexOf("pvp_") != 0)
                {
                   if(_loc5_.indexOf("good_infantry_") == 0)
                   {
@@ -147,6 +148,7 @@ package game.characters
                if(_loc6_ != null)
                {
                   _loc1_[_loc2_] = "swf/units_opfor/" + _loc6_;
+                  Utils.DiagEvent("PVP_ENEMY_SYMBOL_REMAP","unit=" + this.mUnitId + ";animation=" + _loc2_ + ";from=" + _loc3_ + ";to=" + _loc1_[_loc2_]);
                   _loc7_++;
                }
             }

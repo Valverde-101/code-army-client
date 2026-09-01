@@ -18,6 +18,7 @@ package com.dchoc.graphics
    import flash.utils.ByteArray;
    import flash.utils.Dictionary;
    import flash.utils.getDefinitionByName;
+   import flash.utils.getTimer;
    
    public class DCResourceManager extends EventDispatcher
    {
@@ -50,6 +51,16 @@ package com.dchoc.graphics
       private var mTotalFileCountToLoad:int;
       
       private var mLoadedPolicyFiles:Array;
+
+      private var mSwfLookupCount:int = 0;
+
+      private var mSwfLookupMissCount:int = 0;
+
+      private var mSwfAliasRiskCount:int = 0;
+
+      private var mSwfAliasRiskLogged:Object = new Object();
+
+      private var mLastSwfStatsAt:int = 0;
       
       public function DCResourceManager()
       {
@@ -225,10 +236,23 @@ package com.dchoc.graphics
          return _loc2_.contentLoaderInfo.applicationDomain;
       }
       
+      private function emitSwfResourceStats(param1:Boolean = false) : void
+      {
+         var now:int = getTimer();
+         if(!param1 && now - this.mLastSwfStatsAt < 5000)
+         {
+            return;
+         }
+         this.mLastSwfStatsAt = now;
+         Utils.DiagEvent("SWF_RESOURCE_STATS","lookups=" + this.mSwfLookupCount + ";misses=" + this.mSwfLookupMissCount + ";alias_risk=" + this.mSwfAliasRiskCount + ";pending=" + this.mFileCountToLoad + ";total_requests=" + this.mTotalFileCountToLoad);
+      }
+
       public function getSWFClass(param1:String, param2:String = null) : Class
       {
          var _loc4_:int = 0;
          var _loc3_:String = null;
+         var aliasKey:String = null;
+         var resolved:Class = null;
          if(!param2)
          {
             if(!param1)
@@ -243,7 +267,30 @@ package com.dchoc.graphics
          {
             _loc3_ = param2;
          }
-         return getDefinitionByName(_loc3_) as Class;
+         this.mSwfLookupCount++;
+         if(param1 != null && param1.indexOf("swf/units_opfor") == 0 && _loc3_ != null && _loc3_.indexOf("pvp_") != 0 && _loc3_.indexOf("_airdrop") < 0)
+         {
+            this.mSwfAliasRiskCount++;
+            aliasKey = param1 + "|" + _loc3_;
+            if(!this.mSwfAliasRiskLogged[aliasKey])
+            {
+               this.mSwfAliasRiskLogged[aliasKey] = true;
+               Utils.DiagEvent("SWF_ALIAS_RISK","resource=" + param1 + ";symbol=" + _loc3_ + ";lookup=" + this.mSwfLookupCount);
+            }
+         }
+         try
+         {
+            resolved = getDefinitionByName(_loc3_) as Class;
+         }
+         catch(error:Error)
+         {
+            this.mSwfLookupMissCount++;
+            Utils.DiagEvent("SWF_CLASS_MISS","resource=" + param1 + ";symbol=" + _loc3_ + ";lookups=" + this.mSwfLookupCount + ";misses=" + this.mSwfLookupMissCount + ";error=" + error.errorID);
+            this.emitSwfResourceStats(true);
+            throw error;
+         }
+         this.emitSwfResourceStats(false);
+         return resolved;
       }
       
       public function get(param1:String) : *

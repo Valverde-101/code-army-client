@@ -110,65 +110,97 @@
 		}
 
 		private static function parseTileMapCsv(param1: String, param2: int, param3: int): Array {
-			var _loc1_: Array = new Array();
-			var _loc2_: Array = null;
-			var _loc3_: String = null;
-			var _loc4_: int = param2 * param3;
-			var _loc5_: int = 0;
-			var _loc6_: Array = null;
-			var _loc7_: String = null;
-			var _loc8_: Array = null;
-			var _loc9_: int = 0;
-			var _loc10_: int = 0;
+			var result: Array = new Array();
+			var rawRows: Array = null;
+			var rawRow: String = null;
+			var rawCells: Array = null;
+			var rawCell: String = null;
+			var cells: Array = null;
+			var rows: Array = new Array();
+			var expected: int = param2 * param3;
+			var rowNumber: int = 0;
+			var rowIndex: int = 0;
+			var colIndex: int = 0;
+			var legacyPaddingRows: int = 0;
+			var legacyDesertPadding: Boolean = param2 == 71 && param3 == 73;
+			var tileIndex: int = 0;
 			if (param1 == null) {
 				throw new Error("TILEMAP_RESOURCE_NULL");
 			}
-			_loc6_ = param1.replace(/\r/g, "").split("\n");
-			for each (_loc7_ in _loc6_) {
-				_loc8_ = new Array();
-				_loc2_ = _loc7_.split(",");
-				for each (_loc3_ in _loc2_) {
-					while (_loc3_.length > 0 && (_loc3_.charCodeAt(0) == 65279 || _loc3_.charCodeAt(0) == 32 || _loc3_.charCodeAt(0) == 9)) {
-						_loc3_ = _loc3_.substr(1);
+			rawRows = param1.replace(/\r/g, "").split("\n");
+			for each (rawRow in rawRows) {
+				cells = new Array();
+				rawCells = rawRow.split(",");
+				for each (rawCell in rawCells) {
+					while (rawCell.length > 0 && (rawCell.charCodeAt(0) == 65279 || rawCell.charCodeAt(0) == 32 || rawCell.charCodeAt(0) == 9)) {
+						rawCell = rawCell.substr(1);
 					}
-					while (_loc3_.length > 0 && (_loc3_.charCodeAt(_loc3_.length - 1) == 32 || _loc3_.charCodeAt(_loc3_.length - 1) == 9)) {
-						_loc3_ = _loc3_.substr(0, _loc3_.length - 1);
+					while (rawCell.length > 0 && (rawCell.charCodeAt(rawCell.length - 1) == 32 || rawCell.charCodeAt(rawCell.length - 1) == 9)) {
+						rawCell = rawCell.substr(0, rawCell.length - 1);
 					}
-					if (_loc3_.length > 0) {
-						_loc8_.push(int(_loc3_));
+					if (rawCell.length > 0) {
+						cells.push(int(rawCell));
 					}
 				}
-				if (_loc8_.length == 0) {
+				if (cells.length == 0) {
 					continue;
 				}
-				_loc9_++;
-				if (_loc9_ > param3) {
+				rowNumber = rows.length + 1;
+				if (rowNumber > param3) {
 					throw new Error("TILEMAP_ROW_COUNT expected=" + param3 + " actual_more_than=" + param3);
 				}
-				if (_loc8_.length < param2) {
-					throw new Error("TILEMAP_ROW_WIDTH row=" + _loc9_ + " expected=" + param2 + " actual=" + _loc8_.length);
+				if (cells.length < param2) {
+					throw new Error("TILEMAP_ROW_WIDTH row=" + rowNumber + " expected=" + param2 + " actual=" + cells.length);
 				}
-				if (_loc8_.length > param2) {
-					trace("[TILEMAP_ROW_TRIM] row=" + _loc9_ + " expected=" + param2 + " actual=" + _loc8_.length + " trim=right");
+				if (cells.length > param2) {
+					if (legacyDesertPadding && (rowNumber == 30 || rowNumber == 31) && cells.length == param2 + 1 && int(cells[param2]) == 99) {
+						legacyPaddingRows++;
+					} else {
+						throw new Error("TILEMAP_ROW_WIDTH row=" + rowNumber + " expected=" + param2 + " actual=" + cells.length);
+					}
 				}
-				_loc10_ = 0;
-				while (_loc10_ < param2) {
-					_loc1_.push(_loc8_[_loc10_]);
-					_loc10_++;
+				rows.push(cells);
+			}
+			if (rows.length != param3) {
+				throw new Error("TILEMAP_ROW_COUNT expected=" + param3 + " actual=" + rows.length);
+			}
+			if (legacyPaddingRows != 0 && legacyPaddingRows != 2) {
+				throw new Error("TILEMAP_LEGACY_PADDING expected=2 actual=" + legacyPaddingRows);
+			}
+			legacyDesertPadding = legacyDesertPadding && legacyPaddingRows == 2;
+			rowIndex = 0;
+			if (legacyDesertPadding) {
+				while (rowIndex < rows.length && result.length < expected) {
+					cells = rows[rowIndex] as Array;
+					colIndex = 0;
+					while (colIndex < cells.length && result.length < expected) {
+						result.push(cells[colIndex]);
+						colIndex++;
+					}
+					rowIndex++;
+				}
+				trace("[TILEMAP_LAYOUT] mode=legacy_desert_flat_padding overflow=2 rows=" + param3 + " width=" + param2);
+				Utils.DiagEvent("TILEMAP_LAYOUT","mode=legacy_desert_flat_padding;overflow=2;rows=" + param3 + ";width=" + param2);
+			} else {
+				while (rowIndex < rows.length) {
+					cells = rows[rowIndex] as Array;
+					colIndex = 0;
+					while (colIndex < param2) {
+						result.push(cells[colIndex]);
+						colIndex++;
+					}
+					rowIndex++;
 				}
 			}
-			if (_loc9_ != param3) {
-				throw new Error("TILEMAP_ROW_COUNT expected=" + param3 + " actual=" + _loc9_);
+			if (result.length != expected) {
+				throw new Error("TILEMAP_CELL_COUNT expected=" + expected + " actual=" + result.length);
 			}
-			if (_loc1_.length != _loc4_) {
-				throw new Error("TILEMAP_CELL_COUNT expected=" + _loc4_ + " actual=" + _loc1_.length);
-			}
-			for (_loc5_ = 0; _loc5_ < _loc1_.length; _loc5_++) {
-				if (TILES_PASSABILITY[int(_loc1_[_loc5_])] === undefined) {
-					throw new Error("TILEMAP_UNKNOWN_TILE index=" + _loc5_ + " type=" + _loc1_[_loc5_]);
+			for (tileIndex = 0; tileIndex < result.length; tileIndex++) {
+				if (TILES_PASSABILITY[int(result[tileIndex])] === undefined) {
+					throw new Error("TILEMAP_UNKNOWN_TILE index=" + tileIndex + " type=" + result[tileIndex]);
 				}
 			}
-			return _loc1_;
+			return result;
 		}
 
 		public function initFromServer(param1: ServerCall): void {
