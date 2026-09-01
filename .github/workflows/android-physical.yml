@@ -79,6 +79,14 @@ jobs:
           & '.\Tools\CI\Test-AndroidDevice.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
           if($LASTEXITCODE -ne 0){throw "PHYSICAL_VALIDATION=FAIL exit=$LASTEXITCODE"}
 
+      - name: Validate always-on runtime and SWF traces
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $evidence=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\physical"
+          & '.\Tools\CI\Analyze-AndroidRuntimeDiagnostics.ps1' -EvidenceRoot $evidence -ExpectedSha $env:EXPECTED_SOURCE_SHA -ExpectedApkSha256 $env:ANDROID_APK_SHA256
+          if($LASTEXITCODE -ne 0){throw "RUNTIME_DIAGNOSTICS=FAIL exit=$LASTEXITCODE"}
+
       - name: Physical validation summary
         if: always()
         shell: powershell
