@@ -100,7 +100,7 @@ Require-Contains $animation 'notifyOwnerAnimationReady' 'animation_materializati
 Require-Contains $character 'public function refreshStatusHints(): void' 'unit_status_placeholders_refreshed_immediately'
 Require-Contains $world 'private function requestClose(): void' 'worldmap_close_is_idempotent'
 Require-NotContains $world '_loc2_.removeEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown);' 'worldmap_cancel_wrong_listener_removal_removed'
-Require-Contains $combat 'USE_BUTTON_STATES_ANIM = false' 'pvp_setup_buttons_have_deterministic_frames'
+Require-Contains $combat 'Utils.createStaticBasicButton(_loc2_,"Button_Fight",this.fightClicked,false);' 'pvp_setup_buttons_have_deterministic_frames'
 Require-Contains $pvpBooster 'Utils.removeAllChildren(_loc3_);' 'pvp_booster_placeholders_cleared'
 Require-Contains $baseConfig '"ZoomLevelsMobile": "40, 75, 100"' 'pvp_mobile_zoom_explicit_in_config'
 Require-Contains $baseConfig '"swf/desert_backgroud_01"' 'desert_secondary_swf_declared_in_config'
