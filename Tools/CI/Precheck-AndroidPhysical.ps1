@@ -36,8 +36,10 @@ $gitCandidates+=@(
 $git=$gitCandidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
 if(-not $git){Fail 'PRECHECK_GIT' 'TOOLCHAIN' 'resolve_portable_git' "$root\Tools\Git\cmd\git.exe or $root\PortableGit\cmd\git.exe" 'missing'}
 
-$actual=(& $git -C $env:GITHUB_WORKSPACE rev-parse HEAD 2>&1 | Select-Object -First 1).ToString().Trim()
-if($LASTEXITCODE -ne 0){Fail 'EXACT_HEAD' 'SOURCE' 'git_rev_parse' $ExpectedSha $actual $LASTEXITCODE}
+$gitOutput=@(& $git -C $env:GITHUB_WORKSPACE rev-parse HEAD 2>&1)
+$gitExit=$LASTEXITCODE
+$actual=if($gitOutput.Count -gt 0){$gitOutput[0].ToString().Trim()}else{''}
+if($gitExit -ne 0){Fail 'EXACT_HEAD' 'SOURCE' 'git_rev_parse' $ExpectedSha ($gitOutput -join ' | ') $gitExit}
 if($actual -ne $ExpectedSha){Fail 'EXACT_HEAD' 'SOURCE' 'head_match' $ExpectedSha $actual}
 Write-Host "EXACT_HEAD=PASS sha=$actual"
 
