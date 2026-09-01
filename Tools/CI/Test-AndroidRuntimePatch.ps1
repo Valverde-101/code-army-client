@@ -167,7 +167,7 @@ Require-Contains $game '[MAP_SWITCH_COMMIT]' 'worldmap_transition_commit_instrum
 Require-Contains $game '[MAP_INPUT_RESTORED]' 'worldmap_input_restore_instrumented'
 Require-Contains $game 'music_commit=deferred' 'desert_music_not_used_as_false_transition_signal'
 Require-Contains $gameHud '[WORLD_MAP_OPEN] mode=embedded' 'offline_world_map_bypasses_fake_swf_loader'
-Require-Contains $gameHud 'var scaleFactor:Number = Math.min(scaleFactorWidth, scaleFactorHeight);' 'mobile_hud_scale_factor_ffdec_semicolon'
+Require-Contains $gameHud 'var scaleFactor: Number = Math.min(Math.min((param1 + 10) / 1024,param2 / 750),1);' 'mobile_hud_scale_factor_bounded_reference_canvas'
 Require-Contains $swfPatch '(?://.*)?\z' 'ffdec_config_preprocessor_accepts_trailing_comments'
 Require-Contains $offline '[OFFLINE_SWITCH_MAP_BEGIN]' 'offline_map_loader_begin_instrumented'
 Require-Contains $offline '[OFFLINE_SWITCH_MAP_END]' 'offline_map_loader_end_instrumented'
