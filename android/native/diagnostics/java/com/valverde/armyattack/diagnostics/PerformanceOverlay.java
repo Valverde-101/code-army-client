@@ -55,7 +55,7 @@ import java.util.zip.ZipOutputStream;
 
 public final class PerformanceOverlay {
     private static final Object GAME_EVENT_LOCK = new Object();
-    private static final ArrayDeque<String> GAME_EVENTS = new ArrayDeque<String>();
+    private static final ArrayDeque<GameEvent> GAME_EVENTS = new ArrayDeque<GameEvent>();
     private static final int MAX_GAME_EVENTS = 3000;
     private static final String GAME_EVENT_TAG = "ArmyAttackGame";
     private static final Object FRAME_SPIKE_LOCK = new Object();
@@ -64,6 +64,21 @@ public final class PerformanceOverlay {
     private static volatile String LAST_GAME_EVENT_KIND = "";
     private static volatile String LAST_GAME_EVENT_DETAIL = "";
     private static volatile long LAST_GAME_EVENT_ELAPSED_MS = -1L;
+
+    private static final class GameEvent {
+        final long wallTimeMs;
+        final long elapsedMs;
+        final String threadName;
+        final String kind;
+        final String detail;
+        GameEvent(long wallTimeMs, long elapsedMs, String threadName, String kind, String detail) {
+            this.wallTimeMs = wallTimeMs;
+            this.elapsedMs = elapsedMs;
+            this.threadName = threadName;
+            this.kind = kind;
+            this.detail = detail;
+        }
+    }
 
     private static final class FrameSpike {
         final long elapsedMs;
@@ -82,23 +97,45 @@ public final class PerformanceOverlay {
 
     public static void recordGameEvent(String kind, String detail) {
         try {
-            JSONObject event = new JSONObject();
-            event.put("utc", utcIso());
-            event.put("process_elapsed_ms", android.os.SystemClock.elapsedRealtime());
-            event.put("thread", Thread.currentThread().getName());
-            event.put("kind", kind == null ? "UNKNOWN" : kind);
-            event.put("detail", detail == null ? "" : detail);
-            LAST_GAME_EVENT_KIND = kind == null ? "UNKNOWN" : kind;
-            LAST_GAME_EVENT_DETAIL = detail == null ? "" : detail;
-            LAST_GAME_EVENT_ELAPSED_MS = android.os.SystemClock.elapsedRealtime();
-            String line = event.toString();
+            final String safeKind = kind == null ? "UNKNOWN" : kind;
+            final String safeDetail = detail == null ? "" : detail;
+            final long elapsed = android.os.SystemClock.elapsedRealtime();
+            final GameEvent event = new GameEvent(
+                System.currentTimeMillis(),
+                elapsed,
+                Thread.currentThread().getName(),
+                safeKind,
+                safeDetail
+            );
+            LAST_GAME_EVENT_KIND = safeKind;
+            LAST_GAME_EVENT_DETAIL = safeDetail;
+            LAST_GAME_EVENT_ELAPSED_MS = elapsed;
             synchronized (GAME_EVENT_LOCK) {
                 while (GAME_EVENTS.size() >= MAX_GAME_EVENTS) GAME_EVENTS.removeFirst();
-                GAME_EVENTS.addLast(line);
+                GAME_EVENTS.addLast(event);
             }
-            Log.i(GAME_EVENT_TAG, (kind == null ? "UNKNOWN" : kind) + " " + (detail == null ? "" : detail));
+            if (shouldMirrorToLogcat(safeKind)) {
+                Log.i(GAME_EVENT_TAG, safeKind + " " + safeDetail);
+            }
         } catch (Throwable ignored) {
         }
+    }
+
+    private static boolean shouldMirrorToLogcat(String kind) {
+        if (kind == null) return false;
+        return kind.startsWith("SWF_")
+            || kind.startsWith("PVP_")
+            || kind.startsWith("MAP_")
+            || kind.startsWith("WORLD_MAP_")
+            || kind.startsWith("OFFLINE_")
+            || kind.startsWith("HUD_")
+            || kind.startsWith("PLACEMENT_")
+            || kind.startsWith("HFE_")
+            || kind.startsWith("TILEMAP_")
+            || kind.startsWith("ANIMATION_")
+            || "UI_BUTTON".equals(kind)
+            || "AUTO_FLIGHT_RECORDER".equals(kind)
+            || "GAMEPLAY_INPUT".equals(kind);
     }
 
     private static void clearFrameSpikes() {
@@ -153,10 +190,18 @@ public final class PerformanceOverlay {
     private static void writeGameEvents(File dir) {
         if (dir == null) return;
         try {
-            List<String> snapshot;
-            synchronized (GAME_EVENT_LOCK) { snapshot = new ArrayList<String>(GAME_EVENTS); }
+            List<GameEvent> snapshot;
+            synchronized (GAME_EVENT_LOCK) { snapshot = new ArrayList<GameEvent>(GAME_EVENTS); }
             StringBuilder text = new StringBuilder();
-            for (String line : snapshot) text.append(line).append('\n');
+            for (GameEvent event : snapshot) {
+                JSONObject row = new JSONObject();
+                row.put("utc", utcIso(event.wallTimeMs));
+                row.put("process_elapsed_ms", event.elapsedMs);
+                row.put("thread", event.threadName);
+                row.put("kind", event.kind);
+                row.put("detail", event.detail);
+                text.append(row.toString()).append('\n');
+            }
             writeText(new File(dir, "game-events.jsonl"), text.toString());
         } catch (Throwable t) {
             appendError(dir, "game_events", t);
@@ -166,22 +211,17 @@ public final class PerformanceOverlay {
     private static void writeGameEventSummary(File dir) {
         if (dir == null) return;
         try {
-            List<String> snapshot;
-            synchronized (GAME_EVENT_LOCK) { snapshot = new ArrayList<String>(GAME_EVENTS); }
+            List<GameEvent> snapshot;
+            synchronized (GAME_EVENT_LOCK) { snapshot = new ArrayList<GameEvent>(GAME_EVENTS); }
             JSONObject counts = new JSONObject();
-            int parsed = 0;
-            for (String line : snapshot) {
-                try {
-                    JSONObject event = new JSONObject(line);
-                    String kind = event.optString("kind", "UNKNOWN");
-                    counts.put(kind, counts.optInt(kind, 0) + 1);
-                    parsed++;
-                } catch (Throwable ignored) {}
+            for (GameEvent event : snapshot) {
+                String kind = event.kind == null ? "UNKNOWN" : event.kind;
+                counts.put(kind, counts.optInt(kind, 0) + 1);
             }
             JSONObject summary = new JSONObject();
             summary.put("generated_utc", utcIso());
             summary.put("retained_events", snapshot.size());
-            summary.put("parsed_events", parsed);
+            summary.put("parsed_events", snapshot.size());
             summary.put("counts_by_kind", counts);
             writeText(new File(dir, "game-events-summary.json"), summary.toString(2));
         } catch (Throwable t) {
@@ -231,12 +271,12 @@ public final class PerformanceOverlay {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService sampler = Executors.newSingleThreadExecutor();
     private final int cores = Math.max(1, Runtime.getRuntime().availableProcessors());
-    private static final long RECORD_SAMPLE_MS = 1000L;
+    private static final long RECORD_SAMPLE_MS = 2000L;
     private static final long PANEL_SAMPLE_MS = 1500L;
     private static final long HEAVY_SAMPLE_MS = 5000L;
     private static final long LIVE_RENDER_RECORDING_MS = 5000L;
     private static final long LIVE_RENDER_IDLE_MS = 2500L;
-    private static final long FLIGHT_RECORDER_FLUSH_MS = 5000L;
+    private static final long FLIGHT_RECORDER_FLUSH_MS = 15000L;
 
     private FrameLayout root;
     private LinearLayout panel;
@@ -596,6 +636,9 @@ public final class PerformanceOverlay {
                     marker.put("type", type);
                     appendText(new File(dir, "markers.jsonl"), marker.toString() + "\n");
                     if ("LAG".equals(type)) {
+                        writeGameEvents(dir);
+                        writeGameEventSummary(dir);
+                        writeFrameSpikes(dir);
                         File lagDir = new File(new File(dir, "lag-snapshots"), "lag-" + elapsed);
                         if (!lagDir.exists()) lagDir.mkdirs();
                         captureProcessDiagnostics(lagDir);
@@ -975,9 +1018,13 @@ public final class PerformanceOverlay {
     }
 
     private static String utcIso() {
+        return utcIso(System.currentTimeMillis());
+    }
+
+    private static String utcIso(long wallTimeMs) {
         SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
         fmt.setTimeZone(TimeZone.getTimeZone("UTC"));
-        return fmt.format(new Date());
+        return fmt.format(new Date(wallTimeMs));
     }
 
     private static final class MetricSample {

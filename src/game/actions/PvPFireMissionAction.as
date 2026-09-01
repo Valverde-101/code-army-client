@@ -93,8 +93,16 @@ package game.actions
          {
             ++mKilledEnemyCount;
             _loc10_ = (param1.mItem as TargetItem).getRandomItemDrop();
-            _loc2_.mScene.addLootReward(_loc10_,1,param1.getContainer());
-            _loc2_.mPvPMatch.addIngameCollectible(_loc10_);
+            Utils.DiagEvent("PVP_LOOT_ROLL_FIREMISSION","unit=" + param1.mUnitId + ";item=" + (_loc10_ ? _loc10_.mId : "null") + ";firemission=" + this.mItem.mId);
+            if(_loc10_)
+            {
+               _loc2_.mScene.addLootReward(_loc10_,1,param1.getContainer());
+               _loc2_.mPvPMatch.addIngameCollectible(_loc10_);
+            }
+            else
+            {
+               Utils.DiagEvent("PVP_LOOT_ROLL_EMPTY_FIREMISSION","unit=" + param1.mUnitId + ";firemission=" + this.mItem.mId);
+            }
          }
          param1.reduceHealth(this.mItem.mDamage);
       }

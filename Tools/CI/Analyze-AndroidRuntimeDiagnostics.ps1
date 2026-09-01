@@ -45,6 +45,9 @@ $swfEvents=New-Object System.Collections.Generic.List[object]
 $swfMisses=New-Object System.Collections.Generic.List[object]
 $hfeProgress=New-Object System.Collections.Generic.List[object]
 $pvpGraphics=New-Object System.Collections.Generic.List[object]
+$pvpMovement=New-Object System.Collections.Generic.List[object]
+$pvpLoot=New-Object System.Collections.Generic.List[object]
+$pvpPowerUps=New-Object System.Collections.Generic.List[object]
 $loadElapsed=New-Object System.Collections.Generic.List[int]
 
 foreach($line in $logLines){
@@ -62,6 +65,9 @@ foreach($line in $logLines){
   }
   if($kind -eq 'HFE_HARVEST_PROGRESS'){$hfeProgress.Add($row)}
   if($kind -in @('PVP_ENEMY_GRAPHICS_ENTRY','PVP_ENEMY_GRAPHICS_RESOLVED')){$pvpGraphics.Add($row)}
+  if($kind -in @('PVP_ENEMY_MOVE_VISUAL','PVP_ENEMY_MOVE_VISUAL_MISMATCH','PVP_ENEMY_SYMBOL')){$pvpMovement.Add($row)}
+  if($kind -like 'PVP_LOOT_*'){$pvpLoot.Add($row)}
+  if($kind -like 'PVP_POWERUP_*' -or $kind -like 'PVP_AREA_WEIGHTED_*'){$pvpPowerUps.Add($row)}
 }
 
 $eventCount=$events.Count
@@ -86,10 +92,16 @@ $report=[ordered]@{
   swf_load_timing=[ordered]@{samples=$loadElapsed.Count;average_ms=$loadAvg;max_ms=$loadMax}
   hfe_progress_event_count=$hfeProgress.Count
   pvp_graphics_event_count=$pvpGraphics.Count
+  pvp_movement_event_count=$pvpMovement.Count
+  pvp_loot_event_count=$pvpLoot.Count
+  pvp_powerup_event_count=$pvpPowerUps.Count
   event_counts=$counts
   swf_misses=@($swfMisses|Select-Object -First 100)
   hfe_progress=@($hfeProgress|Select-Object -First 100)
   pvp_graphics=@($pvpGraphics|Select-Object -First 100)
+  pvp_movement=@($pvpMovement|Select-Object -First 200)
+  pvp_loot=@($pvpLoot|Select-Object -First 200)
+  pvp_powerups=@($pvpPowerUps|Select-Object -First 200)
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $report|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $resultPath -Encoding UTF8
@@ -98,4 +110,7 @@ Write-Host "RUNTIME_DIAGNOSTICS=PASS game_events=$eventCount"
 Write-Host "SWF_RUNTIME_TRACE=PASS events=$swfEventCount misses=$($swfMisses.Count) load_samples=$($loadElapsed.Count) load_avg_ms=$loadAvg load_max_ms=$loadMax"
 Write-Host "HFE_RUNTIME_TRACE=$(if($hfeProgress.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($hfeProgress.Count)"
 Write-Host "PVP_GRAPHICS_RUNTIME_TRACE=$(if($pvpGraphics.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($pvpGraphics.Count)"
+Write-Host "PVP_MOVEMENT_RUNTIME_TRACE=$(if($pvpMovement.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($pvpMovement.Count)"
+Write-Host "PVP_LOOT_RUNTIME_TRACE=$(if($pvpLoot.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($pvpLoot.Count)"
+Write-Host "PVP_POWERUP_RUNTIME_TRACE=$(if($pvpPowerUps.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($pvpPowerUps.Count)"
 Write-Host "RUNTIME_DIAGNOSTICS_REPORT=PASS path=$resultPath"

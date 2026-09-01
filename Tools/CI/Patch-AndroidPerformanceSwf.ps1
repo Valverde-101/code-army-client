@@ -182,7 +182,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.13-hud-placement-alwayson-pvp-traces'
+  patch_version='mobile-engine-v3.14-pvp-weighted-powerups-profiler-hotpath'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -256,10 +256,16 @@ $manifest=[ordered]@{
     'pvp_move_visual_runtime_trace',
     'pvp_loot_runtime_trace',
     'pvp_powerup_spawn_runtime_trace',
-    'perf_overlay_always_on_no_start_stop'
+    'perf_overlay_always_on_no_start_stop',
+    'pvp_weighted_spawn_scalar_amount',
+    'pvp_firemission_null_drop_guard',
+    'perf_event_hot_path_no_json',
+    'perf_sample_2s_flush_15s',
+    'runtime_trace_pvp_outcomes',
+    'native_perf_provenance_exact_controls'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.13-hud-placement-alwayson-pvp-traces source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.14-pvp-weighted-powerups-profiler-hotpath source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

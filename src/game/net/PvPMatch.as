@@ -508,6 +508,12 @@ package game.net
          var _loc20_:PlayerUnitItem = null;
          var _loc21_:Array = null;
          var _loc22_:int = 0;
+         var _loc23_:Boolean = false;
+         var _loc24_:Number = 0;
+         var _loc25_:int = 0;
+         var _loc26_:Number = 0;
+         var _loc27_:int = -1;
+         var _loc28_:Number = 0;
          var _loc1_:IsometricScene = this.mGame.mScene;
          if(this.mGame.mMapData.mMapSetupData.SetupSet)
          {
@@ -521,11 +527,22 @@ package game.net
                      _loc8_ = _loc3_.SpawnObjects is Array ? _loc3_.SpawnObjects : new Array(_loc3_.SpawnObjects);
                      _loc9_ = _loc3_.SpawnObjectsPercentage is Array ? _loc3_.SpawnObjectsPercentage : new Array(_loc3_.SpawnObjectsPercentage);
                      _loc10_ = _loc3_.SpawnObjectsAmount is Array ? _loc3_.SpawnObjectsAmount : new Array(_loc3_.SpawnObjectsAmount);
+                     _loc24_ = 0;
                      _loc11_ = 0;
-                     while(_loc11_ < _loc8_.length)
+                     while(_loc11_ < _loc9_.length)
                      {
-                        _loc12_ = _loc11_ < _loc9_.length ? int(_loc9_[_loc11_]) : 0;
-                        _loc13_ = _loc11_ < _loc10_.length ? int(_loc10_[_loc11_]) : 0;
+                        _loc24_ += Number(_loc9_[_loc11_]);
+                        _loc11_++;
+                     }
+                     _loc23_ = _loc8_.length > 1 && _loc9_.length == _loc8_.length && _loc10_.length == 1 && _loc24_ > 0 && _loc24_ <= 100.0001;
+                     if(_loc23_)
+                     {
+                        _loc13_ = int(_loc10_[0]);
+                        if(_loc13_ < 0)
+                        {
+                           _loc13_ = 0;
+                        }
+                        Utils.DiagEvent("PVP_AREA_WEIGHTED_MODE","area=" + _loc3_.ID + ";type=" + _loc3_.SpawningAreaType + ";choices=" + _loc8_.length + ";amount=" + _loc13_ + ";chance_total=" + _loc24_);
                         _loc14_ = 0;
                         while(_loc14_ < _loc13_)
                         {
@@ -533,31 +550,94 @@ package game.net
                            {
                               break;
                            }
-                           if(100 * Math.random() < _loc12_)
+                           _loc26_ = 100 * Math.random();
+                           _loc28_ = 0;
+                           _loc27_ = -1;
+                           _loc11_ = 0;
+                           while(_loc11_ < _loc9_.length)
                            {
-                              _loc6_ = _loc7_.length * Math.random();
+                              _loc28_ += Number(_loc9_[_loc11_]);
+                              if(_loc26_ < _loc28_)
+                              {
+                                 _loc27_ = _loc11_;
+                                 break;
+                              }
+                              _loc11_++;
+                           }
+                           if(_loc27_ >= 0)
+                           {
+                              _loc12_ = int(_loc9_[_loc27_]);
+                              _loc15_ = _loc8_[_loc27_] as Object;
+                              _loc6_ = int(_loc7_.length * Math.random());
                               _loc5_ = _loc7_[_loc6_];
                               _loc7_.splice(_loc6_,1);
-                              _loc15_ = _loc8_[_loc11_] as Object;
+                              Utils.DiagEvent("PVP_AREA_WEIGHTED_SPAWN","area=" + _loc3_.ID + ";type=" + _loc3_.SpawningAreaType + ";choice=" + _loc27_ + ";id=" + _loc15_.ID + ";chance=" + _loc12_ + ";roll=" + int(_loc26_) + ";attempt=" + _loc14_ + ";amount=" + _loc13_);
                               if(_loc3_.SpawningAreaType == "ObstacleSpawning")
                               {
                                  _loc4_ = ItemManager.getItem(_loc15_.ID,_loc15_.Type) as MapItem;
-                                 if(!_loc4_)
+                                 if(_loc4_)
                                  {
-                                    break;
+                                    _loc2_ = _loc1_.createObject(_loc4_,new Point(0,0));
+                                    _loc2_.setPos(_loc1_.getCenterPointXOfCell(_loc5_),_loc1_.getCenterPointYOfCell(_loc5_),0);
                                  }
-                                 _loc2_ = _loc1_.createObject(_loc4_,new Point(0,0));
-                                 _loc2_.setPos(_loc1_.getCenterPointXOfCell(_loc5_),_loc1_.getCenterPointYOfCell(_loc5_),0);
+                                 else
+                                 {
+                                    Utils.DiagEvent("PVP_AREA_WEIGHTED_CONFIG_MISS","area=" + _loc3_.ID + ";id=" + _loc15_.ID + ";type=" + _loc15_.Type);
+                                 }
                               }
                               else if(_loc3_.SpawningAreaType == "PowerUpSpawning")
                               {
-                                 Utils.DiagEvent("PVP_POWERUP_SPAWN_CONFIG","id=" + _loc15_.ID + ";chance=" + _loc12_ + ";amount=" + _loc13_ + ";i=" + _loc5_.mPosI + ";j=" + _loc5_.mPosJ);
+                                 Utils.DiagEvent("PVP_POWERUP_SPAWN_CONFIG","id=" + _loc15_.ID + ";chance=" + _loc12_ + ";amount=" + _loc13_ + ";weighted=true;i=" + _loc5_.mPosI + ";j=" + _loc5_.mPosJ);
                                  _loc1_.addPowerUpToMap(_loc15_.ID,_loc5_);
                               }
                            }
+                           else
+                           {
+                              Utils.DiagEvent("PVP_AREA_WEIGHTED_MISS","area=" + _loc3_.ID + ";type=" + _loc3_.SpawningAreaType + ";roll=" + int(_loc26_) + ";chance_total=" + _loc24_ + ";attempt=" + _loc14_);
+                           }
                            _loc14_++;
                         }
-                        _loc11_++;
+                     }
+                     else
+                     {
+                        _loc11_ = 0;
+                        while(_loc11_ < _loc8_.length)
+                        {
+                           _loc12_ = _loc11_ < _loc9_.length ? int(_loc9_[_loc11_]) : 0;
+                           _loc13_ = _loc11_ < _loc10_.length ? int(_loc10_[_loc11_]) : 0;
+                           _loc14_ = 0;
+                           while(_loc14_ < _loc13_)
+                           {
+                              if(_loc7_.length == 0)
+                              {
+                                 break;
+                              }
+                              if(100 * Math.random() < _loc12_)
+                              {
+                                 _loc6_ = int(_loc7_.length * Math.random());
+                                 _loc5_ = _loc7_[_loc6_];
+                                 _loc7_.splice(_loc6_,1);
+                                 _loc15_ = _loc8_[_loc11_] as Object;
+                                 if(_loc3_.SpawningAreaType == "ObstacleSpawning")
+                                 {
+                                    _loc4_ = ItemManager.getItem(_loc15_.ID,_loc15_.Type) as MapItem;
+                                    if(!_loc4_)
+                                    {
+                                       break;
+                                    }
+                                    _loc2_ = _loc1_.createObject(_loc4_,new Point(0,0));
+                                    _loc2_.setPos(_loc1_.getCenterPointXOfCell(_loc5_),_loc1_.getCenterPointYOfCell(_loc5_),0);
+                                 }
+                                 else if(_loc3_.SpawningAreaType == "PowerUpSpawning")
+                                 {
+                                    Utils.DiagEvent("PVP_POWERUP_SPAWN_CONFIG","id=" + _loc15_.ID + ";chance=" + _loc12_ + ";amount=" + _loc13_ + ";weighted=false;i=" + _loc5_.mPosI + ";j=" + _loc5_.mPosJ);
+                                    _loc1_.addPowerUpToMap(_loc15_.ID,_loc5_);
+                                 }
+                              }
+                              _loc14_++;
+                           }
+                           _loc11_++;
+                        }
                      }
                   }
                   else if(_loc3_.SpawningAreaType == "EnemySpawning")
