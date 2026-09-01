@@ -44,6 +44,9 @@ $events=New-Object System.Collections.Generic.List[object]
 $swfEvents=New-Object System.Collections.Generic.List[object]
 $swfMisses=New-Object System.Collections.Generic.List[object]
 $hfeProgress=New-Object System.Collections.Generic.List[object]
+$placementEvents=New-Object System.Collections.Generic.List[object]
+$hudEvents=New-Object System.Collections.Generic.List[object]
+$fireMissionEvents=New-Object System.Collections.Generic.List[object]
 $pvpGraphics=New-Object System.Collections.Generic.List[object]
 $pvpMovement=New-Object System.Collections.Generic.List[object]
 $pvpLoot=New-Object System.Collections.Generic.List[object]
@@ -67,6 +70,9 @@ foreach($line in $logLines){
     if($kind -eq 'SWF_LOAD_COMPLETE' -and $detail -match '(?:elapsed_ms|duration_ms)=([0-9]+)'){$loadElapsed.Add([int]$matches[1])}
   }
   if($kind -eq 'HFE_HARVEST_PROGRESS'){$hfeProgress.Add($row)}
+  if($kind -like 'PLACEMENT_*'){$placementEvents.Add($row)}
+  if($kind -like 'HUD_RIGHT_*'){$hudEvents.Add($row)}
+  if($kind -like 'FIREMISSION_*'){$fireMissionEvents.Add($row)}
   if($kind -in @('PVP_ENEMY_GRAPHICS_ENTRY','PVP_ENEMY_GRAPHICS_RESOLVED')){$pvpGraphics.Add($row)}
   if($kind -in @('PVP_ENEMY_MOVE_VISUAL','PVP_ENEMY_MOVE_VISUAL_MISMATCH','PVP_ENEMY_SYMBOL')){$pvpMovement.Add($row)}
   if($kind -like 'PVP_LOOT_*'){$pvpLoot.Add($row)}
@@ -95,6 +101,9 @@ $report=[ordered]@{
   swf_miss_count=$swfMisses.Count
   swf_load_timing=[ordered]@{samples=$loadElapsed.Count;average_ms=$loadAvg;max_ms=$loadMax}
   hfe_progress_event_count=$hfeProgress.Count
+  placement_event_count=$placementEvents.Count
+  hud_right_event_count=$hudEvents.Count
+  firemission_animation_event_count=$fireMissionEvents.Count
   pvp_graphics_event_count=$pvpGraphics.Count
   pvp_movement_event_count=$pvpMovement.Count
   pvp_loot_event_count=$pvpLoot.Count
@@ -104,6 +113,9 @@ $report=[ordered]@{
   event_counts=$counts
   swf_misses=@($swfMisses|Select-Object -First 100)
   hfe_progress=@($hfeProgress|Select-Object -First 100)
+  placement=@($placementEvents|Select-Object -First 100)
+  hud_right=@($hudEvents|Select-Object -First 100)
+  firemission_animation=@($fireMissionEvents|Select-Object -First 100)
   pvp_graphics=@($pvpGraphics|Select-Object -First 100)
   pvp_movement=@($pvpMovement|Select-Object -First 200)
   pvp_loot=@($pvpLoot|Select-Object -First 200)
@@ -117,6 +129,9 @@ $report|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $resultPath -Encoding 
 Write-Host "RUNTIME_DIAGNOSTICS=PASS game_events=$eventCount"
 Write-Host "SWF_RUNTIME_TRACE=PASS events=$swfEventCount misses=$($swfMisses.Count) load_samples=$($loadElapsed.Count) load_avg_ms=$loadAvg load_max_ms=$loadMax"
 Write-Host "HFE_RUNTIME_TRACE=$(if($hfeProgress.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($hfeProgress.Count)"
+Write-Host "PLACEMENT_RUNTIME_TRACE=$(if($placementEvents.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($placementEvents.Count)"
+Write-Host "HUD_RIGHT_RUNTIME_TRACE=$(if($hudEvents.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($hudEvents.Count)"
+Write-Host "FIREMISSION_ANIMATION_RUNTIME_TRACE=$(if($fireMissionEvents.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($fireMissionEvents.Count)"
 Write-Host "PVP_GRAPHICS_RUNTIME_TRACE=$(if($pvpGraphics.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($pvpGraphics.Count)"
 Write-Host "PVP_MOVEMENT_RUNTIME_TRACE=$(if($pvpMovement.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($pvpMovement.Count)"
 Write-Host "PVP_LOOT_RUNTIME_TRACE=$(if($pvpLoot.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($pvpLoot.Count)"

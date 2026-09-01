@@ -130,6 +130,7 @@ public final class PerformanceOverlay {
             || kind.startsWith("OFFLINE_")
             || kind.startsWith("HUD_")
             || kind.startsWith("PLACEMENT_")
+            || kind.startsWith("FIREMISSION_")
             || "HFE_HARVEST_ANIMATION".equals(kind)
             || kind.startsWith("TILEMAP_")
             || kind.startsWith("ANIMATION_")
@@ -162,6 +163,7 @@ public final class PerformanceOverlay {
             int over50 = 0;
             int over100 = 0;
             double maxMs = 0.0;
+            JSONObject byEvent = new JSONObject();
             for (FrameSpike spike : snapshot) {
                 JSONObject row = new JSONObject();
                 row.put("process_elapsed_ms", spike.elapsedMs);
@@ -173,6 +175,20 @@ public final class PerformanceOverlay {
                 if (spike.frameMs >= 50.0) over50++;
                 if (spike.frameMs >= 100.0) over100++;
                 if (spike.frameMs > maxMs) maxMs = spike.frameMs;
+                String eventKind = spike.eventKind == null || spike.eventKind.length() == 0 ? "UNATTRIBUTED" : spike.eventKind;
+                JSONObject eventStats = byEvent.optJSONObject(eventKind);
+                if (eventStats == null) {
+                    eventStats = new JSONObject();
+                    eventStats.put("spikes", 0);
+                    eventStats.put("over_50ms", 0);
+                    eventStats.put("over_100ms", 0);
+                    eventStats.put("max_frame_ms", 0.0);
+                    byEvent.put(eventKind, eventStats);
+                }
+                eventStats.put("spikes", eventStats.optInt("spikes", 0) + 1);
+                if (spike.frameMs >= 50.0) eventStats.put("over_50ms", eventStats.optInt("over_50ms", 0) + 1);
+                if (spike.frameMs >= 100.0) eventStats.put("over_100ms", eventStats.optInt("over_100ms", 0) + 1);
+                eventStats.put("max_frame_ms", Math.max(eventStats.optDouble("max_frame_ms", 0.0), spike.frameMs));
             }
             writeText(new File(dir, "frame-spikes.jsonl"), text.toString());
             JSONObject summary = new JSONObject();
@@ -182,6 +198,11 @@ public final class PerformanceOverlay {
             summary.put("over_100ms", over100);
             summary.put("max_frame_ms", maxMs);
             writeText(new File(dir, "frame-spikes-summary.json"), summary.toString(2));
+            JSONObject correlation = new JSONObject();
+            correlation.put("generated_utc", utcIso());
+            correlation.put("nearest_event_window_note", "Each spike is attributed to the most recent game event; inspect nearest_game_event_age_ms in frame-spikes.jsonl.");
+            correlation.put("by_event_kind", byEvent);
+            writeText(new File(dir, "event-jank-correlation.json"), correlation.toString(2));
         } catch (Throwable t) {
             appendError(dir, "frame_spikes", t);
         }

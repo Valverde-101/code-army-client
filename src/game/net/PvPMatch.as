@@ -57,15 +57,9 @@ package game.net
       public function addIngameCollectible(param1:Item) : void
       {
          if(param1 == null) return;
-         if(param1 is CollectibleItem)
-         {
-            this.mIngameCollectibles.push(param1);
-            trace("[PVP_LOOT_TRACK] id=" + param1.mId + " count=" + this.mIngameCollectibles.length);
-         }
-         else
-         {
-            trace("[PVP_LOOT_SKIP_DEBRIEF] id=" + param1.mId + " type=" + param1.mType);
-         }
+         if(this.mIngameCollectibles == null) this.mIngameCollectibles = new Array();
+         this.mIngameCollectibles.push(param1);
+         Utils.DiagEvent("PVP_LOOT_TRACK","id=" + param1.mId + ";type=" + param1.mType + ";collectible=" + (param1 is CollectibleItem) + ";count=" + this.mIngameCollectibles.length);
       }
 
       public function getActiveRangeBoost() : int
@@ -308,20 +302,19 @@ package game.net
 
       public function getIngameCollectiblesString() : String
       {
-         var _loc3_:CollectibleItem = null;
-         var _loc1_:* = "";
+         var _loc3_:Item = null;
+         var _loc1_:Array = new Array();
          var _loc2_:int = 0;
          while(_loc2_ < this.mIngameCollectibles.length)
          {
-            _loc3_ = this.mIngameCollectibles[_loc2_];
-            _loc1_ += _loc3_.mId;
-            if(_loc2_ < this.mIngameCollectibles.length - 1)
+            _loc3_ = this.mIngameCollectibles[_loc2_] as Item;
+            if(_loc3_ is CollectibleItem)
             {
-               _loc1_ += ",";
+               _loc1_.push(_loc3_.mId);
             }
             _loc2_++;
          }
-         return _loc1_;
+         return _loc1_.join(",");
       }
 
       private function requestDebriefing(param1:Boolean) : void
@@ -333,6 +326,7 @@ package game.net
          this.mDebriefingOpened = true;
          this.mActionsLeft = 0;
          this.mTurnChangeTimer = 0;
+         Utils.DiagEvent("PVP_DEBRIEF_LOOT_SNAPSHOT","win=" + param1 + ";count=" + (this.mIngameCollectibles ? this.mIngameCollectibles.length : 0) + ";collectible_ids=" + this.getIngameCollectiblesString());
          trace("[PVP_DEBRIEF_REQUEST] win=" + param1 + " turn=" + this.mTurnCounter);
          try
          {

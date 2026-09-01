@@ -3,6 +3,7 @@ package game.gameElements
    import com.dchoc.graphics.DCResourceManager;
    import flash.display.MovieClip;
    import flash.events.Event;
+   import flash.utils.getTimer;
    import game.battlefield.MapData;
    import game.characters.PlayerUnit;
    import game.isometric.GridCell;
@@ -20,6 +21,8 @@ package game.gameElements
    {
       
       private static const DOOMSDAY_NAME:String = "Doomsday";
+      private static const FIREMISSION_TARGET_FPS:Number = 30;
+      private static const FIREMISSION_FRAME_MS:Number = 1000 / FIREMISSION_TARGET_FPS;
        
       
       private var mColorEffectField:ColorFadeEffect;
@@ -43,6 +46,12 @@ package game.gameElements
       private var mSound:SoundCollection;
       
       private var mDebrises:Array;
+
+      private var mAnimationStartMs:int = 0;
+
+      private var mAnimationLastAdvanceMs:int = 0;
+
+      private var mAnimationEndLogged:Boolean = false;
       
       public function FireMissionObject(param1:FireMissionItem, param2:Array)
       {
@@ -199,6 +208,10 @@ package game.gameElements
          if(FeatureTuner.USE_FIRE_CALL_EFFECTS && this.mAnim)
          {
             this.mAnim.gotoAndStop(1);
+            this.mAnimationStartMs = getTimer();
+            this.mAnimationLastAdvanceMs = this.mAnimationStartMs;
+            this.mAnimationEndLogged = false;
+            Utils.DiagEvent("FIREMISSION_ANIMATION","phase=start;mission=" + this.mItem.mId + ";frames=" + this.mAnim.totalFrames + ";target_fps=" + FIREMISSION_TARGET_FPS);
          }
          ArmySoundManager.getInstance().playSound(this.mSound.getSound());
       }
@@ -235,16 +248,28 @@ package game.gameElements
          {
             return;
          }
-         if(this.mAnim.currentFrame == this.mAnim.totalFrames)
+         var nowMs:int = getTimer();
+         if(this.mAnim.currentFrame >= this.mAnim.totalFrames)
          {
+            if(!this.mAnimationEndLogged)
+            {
+               this.mAnimationEndLogged = true;
+               Utils.DiagEvent("FIREMISSION_ANIMATION","phase=end;mission=" + this.mItem.mId + ";elapsed_ms=" + Math.max(0,nowMs - this.mAnimationStartMs) + ";frames=" + this.mAnim.totalFrames);
+            }
             if(this.mAnim.parent)
             {
                this.mAnim.parent.removeChild(this.mAnim);
             }
          }
-         else
+         else if(this.mAnimationLastAdvanceMs <= 0 || nowMs - this.mAnimationLastAdvanceMs >= FIREMISSION_FRAME_MS)
          {
             this.mAnim.nextFrame();
+            this.mAnimationLastAdvanceMs = nowMs;
+            if(this.mAnim.currentFrame >= this.mAnim.totalFrames && !this.mAnimationEndLogged)
+            {
+               this.mAnimationEndLogged = true;
+               Utils.DiagEvent("FIREMISSION_ANIMATION","phase=end;mission=" + this.mItem.mId + ";elapsed_ms=" + Math.max(0,nowMs - this.mAnimationStartMs) + ";frames=" + this.mAnim.totalFrames);
+            }
          }
          if(this.mColorEffectField)
          {

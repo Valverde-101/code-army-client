@@ -595,6 +595,7 @@
 			this.mGame.objectPlaced(this.mObjectBeingMoved, this.mObjectBeingMovedStartX, this.mObjectBeingMovedStartY);
 			if (this.mGame.mState != GameState.STATE_PLACE_ITEM && this.mGame.mState != GameState.STATE_USE_INVENTORY_ITEM) {
 				this.exitMoveMode();
+				this.finishPlacementUi("placed_and_left_edit_mode");
 				if (this.mGame.mState == GameState.STATE_MOVE_ITEM) {
 					this.mMapGUIEffectsLayer.highlightMovableObjects();
 				}
@@ -2287,15 +2288,17 @@
 		}
 
 		public function setVisiblePlacementButton(param1: Boolean): void {
-			if (!this.mTickCrossActive && param1) {
-				this.mTickCrossActive = true;
-			}
+			this.mTickCrossActive = param1;
 			if (this.mGame.mHUD) {
 				this.mGame.mHUD.mPlaceButton.setVisible(param1);
-			}
-			if (this.mGame.mHUD) {
 				this.mGame.mHUD.mPlaceCancelButton.setVisible(param1);
 			}
+		}
+
+		private function finishPlacementUi(param1:String):void {
+			this.mPlacePressed = false;
+			this.setVisiblePlacementButton(false);
+			Utils.DiagEvent("PLACEMENT_COMMIT_UI","reason=" + param1 + ";state=" + this.mGame.mState + ";moving=" + Boolean(this.mObjectBeingMoved));
 		}
 
 		private function moveButton(param1: GridCell): void {
@@ -2317,6 +2320,11 @@
 				_loc6_ = new Point(this.mObjectBeingMoved.mX, this.mObjectBeingMoved.mY);
 				_loc2_ = (_loc6_ = this.mSceneHud.localToGlobal(_loc6_)).x;
 				_loc3_ = _loc6_.y;
+				CONFIG::BUILD_FOR_MOBILE_AIR {
+					if (this.mGame.mHUD.positionPlacementButtonsMobile(_loc2_,_loc3_,_loc5_)) {
+						return;
+					}
+				}
 				_loc7_ = this.mObjectBeingMoved.getTileSize().x - 1;
 				_loc8_ = this.mObjectBeingMoved.getTileSize().y - 1;
 				_loc9_ = 0;
@@ -2347,6 +2355,11 @@
 				_loc12_ = this.mGridDimY * param1.mPosJ;
 				_loc13_ = new Point(_loc11_, _loc12_);
 				_loc13_ = this.mSceneHud.localToGlobal(_loc13_);
+				CONFIG::BUILD_FOR_MOBILE_AIR {
+					if (this.mGame.mHUD.positionPlacementButtonsMobile(_loc13_.x,_loc13_.y,0)) {
+						return;
+					}
+				}
 				this.mGame.mHUD.mPlaceButton.setX(_loc13_.x - 140);
 				this.mGame.mHUD.mPlaceButton.setY(_loc13_.y - 40);
 				this.mGame.mHUD.mPlaceCancelButton.setX(_loc13_.x - 60);

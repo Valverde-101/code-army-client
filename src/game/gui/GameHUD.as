@@ -130,6 +130,7 @@
 		private static const DEBUG_HUD: Boolean = false;
 
 		private var mMobileLayoutHeight:Number = 750;
+		private var mMobileRightMenuBaseX:Number = 0;
 		private var mMobileRightMenuBaseY:Number = 0;
 		private static const MOBILE_PULL_OUT_TOP_SAFE:Number = 72;
 		private static const MOBILE_PULL_OUT_BOTTOM_SAFE:Number = 8;
@@ -671,6 +672,9 @@
 			this.mPullOutMenuFrame = this.mIngameHUDClip_BOTTOM.getChildByName("pullout_tools_frame") as MovieClip;
 			this.mPullOutMenuFrame.gotoAndStop(1);
 			this.mPullOutMenuState = this.STATE_MENU_CLOSED;
+			CONFIG::BUILD_FOR_MOBILE_AIR {
+				this.mPullOutMenuFrame.visible = false;
+			}
 			this.mPullOutMenu = this.mPullOutMenuFrame.getChildAt(0) as MovieClip;
 			this.mButtonSocial = this.addButton(this.mPullOutMenu, "Button_social", this.doAbsolutelyNothingJustLikeDCDevs);
 			this.mButtonInventory = this.addButton(this.mPullOutMenu, "Button_inventory", this.buttonInventoryPressed);
@@ -710,32 +714,39 @@
 			}
 			if (Config.DEBUG_MODE) {}
 			if (this.mPullOutMenuState == this.STATE_MENU_CLOSED) {
+				CONFIG::BUILD_FOR_MOBILE_AIR {
+					this.mPullOutMenuFrame.x = this.mMobileRightMenuBaseX;
+					this.mPullOutMenuFrame.y = this.mMobileRightMenuBaseY;
+					this.mPullOutMenuFrame.visible = true;
+				}
 				this.mPullOutMenuFrame.gotoAndPlay("Open");
 				this.mPullOutMenuState = this.STATE_MENU_OPEN;
+				Utils.DiagEvent("HUD_RIGHT_TRANSITION","phase=open_begin;x=" + this.mPullOutMenuFrame.x + ";y=" + this.mPullOutMenuFrame.y);
 				MissionManager.increaseCounter("OpenSettings", null, 1);
 			} else {
 				this.mPullOutMenuFrame.gotoAndPlay("Close");
 				this.mPullOutMenuState = this.STATE_MENU_CLOSED;
+				Utils.DiagEvent("HUD_RIGHT_TRANSITION","phase=close_begin;frame=" + this.mPullOutMenuFrame.currentFrame);
 			}
 			this.mPullOutMenuFrame.addEventListener(Event.ENTER_FRAME, this.enterFrame);
 		}
 
 		private function enterFrame(param1: Event): void {
-			CONFIG::BUILD_FOR_MOBILE_AIR {
-				if (this.mPullOutMenuState == this.STATE_MENU_OPEN) {
-					this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
-				}
-			}
 			if (this.mPullOutMenuState == this.STATE_MENU_OPEN && this.mPullOutMenuFrame.currentFrameLabel == "Normal") {
 				this.mPullOutMenuFrame.stop();
-				Utils.DiagEvent("HUD_RIGHT_OPEN_SETTLED","frame=" + this.mPullOutMenuFrame.currentFrame + ";label=" + this.mPullOutMenuFrame.currentFrameLabel);
+				CONFIG::BUILD_FOR_MOBILE_AIR {
+					this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
+				}
+				Utils.DiagEvent("HUD_RIGHT_OPEN_SETTLED","frame=" + this.mPullOutMenuFrame.currentFrame + ";label=" + this.mPullOutMenuFrame.currentFrameLabel + ";x=" + this.mPullOutMenuFrame.x + ";y=" + this.mPullOutMenuFrame.y);
 				this.mPullOutMenuFrame.removeEventListener(Event.ENTER_FRAME, this.enterFrame);
 			} else if (this.mPullOutMenuState == this.STATE_MENU_CLOSED && this.mPullOutMenuFrame.currentFrame == this.mPullOutMenuFrame.totalFrames) {
 				this.mPullOutMenuFrame.gotoAndStop(1);
 				CONFIG::BUILD_FOR_MOBILE_AIR {
+					this.mPullOutMenuFrame.x = this.mMobileRightMenuBaseX;
 					this.mPullOutMenuFrame.y = this.mMobileRightMenuBaseY;
+					this.mPullOutMenuFrame.visible = false;
 				}
-				Utils.DiagEvent("HUD_RIGHT_CLOSE_RESET","y=" + this.mPullOutMenuFrame.y + ";frame=" + this.mPullOutMenuFrame.currentFrame + ";state=" + this.mPullOutMenuState);
+				Utils.DiagEvent("HUD_RIGHT_CLOSE_HIDDEN","x=" + this.mPullOutMenuFrame.x + ";y=" + this.mPullOutMenuFrame.y + ";frame=" + this.mPullOutMenuFrame.currentFrame + ";visible=" + this.mPullOutMenuFrame.visible);
 				this.mPullOutMenuFrame.removeEventListener(Event.ENTER_FRAME, this.enterFrame);
 			}
 		}
@@ -859,6 +870,31 @@
 			this.mIngameHUDClip.removeChild(_loc2_);
 		}
 
+		public function positionPlacementButtonsMobile(param1:Number, param2:Number, param3:Number = 0):Boolean {
+			CONFIG::BUILD_FOR_MOBILE_AIR {
+				if(!this.mIngameHUDClip || !this.mPlaceButton || !this.mPlaceCancelButton || !stage) return false;
+				var anchor:Point = this.mIngameHUDClip.globalToLocal(new Point(param1,param2));
+				var safeTopLeft:Point = this.mIngameHUDClip.globalToLocal(new Point(10,76));
+				var safeBottomRight:Point = this.mIngameHUDClip.globalToLocal(new Point(stage.stageWidth - 10,stage.stageHeight - 10));
+				var gap:Number = 12;
+				var checkW:Number = this.mPlaceButton.getWidth();
+				var cancelW:Number = this.mPlaceCancelButton.getWidth();
+				var buttonH:Number = Math.max(this.mPlaceButton.getHeight(),this.mPlaceCancelButton.getHeight());
+				var groupW:Number = checkW + gap + cancelW;
+				var x:Number = anchor.x - groupW / 2;
+				var y:Number = anchor.y - Math.max(78,param3 * 0.45) - buttonH;
+				if(y < safeTopLeft.y) y = anchor.y + 42;
+				x = Math.max(safeTopLeft.x,Math.min(safeBottomRight.x - groupW,x));
+				y = Math.max(safeTopLeft.y,Math.min(safeBottomRight.y - buttonH,y));
+				this.mPlaceButton.setX(x);
+				this.mPlaceButton.setY(y);
+				this.mPlaceCancelButton.setX(x + checkW + gap);
+				this.mPlaceCancelButton.setY(y);
+				return true;
+			}
+			return false;
+		}
+
 		private function constrainMobilePullOut(param1:MovieClip, param2:String):void {
 			if(!param1 || !this.mIngameHUDClip_BOTTOM) return;
 			var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);
@@ -980,6 +1016,7 @@
 				this.mButtonPullOutMissionFrame.x = 0;
 				this.mButtonPullOutFrame.x = Math.max(0,localWidth - this.mButtonPullOutFrame.width);
 				this.mPullOutMenuFrame.x = localWidth;
+				this.mMobileRightMenuBaseX = this.mPullOutMenuFrame.x;
 
 				this.mButtonPullOutMissionFrame.y = Math.max(0,localHeight - this.mButtonPullOutMissionFrame.height);
 				this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);
@@ -987,7 +1024,12 @@
 				this.mPullOutMenuFrame.y = Math.max(0,localHeight - this.mPullOutMenuFrame.height);
 				this.mMobileRightMenuBaseY = this.mPullOutMenuFrame.y;
 				this.constrainMobilePullOut(this.mPullOutMissionFrame,"missions");
-				this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
+				if (this.mPullOutMenuState == this.STATE_MENU_OPEN) {
+					this.mPullOutMenuFrame.visible = true;
+					this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
+				} else {
+					this.mPullOutMenuFrame.visible = false;
+				}
 
 				this.mHudButtonShop.setX(this.mButtonPullOutMissionFrame.x + this.mButtonPullOutMissionFrame.width + 20);
 				this.mHudButtonSave.setX(this.mHudButtonShop.getX() + this.mHudButtonShop.getWidth());
