@@ -246,7 +246,7 @@ package game.gameElements
          {
             this.mAnim.nextFrame();
          }
-         if(this.mColorEffectScene)
+         if(this.mColorEffectField)
          {
             if(this.mAnim.currentFrameLabel == "start_flash" && !this.mColorEffectField.mStarted)
             {
@@ -262,6 +262,12 @@ package game.gameElements
             if(!this.mDebrises)
             {
                _loc1_ = DCResourceManager.getInstance().getSWFClass(Config.SWF_EFFECTS_NAME,"debris_animation");
+               if(!_loc1_)
+               {
+                  this.mDebrises = new Array();
+                  Utils.DiagEvent("FIREMISSION_DEBRIS_MISS","mission=" + this.mItem.mId + ";resource=" + Config.SWF_EFFECTS_NAME + ";symbol=debris_animation");
+                  return;
+               }
                _loc2_ = SceneLoader.GRID_CELL_SIZE;
                _loc3_ = -_loc2_ / 2;
                _loc4_ = -_loc2_ / 2;

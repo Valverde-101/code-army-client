@@ -492,4 +492,5 @@ jobs:
           Write-Host "MANUAL_PHYSICAL_VALIDATION=PENDING_USER_VALIDATION"
           Write-Host "SANITIZATION=PASS via_publish_logs"
           Write-Host "EVIDENCE_UPLOAD=PASS via_publish_logs"
-          Write-Host "FINAL_VALIDATION=PASS candidate"
+          Write-Host "CANDIDATE_VALIDATION=PASS"
+          Write-Host "FINAL_VALIDATION=VALIDATION_INCOMPLETE physical_validation_required"

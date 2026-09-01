@@ -185,7 +185,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.15-placement-powerup-hfe-runtime'
+  patch_version='mobile-engine-v3.16-hfe-firemission-materialized-trace'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -273,12 +273,16 @@ $manifest=[ordered]@{
     'pvp_firemission_object_bytecode_applied',
     'pvp_firemission_null_visual_safe',
     'pvp_firemission_single_destroy_lifecycle',
-    'hfe_bounded_wallclock_catchup_30fps',
+    'hfe_wallclock_resync_30fps',
+    'hfe_missing_graphics_safe',
+    'pvp_powerup_exception_containment',
+    'pvp_firemission_missing_debris_safe',
+    'pvp_enemy_materialized_class_trace',
     'swf_resolved_class_identity_trace',
     'hfe_progress_not_mirrored_to_logcat'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.15-placement-powerup-hfe-runtime source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.16-hfe-firemission-materialized-trace source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

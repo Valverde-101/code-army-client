@@ -20,7 +20,6 @@
 
 		protected static const MAX_HFEOBJECTS_ANIMATED: int = 10;
 		private static const HARVEST_TARGET_FPS:Number = 30;
-		private static const HARVEST_MAX_CATCHUP_FRAMES:int = 1;
 		private static const HARVEST_DIAGNOSTIC_INTERVAL_MS:int = 2000;
 
 		protected static var smAnimationsOn: Boolean = true;
@@ -215,6 +214,14 @@
 			var _loc1_: Class = null;
 			if (FeatureTuner.USE_HARVEST_ANIMATION && GameState.mInstance.isAnimationsOn()) {
 				_loc1_ = DCResourceManager.getInstance().getSWFClass(Config.SWF_EFFECTS_NAME, HFEItem(mItem).mHarvestAnimation);
+				if (!_loc1_) {
+					Utils.DiagEvent("HFE_HARVEST_GRAPHICS_MISS","item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";resource=" + Config.SWF_EFFECTS_NAME);
+					this.mHarvestAnimation = null;
+					mState = STATE_PRODUCTION_READY;
+					super.handleProductionComplete();
+					this.updateGraphics();
+					return;
+				}
 				this.mHarvestAnimation = new _loc1_();
 				this.mHarvestAnimation.addEventListener(Event.ENTER_FRAME, this.checkHarvestFrame);
 				this.mHarvestAnimation.x = mX;
@@ -246,9 +253,13 @@
 			var expectedFrame:int = Math.min(_loc2_.totalFrames,1 + int(elapsedMs * HARVEST_TARGET_FPS / 1000));
 			var lagFrames:int = expectedFrame - _loc2_.currentFrame;
 			if (lagFrames > 1 && _loc2_.currentFrame < _loc2_.totalFrames) {
-				var catchupTarget:int = Math.min(_loc2_.totalFrames,_loc2_.currentFrame + HARVEST_MAX_CATCHUP_FRAMES);
-				if (catchupTarget > _loc2_.currentFrame) {
+				var beforeCatchup:int = _loc2_.currentFrame;
+				var catchupTarget:int = Math.min(_loc2_.totalFrames,expectedFrame);
+				if (catchupTarget > beforeCatchup) {
 					_loc2_.gotoAndPlay(catchupTarget);
+					if (catchupTarget - beforeCatchup >= 3) {
+						Utils.DiagEvent("HFE_HARVEST_CATCHUP","item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";from=" + beforeCatchup + ";to=" + catchupTarget + ";skipped=" + (catchupTarget - beforeCatchup) + ";elapsed_ms=" + elapsedMs);
+					}
 				}
 			}
 			if (nowMs - this.mHarvestAnimationLastDiagMs >= HARVEST_DIAGNOSTIC_INTERVAL_MS) {

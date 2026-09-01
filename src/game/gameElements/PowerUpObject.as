@@ -34,7 +34,14 @@
 		}
 
 		public function execute(param1: IsometricCharacter): void {
-			this.applyPowerUp(mItem as PowerUpItem, param1, 0);
+			var powerUp:PowerUpItem = mItem as PowerUpItem;
+			try {
+				this.applyPowerUp(powerUp, param1, 0);
+				Utils.DiagEvent("PVP_POWERUP_EXECUTE_RESULT","id=" + (powerUp ? powerUp.mId : "null") + ";actor=" + (param1 is PlayerUnit ? "player" : "enemy") + ";result=success");
+			}
+			catch(error:Error) {
+				Utils.DiagEvent("PVP_POWERUP_EXECUTE_ERROR","id=" + (powerUp ? powerUp.mId : "null") + ";actor=" + (param1 is PlayerUnit ? "player" : "enemy") + ";error=" + error.errorID + ";message=" + error.message);
+			}
 		}
 
 		private function applyPowerUp(param1: PowerUpItem, param2: IsometricCharacter, param3: int): void {

@@ -1,5 +1,8 @@
 package game.characters
 {
+   import flash.display.DisplayObject;
+   import flash.display.MovieClip;
+   import flash.utils.getQualifiedClassName;
    import game.actions.Action;
    import game.actions.ActionQueue;
    import game.actions.PvPEnemyMovingAction;
@@ -197,8 +200,13 @@ package game.characters
                var mode:String = source.indexOf("swf/units_opfor/") == 0 ? "opfor_config_exact" : "opfor_external";
                var canonicalException:Boolean = this.mUnitId == UNIT_ID_PVP_ELITE_SNIPER;
                var darkMovement:Boolean = canonicalException || symbol.indexOf("pvp_") == 0;
+               var currentAnimation:MovieClip = mAnimationController ? mAnimationController.getCurrentAnimation() : null;
+               var materialized:DisplayObject = currentAnimation && currentAnimation.numChildren > 0 ? currentAnimation.getChildAt(currentAnimation.numChildren - 1) : null;
+               var materializedClass:String = materialized ? getQualifiedClassName(materialized) : "none";
+               var materializedName:String = materialized ? materialized.name : "none";
                Utils.DiagEvent("PVP_ENEMY_SYMBOL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";source=" + source + ";symbol=" + symbol + ";mode=" + mode);
-               Utils.DiagEvent("PVP_ENEMY_MOVE_VISUAL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";source=" + source + ";symbol=" + symbol + ";opfor=" + (mode == "opfor_config_exact") + ";dark=" + darkMovement + ";canonical_exception=" + canonicalException);
+               Utils.DiagEvent("PVP_ENEMY_MOVE_MATERIALIZED","unit=" + this.mUnitId + ";animation=" + animationIndex + ";symbol=" + symbol + ";class=" + materializedClass + ";name=" + materializedName + ";children=" + (currentAnimation ? currentAnimation.numChildren : 0));
+               Utils.DiagEvent("PVP_ENEMY_MOVE_VISUAL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";source=" + source + ";symbol=" + symbol + ";opfor=" + (mode == "opfor_config_exact") + ";dark=" + darkMovement + ";canonical_exception=" + canonicalException + ";materialized_class=" + materializedClass);
                if(mode != "opfor_config_exact" || !darkMovement)
                {
                   Utils.DiagEvent("PVP_ENEMY_MOVE_VISUAL_MISMATCH","unit=" + this.mUnitId + ";source=" + source + ";symbol=" + symbol + ";reason=" + (mode != "opfor_config_exact" ? "wrong_resource" : "non_dark_symbol"));
