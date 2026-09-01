@@ -446,7 +446,7 @@ public final class PerformanceOverlay {
         panel.setBackgroundColor(Color.argb(232, 18, 27, 39));
         panel.setVisibility(View.GONE);
 
-        TextView title = text("Army Perf · SWF intacto", 16f, Color.WHITE);
+        TextView title = text("Army Perf · runtime instrumentado", 16f, Color.WHITE);
         panel.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         metricsView = text("CPU/RAM: esperando…", 13f, Color.rgb(220, 230, 240));

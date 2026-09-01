@@ -330,7 +330,7 @@ jobs:
           $apk=Get-Item -LiteralPath $env:ANDROID_APK_PATH
           $apkSha=(Get-FileHash -LiteralPath $apk.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           $manual=[ordered]@{
-            schema_version=1
+            schema_version=2
             repository=$env:GITHUB_REPOSITORY
             tested_sha=$env:EXPECTED_SOURCE_SHA
             apk_path=$apk.FullName
@@ -340,12 +340,12 @@ jobs:
             adb_used=$false
             status='PENDING_USER_VALIDATION'
             required_steps=@(
-              'Install the exact APK manually on the physical Android phone',
+              'Install the exact APK on the physical Android phone',
               'Launch Army Attack and confirm the main game loads',
-              'Open PERF and press INICIAR',
-              'Play a representative gameplay session',
+              'Recording starts automatically; PERF only opens or closes the metrics panel',
+              'Play a representative gameplay session including placement, right HUD, supply aircraft, PvP FireMission and PvP loot debrief',
               'Press MARCAR LAG whenever a visible slowdown occurs',
-              'Press DETENER and then ZIP',
+              'Press ZIP to share a snapshot without stopping the recording',
               'Share the generated ZIP back for analysis'
             )
           }
