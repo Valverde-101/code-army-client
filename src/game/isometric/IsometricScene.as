@@ -131,7 +131,13 @@
 		private var mVisibleLookup: Dictionary;
 		private var mSortDirty: Boolean = true;
 		private var mViewportDirty: Boolean = true;
+		private var mLastViewportCullX: Number = NaN;
+		private var mLastViewportCullY: Number = NaN;
 		private static const VIEWPORT_CULL_MARGIN: Number = 384;
+		private static const VIEWPORT_CULL_RECHECK_DISTANCE: Number = 128;
+		private static const VIEWPORT_FALLBACK_INTERVAL_FRAMES: int = 20;
+		private static const SOUND_TRANSFORM_REFRESH_MS: int = 100;
+		private var mSoundTransformAccumulator: Number = SOUND_TRANSFORM_REFRESH_MS;
 		private static const OFFLINE_WORLD_MAP_RESOURCE: String = "swf/map";
 
 		private var mOfflineFeatureHudBottom: MovieClip;
@@ -1173,6 +1179,7 @@
 		public function addObject(param1: Element): void {
 			this.mAllElements.push(param1);
 			this.mSortDirty = true;
+			this.mViewportDirty = true;
 			if (param1 is IsometricCharacter) {
 				this.mCharacterElements.push(param1);
 			}
@@ -2787,9 +2794,12 @@
 				}
 			}
 			if (!Config.DISABLE_SORT) {
-				var viewportRefresh:Boolean = this.mSwitch % 5 == 4;
-				this.sortAll(viewportRefresh || this.mViewportDirty || Boolean(this.mObjectBeingMoved), _loc3_ || Boolean(this.mObjectBeingMoved));
-				this.mViewportDirty = false;
+				var viewportRefresh:Boolean = this.mSwitch % VIEWPORT_FALLBACK_INTERVAL_FRAMES == VIEWPORT_FALLBACK_INTERVAL_FRAMES - 1;
+				var recullViewport:Boolean = viewportRefresh || this.mViewportDirty || Boolean(this.mObjectBeingMoved);
+				this.sortAll(recullViewport, _loc3_ || this.mSortDirty || Boolean(this.mObjectBeingMoved));
+				if (recullViewport) {
+					this.mViewportDirty = false;
+				}
 			}
 			if (_loc4_ != this.mPreviousCell) {
 				this.mPreviousCell = _loc4_;
@@ -2917,7 +2927,9 @@
 			var _loc6_: int = 0;
 			var _loc2_: int = this.mContainer.scaleX * -this.mCamera.getCameraX() + this.mGame.getStageWidth() / 2;
 			var _loc3_: int = this.mContainer.scaleY * -this.mCamera.getCameraY() + this.mGame.getStageHeight() / 2;
-			if (this.mContainer.x != _loc2_) {
+			var cameraMoved:Boolean = this.mContainer.x != _loc2_ || this.mContainer.y != _loc3_;
+			this.mSoundTransformAccumulator = Math.min(SOUND_TRANSFORM_REFRESH_MS,this.mSoundTransformAccumulator + param1);
+			if (cameraMoved && this.mSoundTransformAccumulator >= SOUND_TRANSFORM_REFRESH_MS) {
 				_loc5_ = int(this.mSoundMakers.length);
 				_loc6_ = 0;
 				while (_loc6_ < _loc5_) {
@@ -2926,13 +2938,18 @@
 					}
 					_loc6_++;
 				}
+				this.mSoundTransformAccumulator = 0;
 			}
-			if (this.mContainer.x != _loc2_ || this.mContainer.y != _loc3_) {
+			if (cameraMoved) {
 				this.mContainer.x = _loc2_;
 				this.mContainer.y = _loc3_;
 				this.mSceneHud.x = _loc2_;
 				this.mSceneHud.y = _loc3_;
-				this.mViewportDirty = true;
+				if (isNaN(this.mLastViewportCullX) || isNaN(this.mLastViewportCullY) ||
+					Math.abs(this.mContainer.x - this.mLastViewportCullX) >= VIEWPORT_CULL_RECHECK_DISTANCE ||
+					Math.abs(this.mContainer.y - this.mLastViewportCullY) >= VIEWPORT_CULL_RECHECK_DISTANCE) {
+					this.mViewportDirty = true;
+				}
 				this.mMouseCellDirty = true;
 				this.mTilemapGraphic.updateCameraViewport();
 			}
@@ -3129,6 +3146,8 @@
 					i++;
 				}
 				this.mVisibleObjectCnt = this.mVisibleObjects.length;
+				this.mLastViewportCullX = this.mContainer.x;
+				this.mLastViewportCullY = this.mContainer.y;
 			}
 			if (param2 || changed) {
 				if (this.armySortObjects(this.mVisibleObjects)) {
@@ -3351,6 +3370,7 @@
 				this.mAllElements.splice(_loc5_, 1);
 			}
 			this.mSortDirty = true;
+			this.mViewportDirty = true;
 			delete this.mLastSortX[param1];
 			delete this.mLastSortY[param1];
 			if (param1 is IsometricCharacter) {

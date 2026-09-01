@@ -182,7 +182,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.10-pvp-canonical-hud-hfe-mainmap-passive'
+  patch_version='mobile-engine-v3.11-pvp-ui-mainmap-camera-culling'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -243,10 +243,13 @@ $manifest=[ordered]@{
     'pvp_cancel_standard_binding',
     'mobile_hud_visible_bounds_bottom_anchor',
     'hfe_native_timeline_playback',
-    'mainmap_player_building_passive_10hz'
+    'mainmap_player_building_passive_10hz',
+    'mainmap_viewport_recull_128px_threshold',
+    'mainmap_viewport_fallback_recull_20_frames',
+    'mainmap_spatial_audio_refresh_10hz'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.10-pvp-canonical-hud-hfe-mainmap-passive source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.11-pvp-ui-mainmap-camera-culling source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf
