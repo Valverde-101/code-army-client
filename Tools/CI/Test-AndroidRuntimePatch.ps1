@@ -72,6 +72,7 @@ Require-Contains $scene 'this.mViewportDirty = true;' 'viewport_dirty_explicit_f
 Require-Contains $scene 'private function shouldCommitPlacement():Boolean' 'mobile_placement_has_explicit_commit_policy'
 Require-Contains $scene 'pointerCommit = false;' 'mobile_map_tap_does_not_auto_place'
 Require-Contains $scene 'this.shouldCommitPlacement()' 'placement_paths_use_explicit_commit_policy'
+Require-NotContains $scene 'if this.shouldCommitPlacement()' 'placement_ffdec_requires_parenthesized_if_condition'
 Require-NotContains $game 'this.mHUD.openGiveFilePermissionScreen();' 'mobile_obsolete_v22_save_gate_removed'
 Require-Contains $game 'defaultSettings["savelocation"] = this.mSaveLocation;' 'mobile_internal_save_default_persisted'
 Require-Contains $saveDialog 'private function fitToScreen():void' 'mobile_save_dialog_has_viewport_fit'
@@ -264,6 +265,8 @@ Require-Contains $gameHud 'HUD_MOBILE_LAYOUT' 'mobile_hud_layout_is_instrumented
 Require-Contains $gameHud 'HUD_MOBILE_PULL_OUT_CLAMP' 'mobile_hud_pullout_is_visible_bounds_clamped'
 Require-Contains $gameHud 'if (this.mPullOutMenuState == this.STATE_MENU_OPEN)' 'right_hud_clamp_only_applies_while_open'
 Require-Contains $gameHud 'HUD_RIGHT_CLOSE_RESET' 'right_hud_close_resets_authored_base_position'
+Require-Contains $gameHud 'this.mPullOutMenuState == this.STATE_MENU_OPEN && this.mPullOutMenuFrame.currentFrameLabel == "Normal"' 'right_hud_normal_label_only_stops_open_animation'
+Require-Contains $gameHud 'this.mPullOutMenuState == this.STATE_MENU_CLOSED && this.mPullOutMenuFrame.currentFrame == this.mPullOutMenuFrame.totalFrames' 'right_hud_close_runs_to_authored_terminal_frame'
 Require-Contains $gameHud 'constrainMobilePullOut(this.mPullOutMissionFrame,"missions")' 'mobile_mission_pullout_clamped_during_animation'
 Require-Contains $gameHud 'constrainMobilePullOut(this.mPullOutMenuFrame,"right")' 'mobile_right_pullout_clamped_during_animation'
 Require-NotContains $gameHud 'private function alignBottomVisual' 'mobile_hud_incremental_bounds_anchor_removed'
@@ -330,4 +333,4 @@ $audit=Join-Path $RepoRoot 'Tools\CI\Audit-SwfCore.ps1'
 if(-not(Test-Path -LiteralPath $audit)){throw "REGRESSION=FAIL missing=Tools/CI/Audit-SwfCore.ps1"}
 & $audit -RepoRoot $RepoRoot
 Write-Host 'REGRESSION_CHECK=PASS name=swf_core_audit_reproducible'
-Write-Host 'REGRESSION=PASS suite=android-runtime-v3.26-placement-powerup-hfe-runtime'
+Write-Host 'REGRESSION=PASS suite=android-runtime-v3.27-placement-ffdec-right-close'

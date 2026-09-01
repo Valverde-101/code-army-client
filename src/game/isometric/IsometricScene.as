@@ -547,11 +547,11 @@
 							if (this.isInLegalPlacementArea(this.mObjectBeingMoved)) {
 								this.setVisiblePlacementButton(true);
 								if (this.mGame.mState == GameState.STATE_PLACE_ITEM && this.mObjectBeingMoved.mItem is ShopItem && ShopItem(this.mObjectBeingMoved.mItem).getCostPremium() > 0) {
-									if this.shouldCommitPlacement() {
+									if (this.shouldCommitPlacement()) {
 										this.mGame.externalCallBuyItem(this.mObjectBeingMoved.mItem as ShopItem);
 									}
 								} else if (this.mFlagDrag || this.mGame.mState != GameState.STATE_MOVE_ITEM) {
-									if this.shouldCommitPlacement() {
+									if (this.shouldCommitPlacement()) {
 										this.placeObjectBeingMoved();
 									}
 								}

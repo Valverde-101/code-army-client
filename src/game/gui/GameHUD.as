@@ -726,17 +726,16 @@
 					this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
 				}
 			}
-			if (this.mPullOutMenuFrame.currentFrameLabel == "Normal") {
+			if (this.mPullOutMenuState == this.STATE_MENU_OPEN && this.mPullOutMenuFrame.currentFrameLabel == "Normal") {
 				this.mPullOutMenuFrame.stop();
+				Utils.DiagEvent("HUD_RIGHT_OPEN_SETTLED","frame=" + this.mPullOutMenuFrame.currentFrame + ";label=" + this.mPullOutMenuFrame.currentFrameLabel);
 				this.mPullOutMenuFrame.removeEventListener(Event.ENTER_FRAME, this.enterFrame);
-			} else if (this.mPullOutMenuFrame.currentFrame == this.mPullOutMenuFrame.totalFrames) {
+			} else if (this.mPullOutMenuState == this.STATE_MENU_CLOSED && this.mPullOutMenuFrame.currentFrame == this.mPullOutMenuFrame.totalFrames) {
 				this.mPullOutMenuFrame.gotoAndStop(1);
 				CONFIG::BUILD_FOR_MOBILE_AIR {
-					if (this.mPullOutMenuState == this.STATE_MENU_CLOSED) {
-						this.mPullOutMenuFrame.y = this.mMobileRightMenuBaseY;
-						Utils.DiagEvent("HUD_RIGHT_CLOSE_RESET","y=" + this.mPullOutMenuFrame.y + ";frame=" + this.mPullOutMenuFrame.currentFrame);
-					}
+					this.mPullOutMenuFrame.y = this.mMobileRightMenuBaseY;
 				}
+				Utils.DiagEvent("HUD_RIGHT_CLOSE_RESET","y=" + this.mPullOutMenuFrame.y + ";frame=" + this.mPullOutMenuFrame.currentFrame + ";state=" + this.mPullOutMenuState);
 				this.mPullOutMenuFrame.removeEventListener(Event.ENTER_FRAME, this.enterFrame);
 			}
 		}
