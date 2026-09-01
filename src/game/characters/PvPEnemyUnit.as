@@ -95,8 +95,9 @@ package game.characters
          mSpeed = 300;
          mContainer.mouseChildren = false;
          mContainer.mouseEnabled = false;
-         this.mResolvedGraphicsArray = this.resolveOpforGraphics(param3.mGraphicsArray);
+         this.mResolvedGraphicsArray = param3.mGraphicsArray ? param3.mGraphicsArray.concat() : new Array();
          initAnimations(this.mResolvedGraphicsArray);
+         Utils.DiagEvent("PVP_ENEMY_GRAPHICS_RESOLVED","unit=" + this.mUnitId + ";entries=" + this.mResolvedGraphicsArray.length + ";mode=config_exact");
          setPos(500,500,0);
          updateAnimation(true,false);
          mVisible = false;
@@ -107,55 +108,6 @@ package game.characters
          {
             this.initSounds();
          }
-      }
-      
-      private function resolveOpforGraphics(param1:Array) : Array
-      {
-         var _loc1_:Array = param1 ? param1.concat() : new Array();
-         var _loc2_:int = 0;
-         var _loc3_:String = null;
-         var _loc4_:int = 0;
-         var _loc5_:String = null;
-         var _loc6_:String = null;
-         var _loc7_:int = 0;
-         while(_loc2_ < _loc1_.length)
-         {
-            _loc3_ = _loc1_[_loc2_] as String;
-            if(_loc3_ != null && _loc3_.indexOf("swf/units_opfor/") == 0)
-            {
-               _loc4_ = _loc3_.lastIndexOf("/");
-               _loc5_ = _loc4_ >= 0 ? _loc3_.substr(_loc4_ + 1) : _loc3_;
-               _loc6_ = null;
-               if(_loc2_ != AnimationController.CHARACTER_ANIMATION_AIRDROP && _loc5_.indexOf("pvp_") != 0)
-               {
-                  if(_loc5_.indexOf("good_infantry_") == 0)
-                  {
-                     _loc6_ = "pvp_" + _loc5_;
-                  }
-                  else if(_loc5_.indexOf("premium_infantry_") == 0)
-                  {
-                     _loc6_ = "pvp_" + _loc5_;
-                  }
-                  else if(_loc5_.indexOf("good_special_forces_") == 0)
-                  {
-                     _loc6_ = "pvp_" + _loc5_;
-                  }
-                  else if(_loc5_.indexOf("good_sniper_") == 0)
-                  {
-                     _loc6_ = "pvp_good_sniper_" + _loc5_.substr("good_sniper_".length);
-                  }
-               }
-               if(_loc6_ != null)
-               {
-                  _loc1_[_loc2_] = "swf/units_opfor/" + _loc6_;
-                  Utils.DiagEvent("PVP_ENEMY_SYMBOL_REMAP","unit=" + this.mUnitId + ";animation=" + _loc2_ + ";from=" + _loc3_ + ";to=" + _loc1_[_loc2_]);
-                  _loc7_++;
-               }
-            }
-            _loc2_++;
-         }
-         Utils.DiagEvent("PVP_ENEMY_GRAPHICS_RESOLVED","unit=" + this.mUnitId + ";remapped=" + _loc7_ + ";mode=opfor_dark");
-         return _loc1_;
       }
       
       override protected function initSounds() : void
@@ -228,7 +180,7 @@ package game.characters
             {
                var slash:int = source.lastIndexOf("/");
                var symbol:String = slash >= 0 ? source.substr(slash + 1) : source;
-               var mode:String = source.indexOf("swf/units_opfor/pvp_") == 0 ? "opfor_move_dark" : "opfor_unresolved";
+               var mode:String = source.indexOf("swf/units_opfor/") == 0 ? "opfor_config_exact" : "opfor_external";
                Utils.DiagEvent("PVP_ENEMY_SYMBOL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";source=" + source + ";symbol=" + symbol + ";mode=" + mode);
                this.mLastVisualSource = source;
             }

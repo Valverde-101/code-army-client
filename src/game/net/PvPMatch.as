@@ -390,7 +390,9 @@ package game.net
          }
          Utils.DiagEvent("PVP_PASS_TURN","turn=" + this.mTurnCounter + ";actions_before=" + this.mActionsLeft);
          this.mActionsLeft = 0;
+         this.mTurnChangeTimer = this.TURN_DELAY;
          this.changeTurn();
+         Utils.DiagEvent("PVP_PASS_TURN_RESULT","player_turn=" + this.mPlayerTurn + ";actions=" + this.mActionsLeft + ";delay_ms=" + this.mTurnChangeTimer);
          return true;
       }
 

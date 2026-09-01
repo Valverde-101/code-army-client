@@ -88,6 +88,21 @@ package
          return new ArmyButton(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,instrumentButtonCallback(param2,param3));
       }
       
+      public static function createStaticBasicButton(param1:DisplayObjectContainer, param2:String, param3:Function, param4:Boolean = true) : ArmyButton
+      {
+         var _loc4_:MovieClip;
+         var _loc5_:ArmyButton;
+         if(!(_loc4_ = param1.getChildByName(param2) as MovieClip))
+         {
+            return null;
+         }
+         _loc4_.mouseEnabled = true;
+         _loc5_ = new ArmyButton(param1,_loc4_,DCButton.BUTTON_TYPE_OK,null,null,null,null,null,instrumentButtonCallback(param2,param3),null,false);
+         _loc5_.USE_BUTTON_STATES_ANIM = false;
+         _loc5_.setEnabled(param4);
+         return _loc5_;
+      }
+      
       public static function createSelectableButton(param1:DisplayObjectContainer, param2:String, param3:Function) : ArmyButtonSelected
       {
          var _loc4_:MovieClip = null;

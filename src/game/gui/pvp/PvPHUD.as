@@ -241,8 +241,7 @@
 			var cancelClip:MovieClip = this.findMovieClipByName(this.mIngameHUDClip,"Button_Cancel");
 			if(cancelClip != null && cancelClip.parent is DisplayObjectContainer)
 			{
-				cancelClip.mouseEnabled = true;
-				this.mButtonCancelAction = new ArmyButton(cancelClip.parent as DisplayObjectContainer,cancelClip,DCButton.BUTTON_TYPE_ICON,null,null,null,null,null,this.buttonCancelActionPressed);
+				this.mButtonCancelAction = Utils.createBasicButton(cancelClip.parent as DisplayObjectContainer,cancelClip.name,this.buttonCancelActionPressed);
 			}
 			this.showCancelButton(true);
 			this.updateStatusTexts();
@@ -412,7 +411,8 @@
 			if(!this.mGame || !this.mGame.mPvPMatch) return;
 			Utils.DiagEvent("PVP_PASS_TURN_BUTTON","turn=" + this.mGame.mPvPMatch.mTurnCounter + ";actions=" + this.mGame.mPvPMatch.mActionsLeft + ";player_turn=" + this.mGame.mPvPMatch.mPlayerTurn);
 			this.cancelTools();
-			this.mGame.mPvPMatch.passPlayerTurn();
+			var passed:Boolean = this.mGame.mPvPMatch.passPlayerTurn();
+			Utils.DiagEvent("PVP_PASS_TURN_BUTTON_RESULT","passed=" + passed + ";turn=" + this.mGame.mPvPMatch.mTurnCounter + ";actions=" + this.mGame.mPvPMatch.mActionsLeft + ";player_turn=" + this.mGame.mPvPMatch.mPlayerTurn);
 			this.showCancelButton(true);
 		}
 

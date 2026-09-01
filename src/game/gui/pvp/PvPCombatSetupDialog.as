@@ -109,12 +109,8 @@
          this.mInfoPanel = mClip.getChildByName("Info_Panel") as MovieClip;
          var _loc2_:MovieClip = this.mInfoPanel.getChildByName("Toolbox") as MovieClip;
          this.mButtonBack = Utils.createBasicButton(_loc2_,"Button_Back",this.backClicked);
-         this.mButtonFight = Utils.createBasicButton(_loc2_,"Button_Fight",this.fightClicked);
-         this.mButtonBuy = Utils.createBasicButton(_loc2_,"Button_Buy",this.buyClicked);
-         this.mButtonFight.USE_BUTTON_STATES_ANIM = false;
-         this.mButtonBuy.USE_BUTTON_STATES_ANIM = false;
-         this.mButtonFight.terminateAnimations();
-         this.mButtonBuy.terminateAnimations();
+         this.mButtonFight = Utils.createStaticBasicButton(_loc2_,"Button_Fight",this.fightClicked,false);
+         this.mButtonBuy = Utils.createStaticBasicButton(_loc2_,"Button_Buy",this.buyClicked,true);
          this.mButtonFight.playAnim(DCButton.BUTTON_FRAME_NAME_DISABLED_UP);
          this.mButtonBuy.playAnim(DCButton.BUTTON_FRAME_NAME_UP);
          var _loc3_:Friend = FriendsCollection.smFriends.GetThePlayer();

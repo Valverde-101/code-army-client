@@ -60,6 +60,7 @@ $patchSpecs=@(
   [ordered]@{Class='game.utils.OfflineSave';Source='src\game\utils\OfflineSave.as';Log='ffdec-feature-offlinesave.log'},
   [ordered]@{Class='game.net.PvPMatch';Source='src\game\net\PvPMatch.as';Log='ffdec-feature-pvp-match.log'},
   [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
+  [ordered]@{Class='game.gameElements.PlayerBuildingObject';Source='src\game\gameElements\PlayerBuildingObject.as';Log='ffdec-performance-player-building.log'},
   [ordered]@{Class='game.gameElements.HFEObject';Source='src\game\gameElements\HFEObject.as';Log='ffdec-feature-hfe-harvest.log'},
   [ordered]@{Class='game.gameElements.LootReward';Source='src\game\gameElements\LootReward.as';Log='ffdec-feature-pvp-loot.log'},
   [ordered]@{Class='game.actions.PvPAttackEnemyAction';Source='src\game\actions\PvPAttackEnemyAction.as';Log='ffdec-feature-pvp-attack.log'},
@@ -181,7 +182,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.9-map-resource-lifecycle'
+  patch_version='mobile-engine-v3.10-pvp-canonical-hud-hfe-mainmap-passive'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -236,10 +237,16 @@ $manifest=[ordered]@{
     'canonical_animationcontroller_bytecode_preserved',
     'canonical_enveffectmanager_bytecode_preserved',
     'canonical_menu_button_lifecycle_preserved',
-    'canonical_audio_lifecycle_preserved'
+    'canonical_audio_lifecycle_preserved',
+    'pvp_enemy_exact_config_swf_paths',
+    'pvp_static_buy_fight_buttons',
+    'pvp_cancel_standard_binding',
+    'mobile_hud_visible_bounds_bottom_anchor',
+    'hfe_native_timeline_playback',
+    'mainmap_player_building_passive_10hz'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.9-map-resource-lifecycle source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.10-pvp-canonical-hud-hfe-mainmap-passive source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

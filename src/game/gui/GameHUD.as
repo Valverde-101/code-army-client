@@ -6,6 +6,7 @@
 	import flash.display.Sprite;
 	import flash.events.*;
 	import flash.geom.Point;
+	import flash.geom.Rectangle;
 	import flash.net.FileReference;
 	CONFIG::BUILD_FOR_AIR {
 		import flash.filesystem.File;
@@ -839,6 +840,14 @@
 			var _loc2_: MovieClip = this.mIngameHUDClip.getChildByName(param1) as MovieClip;
 			this.mIngameHUDClip.removeChild(_loc2_);
 		}
+
+		private function alignBottomVisual(param1: DisplayObject, param2: Number): void {
+			if (!param1 || !this.mIngameHUDClip_BOTTOM) {
+				return;
+			}
+			var bounds: Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);
+			param1.y += param2 - bounds.bottom;
+		}
 		// This is the alignment test code for the resize function.
 		/*
       public function resize(param1:int, param2:int) : void
@@ -961,20 +970,20 @@
 				this.mButtonPullOutFrame.x = Math.max(0, param1 - this.mButtonPullOutFrame.width);
 				this.mPullOutMenuFrame.x = param1;
 
-				this.mButtonPullOutMissionFrame.y = param2 - this.mButtonPullOutMissionFrame.height;
-				this.mPullOutMissionFrame.y = param2 - this.mButtonPullOutMissionFrame.height;//Math.max(0, Math.min(param2 + 750 - this.mPullOutMenuFrame.height));
-				this.mButtonPullOutFrame.y = param2 - this.mButtonPullOutFrame.height; //Math.max(0, Math.min(param2 + 750 - this.mButtonPullOutFrame.height));
-				this.mPullOutMenuFrame.y = param2 - this.mPullOutMenuFrame.height; //Math.max(0, Math.min(param2 - this.mPullOutMenuFrame.height));
+				this.alignBottomVisual(this.mButtonPullOutMissionFrame, param2);
+				this.alignBottomVisual(this.mPullOutMissionFrame, param2);
+				this.alignBottomVisual(this.mButtonPullOutFrame, param2);
+				this.alignBottomVisual(this.mPullOutMenuFrame, param2);
 
 				this.mHudButtonShop.setX(this.mButtonPullOutMissionFrame.x + this.mButtonPullOutMissionFrame.width + 20);
 				this.mHudButtonSave.setX(this.mHudButtonShop.getX() + this.mHudButtonShop.getWidth());
 				this.mButtonMap.setX(this.mHudButtonSave.getX() + this.mHudButtonSave.getWidth());
 				this.mButtonPvp.setX(this.mButtonMap.getX() + this.mButtonMap.getWidth());
 
-				this.mHudButtonShop.setY(Math.max(0, Math.min(param2 - this.mHudButtonShop.getHeight())) + 3);
-				this.mHudButtonSave.setY(Math.max(0, Math.min(param2 - this.mHudButtonSave.getHeight())) + 3);
-				this.mButtonMap.setY(Math.max(0, Math.min(param2 - this.mButtonMap.getHeight())) + 3);
-				this.mButtonPvp.setY(Math.max(0, Math.min(param2 - this.mButtonPvp.getHeight())) + 3);
+				this.alignBottomVisual(this.mHudButtonShop.getMovieClip(), param2);
+				this.alignBottomVisual(this.mHudButtonSave.getMovieClip(), param2);
+				this.alignBottomVisual(this.mButtonMap.getMovieClip(), param2);
+				this.alignBottomVisual(this.mButtonPvp.getMovieClip(), param2);
 
 				Utils.DiagEvent("HUD_MOBILE_LAYOUT","stage=" + param1 + "x" + param2 + ";scale=" + scaleFactor + ";bottom_parent_y=" + this.mIngameHUDClip_BOTTOM.y + ";shop_global_y=" + this.mHudButtonShop.getGlobalY() + ";right_frame_y=" + this.mButtonPullOutFrame.y);
 

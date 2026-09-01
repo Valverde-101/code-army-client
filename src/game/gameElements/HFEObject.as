@@ -31,7 +31,6 @@
 
 		private var mHarvestAnimationStartMs:int = 0;
 
-		private var mHarvestAnimationFrameRate:Number = 30;
 
 		public function HFEObject(param1: int, param2: IsometricScene, param3: MapItem, param4: Point, param5: DisplayObject = null, param6: String = null) {
 			super(param1, param2, param3, param4, param5, param6);
@@ -219,9 +218,9 @@
 				this.mHarvestAnimation.mouseEnabled = false;
 				mScene.mSceneHud.addChild(this.mHarvestAnimation);
 				this.mHarvestAnimationStartMs = getTimer();
-				this.mHarvestAnimationFrameRate = this.mHarvestAnimation.stage && this.mHarvestAnimation.stage.frameRate > 0 ? this.mHarvestAnimation.stage.frameRate : 30;
-				this.mHarvestAnimation.gotoAndStop(1);
-				Utils.DiagEvent("HFE_HARVEST_ANIMATION","phase=start;item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";frames=" + this.mHarvestAnimation.totalFrames + ";fps=" + this.mHarvestAnimationFrameRate);
+				var timelineFps:Number = this.mHarvestAnimation.stage && this.mHarvestAnimation.stage.frameRate > 0 ? this.mHarvestAnimation.stage.frameRate : 0;
+				this.mHarvestAnimation.gotoAndPlay(1);
+				Utils.DiagEvent("HFE_HARVEST_ANIMATION","phase=start;item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";frames=" + this.mHarvestAnimation.totalFrames + ";stage_fps=" + timelineFps + ";mode=native_timeline");
 				playCollectionSound(this.mHarvestSound);
 				mState = STATE_PLAY_HARVEST_ANIMATION;
 			} else {
@@ -233,12 +232,7 @@
 
 		private function checkHarvestFrame(param1: Event): void {
 			var _loc2_: MovieClip = param1.target as MovieClip;
-			var elapsedMs:int = Math.max(0,getTimer() - this.mHarvestAnimationStartMs);
-			var expectedFrame:int = Math.min(_loc2_.totalFrames,1 + int(elapsedMs * this.mHarvestAnimationFrameRate / 1000));
-			if(_loc2_.currentFrame != expectedFrame) {
-				_loc2_.gotoAndStop(expectedFrame);
-			}
-			if (expectedFrame >= _loc2_.totalFrames) {
+			if (_loc2_ && _loc2_.currentFrame >= _loc2_.totalFrames) {
 				this.removeHarvestClip();
 			}
 		}
@@ -253,7 +247,6 @@
 				}
 				this.mHarvestAnimation = null;
 				this.mHarvestAnimationStartMs = 0;
-				this.mHarvestAnimationFrameRate = 30;
 			}
 			super.handleProductionComplete();
 			this.updateGraphics();

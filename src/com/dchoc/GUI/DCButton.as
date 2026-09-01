@@ -241,6 +241,7 @@ package com.dchoc.GUI
       public function terminateAnimations() : void
       {
          this.mButton.stop();
+         this.freezeStaticTimelines(this.mButton);
          this.mCurrentPlayedLabel = null;
          this.mButton.removeEventListener(Event.ENTER_FRAME,this.enterFrame);
       }
@@ -437,7 +438,7 @@ package com.dchoc.GUI
             child = param1.getChildAt(i);
             if(child is MovieClip)
             {
-               (child as MovieClip).gotoAndStop((child as MovieClip).currentFrame);
+               (child as MovieClip).stop();
             }
             if(child is DisplayObjectContainer)
             {
@@ -479,15 +480,16 @@ package com.dchoc.GUI
       
       public function enterFrame(param1:Event) : void
       {
-         if(this.mButton.currentLabel != this.mCurrentPlayedLabel || this.mButton.currentFrame == this.mButton.totalFrames)
+         var completedLabel:String = this.mCurrentPlayedLabel;
+         if(this.mButton.currentLabel != completedLabel || this.mButton.currentFrame == this.mButton.totalFrames)
          {
-            if(this.mButton.currentLabel != this.mCurrentPlayedLabel)
+            if(this.mButton.currentLabel != completedLabel)
             {
                this.mButton.prevFrame();
                this.setText(this.buttonText,this.buttonTextFieldName);
             }
             this.terminateAnimations();
-            if(this.mCurrentPlayedLabel == BUTTON_FRAME_NAME_OUT)
+            if(completedLabel == BUTTON_FRAME_NAME_OUT)
             {
                this.playAnim(BUTTON_FRAME_NAME_UP);
             }
