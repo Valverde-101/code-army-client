@@ -720,7 +720,9 @@
 		}
 
 		private function enterFrame(param1: Event): void {
-			CONFIG::BUILD_FOR_MOBILE_AIR { this.constrainMobilePullOut(this.mPullOutMenuFrame,"right"); }
+			CONFIG::BUILD_FOR_MOBILE_AIR {
+				this.constrainMobilePullOut(this.mPullOutMenuFrame,"right");
+			}
 			if (this.mPullOutMenuFrame.currentFrameLabel == "Normal") {
 				this.mPullOutMenuFrame.stop();
 				this.mPullOutMenuFrame.removeEventListener(Event.ENTER_FRAME, this.enterFrame);
@@ -760,7 +762,9 @@
 		}
 
 		private function enterFrameMission(param1: Event): void {
-			CONFIG::BUILD_FOR_MOBILE_AIR { this.constrainMobilePullOut(this.mPullOutMissionFrame,"missions"); }
+			CONFIG::BUILD_FOR_MOBILE_AIR {
+				this.constrainMobilePullOut(this.mPullOutMissionFrame,"missions");
+			}
 			if (this.mPullOutMissionFrame.currentFrameLabel == "Normal") {
 				this.mPullOutMissionFrame.visible = true;
 				this.mPullOutMissionFrame.stop();
