@@ -62,6 +62,9 @@ $patchSpecs=@(
   [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
   [ordered]@{Class='game.gameElements.PlayerBuildingObject';Source='src\game\gameElements\PlayerBuildingObject.as';Log='ffdec-performance-player-building.log'},
   [ordered]@{Class='game.gameElements.HFEObject';Source='src\game\gameElements\HFEObject.as';Log='ffdec-feature-hfe-harvest.log'},
+  [ordered]@{Class='game.items.PowerUpItem';Source='src\game\items\PowerUpItem.as';Log='ffdec-feature-pvp-powerup-item.log'},
+  [ordered]@{Class='game.gameElements.PowerUpObject';Source='src\game\gameElements\PowerUpObject.as';Log='ffdec-feature-pvp-powerup-object.log'},
+  [ordered]@{Class='game.gameElements.FireMissionObject';Source='src\game\gameElements\FireMissionObject.as';Log='ffdec-feature-firemission-object.log'},
   [ordered]@{Class='game.gameElements.LootReward';Source='src\game\gameElements\LootReward.as';Log='ffdec-feature-pvp-loot.log'},
   [ordered]@{Class='game.actions.PvPAttackEnemyAction';Source='src\game\actions\PvPAttackEnemyAction.as';Log='ffdec-feature-pvp-attack.log'},
   [ordered]@{Class='game.actions.PvPAttackEnemyInstallationAction';Source='src\game\actions\PvPAttackEnemyInstallationAction.as';Log='ffdec-feature-pvp-installation-attack.log'},
@@ -143,7 +146,7 @@ $tempSources=New-Object System.Collections.Generic.List[string]
 for($i=0;$i -lt $patchSpecs.Count;$i++){
   $spec=$patchSpecs[$i]
   $source=Join-Path $RepoRoot $spec.Source
-  if($spec.Class -in @('game.states.GameState','game.gui.GameHUD','game.gui.GiveFilePermissionDialog')){
+  if($spec.Class -in @('game.states.GameState','game.gui.GameHUD','game.gui.GiveFilePermissionDialog','game.isometric.IsometricScene')){
     $leafClass=[System.IO.Path]::GetFileNameWithoutExtension([string]$spec.Source)
     $ffdecSource=Join-Path $outDir ($leafClass + '.mobile.ffdec.as')
     Remove-Item -LiteralPath $ffdecSource -Force -ErrorAction SilentlyContinue
@@ -182,7 +185,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.14-pvp-weighted-powerups-profiler-hotpath'
+  patch_version='mobile-engine-v3.15-placement-powerup-hfe-runtime'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -262,10 +265,20 @@ $manifest=[ordered]@{
     'perf_event_hot_path_no_json',
     'perf_sample_2s_flush_15s',
     'runtime_trace_pvp_outcomes',
-    'native_perf_provenance_exact_controls'
+    'native_perf_provenance_exact_controls',
+    'mobile_explicit_placement_check_required',
+    'right_hud_close_uses_authored_timeline',
+    'pvp_powerup_item_bytecode_applied',
+    'pvp_powerup_object_bytecode_applied',
+    'pvp_firemission_object_bytecode_applied',
+    'pvp_firemission_null_visual_safe',
+    'pvp_firemission_single_destroy_lifecycle',
+    'hfe_bounded_wallclock_catchup_30fps',
+    'swf_resolved_class_identity_trace',
+    'hfe_progress_not_mirrored_to_logcat'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.14-pvp-weighted-powerups-profiler-hotpath source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.15-placement-powerup-hfe-runtime source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf

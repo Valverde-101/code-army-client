@@ -62,9 +62,12 @@
 			}
 			if(param1.mPowerUpFireMissionItem && GameState.mInstance.mPvPMatch) {
 				if(param2 is PlayerUnit) targets = mScene.getPvPEnemyAliveUnits(); else targets = mScene.getPlayerAliveUnits();
+				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_SELECT","id=" + param1.mId + ";actor=" + (param2 is PlayerUnit ? "player" : "enemy") + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";candidate_targets=" + (targets ? targets.length : 0));
 				if(targets && targets.length > 0) targetCell = (targets[Math.floor(Math.random() * targets.length)] as IsometricCharacter).getCell();
 				if(targetCell) { GameState.mInstance.queueAction(new PvPFireMissionAction(targetCell,param1.mPowerUpFireMissionItem),true); Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";result=queued"); }
 				else Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";result=no_target");
+			} else if(GameState.mInstance.mPvPMatch && param1.mId.indexOf("AirSupport_") == 0) {
+				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_MISS","id=" + param1.mId + ";reason=missing_mapped_firemission");
 			}
 			if(param1.mFreezeTurns > 0 && GameState.mInstance.mPvPMatch) GameState.mInstance.mPvPMatch.freezeOpponentTurns(param2 is PlayerUnit,param1.mFreezeTurns);
 			nested = param1.getRandomPowerUp();

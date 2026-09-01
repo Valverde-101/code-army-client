@@ -271,6 +271,7 @@ package com.dchoc.graphics
          var resourceDomain:ApplicationDomain = null;
          var domainMode:String = "global_fallback";
          var resolveKey:String = null;
+         var resolvedName:String = null;
          var startedAt:int = getTimer();
          if(!param2)
          {
@@ -336,11 +337,16 @@ package com.dchoc.graphics
          if(resolved != null)
          {
             this.mSwfClassHitCount++;
+            resolvedName = String(resolved);
             resolveKey = param1 + "|" + _loc3_ + "|" + domainMode;
             if(!this.mSwfClassResolveLogged[resolveKey])
             {
                this.mSwfClassResolveLogged[resolveKey] = true;
-               Utils.DiagEvent("SWF_CLASS_RESOLVED","resource=" + param1 + ";symbol=" + _loc3_ + ";domain=" + domainMode + ";elapsed_ms=" + (getTimer() - startedAt));
+               Utils.DiagEvent("SWF_CLASS_RESOLVED","resource=" + param1 + ";symbol=" + _loc3_ + ";resolved_class=" + resolvedName + ";domain=" + domainMode + ";elapsed_ms=" + (getTimer() - startedAt));
+               if(resolvedName.indexOf(_loc3_) < 0)
+               {
+                  Utils.DiagEvent("SWF_CLASS_IDENTITY_MISMATCH","resource=" + param1 + ";symbol=" + _loc3_ + ";resolved_class=" + resolvedName + ";domain=" + domainMode);
+               }
             }
          }
          this.emitSwfResourceStats(false);

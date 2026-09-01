@@ -130,7 +130,7 @@ public final class PerformanceOverlay {
             || kind.startsWith("OFFLINE_")
             || kind.startsWith("HUD_")
             || kind.startsWith("PLACEMENT_")
-            || kind.startsWith("HFE_")
+            || "HFE_HARVEST_ANIMATION".equals(kind)
             || kind.startsWith("TILEMAP_")
             || kind.startsWith("ANIMATION_")
             || "UI_BUTTON".equals(kind)
