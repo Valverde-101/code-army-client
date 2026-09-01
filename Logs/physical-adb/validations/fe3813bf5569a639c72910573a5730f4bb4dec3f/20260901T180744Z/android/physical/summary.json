@@ -1,0 +1,9 @@
+﻿{
+    "package_name":  "air.army.attack",
+    "apk_sha256":  "b544c695071129760d347f5b60b4c039a5e8c6c9c051a4eb61351383587c7bb0",
+    "result":  "SKIPPED_WITH_REASON",
+    "tested_sha":  "fe3813bf5569a639c72910573a5730f4bb4dec3f",
+    "reason":  "no_authorized_device",
+    "timestamp_utc":  "2026-09-01T18:06:45.5443477Z"
+}
+
