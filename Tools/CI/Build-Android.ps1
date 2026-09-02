@@ -332,7 +332,14 @@ foreach($visual in $authoredPowerupVisuals){
   if($symbol.Contains('/')){$symbol=$symbol.Substring($symbol.LastIndexOf('/')+1)}
   $available=$false
   if($symbol){
-    $pattern='(?m)^'+[regex]::Escape($symbol)+'s+d+s*
+    $pattern='(?m)^'+[regex]::Escape($symbol)+'\\s+\\d+\\s*$'
+    $available=($symbolDump -match $pattern)
+  }
+  if($available){$mode='AUTHORED'}else{$mode='EMBEDDED_FALLBACK'}
+  Write-Host "ANDROID_PVP_POWERUP_VISUAL=PASS name=$($visual.Name) requested=$symbol requested_embedded=$available mode=$mode fallback=$($visual.Fallback)"
+}
+
+$pvpUiAssets=@(
   'fire_boost_plus_1.png','fire_boost_plus_2.png','fire_boost_plus_3.png',
   'shield_boost_plus_1.png','shield_boost_plus_2.png','shield_boost_plus_3.png',
   'range_boost_plus_1.png','range_boost_plus_2.png','range_boost_plus_3.png',
