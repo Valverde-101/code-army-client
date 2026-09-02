@@ -11,6 +11,8 @@
       
       public var mPowerUpFireMissionItem:FireMissionItem;
       
+      public var mFireMissionAnimation:String;
+      
       public var mIncreasedHealth:int = 0;
       
       public var mIncreasedActions:int = 0;
@@ -31,6 +33,7 @@
          {
             this.mPowerUpItem = ItemManager.getItem(param1.Item.ID,param1.Item.Type);
          }
+         this.mFireMissionAnimation = param1.FiremissionAnimation ? String(param1.FiremissionAnimation) : null;
          if(param1.FireMission)
          {
             this.mPowerUpFireMissionItem = ItemManager.getItem(param1.FireMission.ID,param1.FireMission.Type) as FireMissionItem;

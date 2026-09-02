@@ -21,9 +21,9 @@ package game.actions
    {
        
       
-      public function PvPFireMissionAction(param1:GridCell, param2:FireMissionItem)
+      public function PvPFireMissionAction(param1:GridCell, param2:FireMissionItem, param3:String = null)
       {
-         super(param1,param2);
+         super(param1,param2,param3);
       }
       
       override protected function hasIngredients() : Boolean
@@ -33,7 +33,7 @@ package game.actions
 
       override public function start() : void
       {
-         Utils.DiagEvent("PVP_FIREMISSION_START","mission=" + (mItem ? mItem.mId : "null") + ";cell=" + (mGC ? mGC.mPosI + "," + mGC.mPosJ : "null"));
+         Utils.DiagEvent("PVP_FIREMISSION_START","mission=" + (mItem ? mItem.mId : "null") + ";cell=" + (mGC ? mGC.mPosI + "," + mGC.mPosJ : "null") + ";graphics_override=" + (mGraphicsOverride ? mGraphicsOverride : "default"));
          try
          {
             super.start();

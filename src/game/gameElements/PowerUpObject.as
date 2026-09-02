@@ -55,23 +55,36 @@
 			if(param1.mIncreasedHealth > 0) { param2.setHealth(Math.min(param2.getMaxHealth(), param2.getHealth() + param1.mIncreasedHealth)); param2.refreshStatusHints(); }
 			if(param1.mIncreasedActions > 0 && GameState.mInstance.mPvPMatch) { GameState.mInstance.mPvPMatch.mActionsLeft += param1.mIncreasedActions; if(GameState.mInstance.mPvPHUD) GameState.mInstance.mPvPHUD.mTextUpdateRequired = true; }
 			if(param1.mPowerUpItem && param2 is PlayerUnit) GameState.mInstance.mPlayerProfile.addItem(param1.mPowerUpItem, 1);
+			var airdropGraphics:String = null;
+			if(param1.mPowerUpEnemyUnit && param1.mPowerUpEnemyUnit.mGraphicsArray && param1.mPowerUpEnemyUnit.mGraphicsArray.length > 9) airdropGraphics = param1.mPowerUpEnemyUnit.mGraphicsArray[9] as String;
 			if(param1.mPowerUpUnit && param2 is PlayerUnit) {
 				freeCell = mScene.getSurroundingFreeCell(param2.getCell().mPosI,param2.getCell().mPosJ);
-				if(freeCell) { mScene.addRewardedPlayerUnit(param1.mPowerUpUnit,freeCell); Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpUnit.mId + ";result=spawned"); }
+				if(freeCell) {
+					spawned = mScene.addRewardedPlayerUnit(param1.mPowerUpUnit,freeCell);
+					var playerDrop:Boolean = spawned && mScene.playPvPPowerUpAirdrop(freeCell,spawned,airdropGraphics,"player");
+					Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpUnit.mId + ";result=spawned;airdrop=" + playerDrop + ";graphics=" + airdropGraphics);
+				}
 				else Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";result=no_free_cell");
 			}
 			if(param1.mPowerUpEnemyUnit && param2 is PvPEnemyUnit) {
 				freeCell = mScene.getSurroundingFreeCell(param2.getCell().mPosI,param2.getCell().mPosJ);
 				if(freeCell) {
 					spawned = mScene.createObject(param1.mPowerUpEnemyUnit,new Point(0,0));
-					if(spawned) { spawned.setPos(mScene.getCenterPointXOfCell(freeCell),mScene.getCenterPointYOfCell(freeCell),0); spawned.getContainer().visible = true; spawned.mVisible = true; Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpEnemyUnit.mId + ";result=enemy_spawned"); }
+					if(spawned) {
+						spawned.setPos(mScene.getCenterPointXOfCell(freeCell),mScene.getCenterPointYOfCell(freeCell),0);
+						spawned.getContainer().visible = true;
+						spawned.mVisible = true;
+						var enemyDrop:Boolean = mScene.playPvPPowerUpAirdrop(freeCell,spawned,airdropGraphics,"enemy");
+						Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpEnemyUnit.mId + ";result=enemy_spawned;airdrop=" + enemyDrop + ";graphics=" + airdropGraphics);
+					}
 				}
+				else Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";result=enemy_no_free_cell");
 			}
 			if(param1.mPowerUpFireMissionItem && GameState.mInstance.mPvPMatch) {
 				if(param2 is PlayerUnit) targets = mScene.getPvPEnemyAliveUnits(); else targets = mScene.getPlayerAliveUnits();
 				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_SELECT","id=" + param1.mId + ";actor=" + (param2 is PlayerUnit ? "player" : "enemy") + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";candidate_targets=" + (targets ? targets.length : 0));
 				if(targets && targets.length > 0) targetCell = (targets[Math.floor(Math.random() * targets.length)] as IsometricCharacter).getCell();
-				if(targetCell) { GameState.mInstance.queueAction(new PvPFireMissionAction(targetCell,param1.mPowerUpFireMissionItem),true); Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";result=queued"); }
+				if(targetCell) { GameState.mInstance.queueAction(new PvPFireMissionAction(targetCell,param1.mPowerUpFireMissionItem,param1.mFireMissionAnimation),true); Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";graphics=" + param1.mFireMissionAnimation + ";result=queued"); }
 				else Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";result=no_target");
 			} else if(GameState.mInstance.mPvPMatch && param1.mId.indexOf("AirSupport_") == 0) {
 				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_MISS","id=" + param1.mId + ";reason=missing_mapped_firemission");

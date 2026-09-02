@@ -33,6 +33,8 @@ package game.gameElements
       
       private var mItem:FireMissionItem;
       
+      private var mGraphicsOverride:String;
+      
       private var mAnim:MovieClip;
       
       private var mGraphicsLoaded:Boolean;
@@ -53,11 +55,12 @@ package game.gameElements
 
       private var mAnimationEndLogged:Boolean = false;
       
-      public function FireMissionObject(param1:FireMissionItem, param2:Array)
+      public function FireMissionObject(param1:FireMissionItem, param2:Array, param3:String = null)
       {
          var _loc5_:Class = null;
          super();
          this.mItem = param1;
+         this.mGraphicsOverride = param3;
          this.mCells = param2;
          var _loc3_:DCResourceManager = DCResourceManager.getInstance();
          var _loc4_:String = param1.getIconGraphicsFile();
@@ -66,15 +69,17 @@ package game.gameElements
             this.mGraphicsLoaded = true;
             if(FeatureTuner.USE_FIRE_CALL_EFFECTS)
             {
-               _loc5_ = _loc3_.getSWFClass(_loc4_,param1.getIconGraphics());
+               var graphicsSymbol:String = this.getGraphicsSymbol();
+               _loc5_ = _loc3_.getSWFClass(_loc4_,graphicsSymbol);
                if(_loc5_ != null)
                {
                   this.mAnim = new _loc5_();
                   addChild(this.mAnim);
+                  Utils.DiagEvent("FIREMISSION_GRAPHICS_READY","mission=" + param1.mId + ";resource=" + _loc4_ + ";symbol=" + graphicsSymbol + ";override=" + Boolean(this.mGraphicsOverride) + ";frames=" + this.mAnim.totalFrames);
                }
                else
                {
-                  Utils.DiagEvent("FIREMISSION_GRAPHICS_MISS","mission=" + param1.mId + ";resource=" + _loc4_ + ";symbol=" + param1.getIconGraphics());
+                  Utils.DiagEvent("FIREMISSION_GRAPHICS_MISS","mission=" + param1.mId + ";resource=" + _loc4_ + ";symbol=" + graphicsSymbol + ";override=" + Boolean(this.mGraphicsOverride));
                }
             }
          }
@@ -94,6 +99,11 @@ package game.gameElements
          }
          this.initSound();
          this.mStarted = false;
+      }
+      
+      private function getGraphicsSymbol() : String
+      {
+         return this.mGraphicsOverride && this.mGraphicsOverride.length > 0 ? this.mGraphicsOverride : this.mItem.getIconGraphics();
       }
       
       public function initSound() : void
@@ -139,15 +149,17 @@ package game.gameElements
          this.mGraphicsLoaded = true;
          if(FeatureTuner.USE_FIRE_CALL_EFFECTS)
          {
-            _loc3_ = _loc2_.getSWFClass(this.mItem.getIconGraphicsFile(),this.mItem.getIconGraphics());
+            var graphicsSymbol:String = this.getGraphicsSymbol();
+            _loc3_ = _loc2_.getSWFClass(this.mItem.getIconGraphicsFile(),graphicsSymbol);
             if(_loc3_ != null)
             {
                this.mAnim = new _loc3_();
                addChild(this.mAnim);
+               Utils.DiagEvent("FIREMISSION_GRAPHICS_READY","mission=" + this.mItem.mId + ";resource=" + this.mItem.getIconGraphicsFile() + ";symbol=" + graphicsSymbol + ";override=" + Boolean(this.mGraphicsOverride) + ";frames=" + this.mAnim.totalFrames);
             }
             else
             {
-               Utils.DiagEvent("FIREMISSION_GRAPHICS_MISS","mission=" + this.mItem.mId + ";resource=" + this.mItem.getIconGraphicsFile() + ";symbol=" + this.mItem.getIconGraphics());
+               Utils.DiagEvent("FIREMISSION_GRAPHICS_MISS","mission=" + this.mItem.mId + ";resource=" + this.mItem.getIconGraphicsFile() + ";symbol=" + graphicsSymbol + ";override=" + Boolean(this.mGraphicsOverride));
             }
          }
          if(this.mStarted)
@@ -211,7 +223,7 @@ package game.gameElements
             this.mAnimationStartMs = getTimer();
             this.mAnimationLastAdvanceMs = this.mAnimationStartMs;
             this.mAnimationEndLogged = false;
-            Utils.DiagEvent("FIREMISSION_ANIMATION","phase=start;mission=" + this.mItem.mId + ";frames=" + this.mAnim.totalFrames + ";target_fps=" + FIREMISSION_TARGET_FPS);
+            Utils.DiagEvent("FIREMISSION_ANIMATION","phase=start;mission=" + this.mItem.mId + ";symbol=" + this.getGraphicsSymbol() + ";frames=" + this.mAnim.totalFrames + ";target_fps=" + FIREMISSION_TARGET_FPS);
          }
          ArmySoundManager.getInstance().playSound(this.mSound.getSound());
       }

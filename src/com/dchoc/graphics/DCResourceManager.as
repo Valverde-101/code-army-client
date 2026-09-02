@@ -64,6 +64,10 @@ package com.dchoc.graphics
 
       private var mSwfLoadRequestLogged:Object = new Object();
 
+      private var mAssetLoadRequestLogged:Object = new Object();
+
+      private var mAssetLoadCompleteLogged:Object = new Object();
+
       private var mSwfClassResourceDomainCount:int = 0;
 
       private var mSwfClassFallbackCount:int = 0;
@@ -148,6 +152,11 @@ package com.dchoc.graphics
          }
          if(this.mType[param2] == null)
          {
+            if(_loc7_ != "swf" && !this.mAssetLoadRequestLogged[param2])
+            {
+               this.mAssetLoadRequestLogged[param2] = true;
+               Utils.DiagEvent("ASSET_LOAD_REQUEST","resource=" + param2 + ";url=" + param1 + ";type=" + (param3 ? param3 : _loc7_));
+            }
             this.loadFromFile(param1,param2,param3,param4,param5);
             if(param4)
             {
@@ -507,6 +516,11 @@ package com.dchoc.graphics
          var _loc2_:String = String(this.mResolver[param1].mResourceName);
          this.mList[_loc2_] = param1.content;
          this.mLoaded[_loc2_] = true;
+         if(!this.mAssetLoadCompleteLogged[_loc2_])
+         {
+            this.mAssetLoadCompleteLogged[_loc2_] = true;
+            Utils.DiagEvent("ASSET_LOAD_COMPLETE","resource=" + _loc2_ + ";type=" + this.mType[_loc2_] + ";bytes=" + param1.bytesLoaded + ";width=" + (param1.content ? param1.content.width : 0) + ";height=" + (param1.content ? param1.content.height : 0));
+         }
          delete this.mResolver[param1];
          this.mUnloader[_loc2_] = param1.loader;
          dispatchEvent(new Event(_loc2_ + "_Complete"));
@@ -571,10 +585,12 @@ package com.dchoc.graphics
          var _loc3_:Loader = param1.target.loader;
          if(_loc2_.mRetryCount > 1)
          {
+            Utils.DiagEvent("ASSET_LOAD_ERROR","resource=" + _loc2_.mResourceName + ";url=" + _loc2_.mURL.url + ";retry=" + _loc2_.mRetryCount + ";terminal=true;text=" + param1.text);
             --this.mFileCountToLoad;
          }
          else
          {
+            Utils.DiagEvent("ASSET_LOAD_ERROR","resource=" + _loc2_.mResourceName + ";url=" + _loc2_.mURL.url + ";retry=" + _loc2_.mRetryCount + ";terminal=false;text=" + param1.text);
             _loc3_.load(_loc2_.mURL,_loc2_.mLoaderContext);
             ++_loc2_.mRetryCount;
          }

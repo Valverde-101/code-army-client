@@ -17,6 +17,7 @@
 	import flash.geom.Vector3D;
 	import flash.utils.Timer;
 	import flash.utils.Dictionary;
+	import flash.utils.getTimer;
 	import game.actions.NeighborActionQueue;
 	import game.actions.RepairConstructionAction;
 	import game.actions.RepairDecorationAction;
@@ -195,6 +196,12 @@
 		public var mParatrooperAnimation: MovieClip = null;
 
 		private var mParatrooperLocation: GridCell = null;
+
+		private var mPowerUpAirdropEffects: Array = new Array();
+
+		private var mLastSceneProfileAt: int = 0;
+
+		private var mSubsystemProfileLastAt: Object = new Object();
 
 		private var mAllowedToCheckMisplacedDebris: Boolean = true;
 
@@ -1212,6 +1219,7 @@
 		}
 
 		private function updateStaticObjects(param1: int): void {
+			var perfStart:int = getTimer();
 			var _loc3_: StaticObject = null;
 			var _loc4_: Boolean = false;
 			var _loc5_: EnemyInstallationObject = null;
@@ -1248,9 +1256,11 @@
 					this.mGame.updateWalkableCellsForActiveCharacter();
 				}
 			}
+			this.reportSceneSubsystem("static",getTimer() - perfStart,staticCount);
 		}
 
 		private function updateCharacters(param1: int): void {
+			var perfStart:int = getTimer();
 			var _loc6_: IsometricCharacter = null;
 			var _loc7_: IsometricCharacter = null;
 			var _loc8_: int = 0;
@@ -1300,6 +1310,7 @@
 					this.mGame.updateWalkableCellsForActiveCharacter();
 				}
 			}
+			this.reportSceneSubsystem("characters",getTimer() - perfStart,_loc4_);
 		}
 
 		public function startCharacterAnimations(): void {
@@ -1479,6 +1490,105 @@
 					--_loc2_.mReactionStateCounter;
 				}
 				_loc4_++;
+			}
+		}
+
+		private function reportSceneSubsystem(param1:String, param2:int, param3:int):void {
+			if(param2 < 6) return;
+			var now:int = getTimer();
+			var last:int = int(this.mSubsystemProfileLastAt[param1]);
+			if(now - last < 1000) return;
+			this.mSubsystemProfileLastAt[param1] = now;
+			Utils.DiagEvent("SCENE_SUBSYSTEM_JANK","map=" + this.mGame.mCurrentMapId + ";state=" + this.mGame.mState + ";name=" + param1 + ";ms=" + param2 + ";count=" + param3);
+		}
+
+		private function emitSceneProfile():void {
+			var now:int = getTimer();
+			if(now - this.mLastSceneProfileAt < 5000) return;
+			this.mLastSceneProfileAt = now;
+			Utils.DiagEvent("SCENE_PROFILE","map=" + this.mGame.mCurrentMapId + ";state=" + this.mGame.mState + ";all=" + (this.mAllElements ? this.mAllElements.length : 0) + ";static=" + (this.mStaticElements ? this.mStaticElements.length : 0) + ";characters=" + (this.mCharacterElements ? this.mCharacterElements.length : 0) + ";visible=" + (this.mVisibleObjects ? this.mVisibleObjects.length : 0) + ";hud=" + (this.mSceneHud ? this.mSceneHud.numChildren : 0) + ";sounds=" + (this.mSoundMakers ? this.mSoundMakers.length : 0));
+		}
+
+		private function resolveAirdropPlaybackClip(param1:MovieClip):MovieClip {
+			if(!param1) return null;
+			if(param1.totalFrames > 1) return param1;
+			var current:MovieClip = param1;
+			var depth:int = 0;
+			var i:int = 0;
+			var child:MovieClip = null;
+			while(current && depth < 4) {
+				child = null;
+				i = 0;
+				while(i < current.numChildren) {
+					child = current.getChildAt(i) as MovieClip;
+					if(child && child.totalFrames > 1) return child;
+					i++;
+				}
+				if(current.numChildren > 0) current = current.getChildAt(0) as MovieClip;
+				else current = null;
+				depth++;
+			}
+			return param1;
+		}
+
+		public function playPvPPowerUpAirdrop(param1:GridCell, param2:Renderable, param3:String, param4:String):Boolean {
+			if(!param1 || !param2 || !param3 || param3.length == 0) {
+				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=missing_input;side=" + param4 + ";source=" + param3);
+				return false;
+			}
+			var slash:int = param3.lastIndexOf("/");
+			var resource:String = slash >= 0 ? param3.substring(0,slash) : Config.SWF_EFFECTS_NAME;
+			var symbol:String = slash >= 0 ? param3.substring(slash + 1) : param3;
+			var resources:DCResourceManager = DCResourceManager.getInstance();
+			var cls:Class = resources.getSWFClass(resource,symbol);
+			if(!cls) {
+				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=class_miss;side=" + param4 + ";resource=" + resource + ";symbol=" + symbol);
+				return false;
+			}
+			var clip:MovieClip = new cls() as MovieClip;
+			if(!clip) {
+				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=not_movieclip;side=" + param4 + ";resource=" + resource + ";symbol=" + symbol);
+				return false;
+			}
+			var playback:MovieClip = this.resolveAirdropPlaybackClip(clip);
+			param2.getContainer().visible = false;
+			param2.mVisible = false;
+			clip.x = this.getCenterPointXOfCell(param1);
+			clip.y = this.getCenterPointYOfCell(param1);
+			clip.mouseEnabled = false;
+			clip.mouseChildren = false;
+			this.mSceneHud.addChild(clip);
+			if(playback) playback.gotoAndPlay(1);
+			clip.gotoAndPlay(1);
+			this.mPowerUpAirdropEffects.push({clip:clip,playback:playback,spawned:param2,started:getTimer(),side:param4,resource:resource,symbol:symbol});
+			Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=start;side=" + param4 + ";resource=" + resource + ";symbol=" + symbol + ";frames=" + (playback ? playback.totalFrames : clip.totalFrames));
+			return true;
+		}
+
+		private function updatePvPPowerUpAirdrops():void {
+			var now:int = getTimer();
+			var i:int = this.mPowerUpAirdropEffects.length - 1;
+			var entry:Object = null;
+			var clip:MovieClip = null;
+			var playback:MovieClip = null;
+			var spawned:Renderable = null;
+			var finished:Boolean = false;
+			while(i >= 0) {
+				entry = this.mPowerUpAirdropEffects[i];
+				clip = entry.clip as MovieClip;
+				playback = entry.playback as MovieClip;
+				spawned = entry.spawned as Renderable;
+				finished = !clip || !clip.parent || now - int(entry.started) >= 6000 || Boolean(playback && playback.totalFrames > 1 && playback.currentFrame >= playback.totalFrames);
+				if(finished) {
+					if(clip && clip.parent) clip.parent.removeChild(clip);
+					if(spawned && spawned.getContainer()) {
+						spawned.getContainer().visible = true;
+						spawned.mVisible = true;
+					}
+					Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=end;side=" + entry.side + ";resource=" + entry.resource + ";symbol=" + entry.symbol + ";elapsed_ms=" + Math.max(0,now - int(entry.started)) + ";spawned=" + Boolean(spawned));
+					this.mPowerUpAirdropEffects.splice(i,1);
+				}
+				i--;
 			}
 		}
 
@@ -2788,6 +2898,8 @@
 				}
 			}
 			EnvEffectManager.update(param1);
+			this.emitSceneProfile();
+			this.updatePvPPowerUpAirdrops();
 			this.mTimer += param1;
 			this.updateKeyScrolling();
 			this.updateCharacters(param1);
@@ -3123,6 +3235,7 @@
 		}
 
 		private function sortAll(param1: Boolean = true, param2: Boolean = true): void {
+			var perfStart:int = getTimer();
 			var changed:Boolean = false;
 			var container:Sprite = null;
 			var parent:DisplayObjectContainer = null;
@@ -3187,6 +3300,7 @@
 					this.mContainer.addChildAt(this.mTilemapGraphic.mWaveContainer, this.mContainer.numChildren);
 				}
 			}
+			this.reportSceneSubsystem("sort",getTimer() - perfStart,this.mVisibleObjects ? this.mVisibleObjects.length : 0);
 		}
 		public function setScale(param1: Number): void {
 			if (Math.abs(this.mContainer.scaleX - param1) < 0.0001) {
@@ -3528,6 +3642,8 @@
 		}
 
 		private function updateHudObjects(param1: int): void {
+			var perfStart:int = getTimer();
+			var hudCount:int = this.mSceneHud ? this.mSceneHud.numChildren : 0;
 			var _loc4_: DisplayObject = null;
 			var _loc5_: LootReward = null;
 			var _loc6_: NeighborAvatar = null;
@@ -3561,6 +3677,7 @@
 				this.mSceneHud.removeChild(_loc2_);
 				if (Config.DEBUG_MODE) {}
 			}
+			this.reportSceneSubsystem("hud",getTimer() - perfStart,hudCount);
 		}
 
 		public function getUncollectedSupplies(): int {
@@ -4401,7 +4518,7 @@
 			Utils.DiagEvent("PLACEMENT_VISIBILITY_COMMIT","item=" + (param1.mItem ? param1.mItem.mId : "") + ";x=" + param1.mX + ";y=" + param1.mY + ";visible=" + Boolean(clip && clip.visible) + ";attached=" + Boolean(clip && clip.parent));
 		}
 
-		public function addRewardedPlayerUnit(param1: PlayerUnitItem, param2: GridCell): void {
+		public function addRewardedPlayerUnit(param1: PlayerUnitItem, param2: GridCell): Renderable {
 			var _loc3_: int = this.getCenterPointXOfCell(param2);
 			var _loc4_: int = this.getCenterPointYOfCell(param2);
 			var _loc5_: Renderable;
@@ -4410,6 +4527,7 @@
 			_loc5_.mVisible = true;
 			param2.mOwner = MapData.TILE_OWNER_FRIENDLY;
 			this.mGame.mMapData.mUpdateRequired = true;
+			return _loc5_;
 		}
 
 		public function getObjectLoader(): ObjectLoader {
