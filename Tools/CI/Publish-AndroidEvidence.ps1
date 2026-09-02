@@ -229,6 +229,166 @@ try{
     Copy-Item -LiteralPath $child.FullName -Destination $dest -Recurse -Force -ErrorAction Stop
   }
 
+  # Retention policy: keep the TESTED_SHA being published plus the three most
+  # recent previous validation SHAs. This applies only to validations/; failures/
+  # is intentionally independent. Rank previous SHAs by their newest UTC
+  # timestamp directory and never delete the current TESTED_SHA.
+  $validationsRelative='Logs/physical-adb/validations'
+  $validationsRoot=Join-Path $RepoCheckoutRoot ($validationsRelative.Replace('/','\'))
+  $maxValidationShaDirs=4
+  $previousShaLimit=$maxValidationShaDirs-1
+  $shaDirs=@(
+    Get-ChildItem -LiteralPath $validationsRoot -Directory -ErrorAction SilentlyContinue |
+      Where-Object {$_.Name -match '^[0-9a-fA-F]{40}
+  & $git -C $RepoCheckoutRoot config user.email 'actions@users.noreply.github.com'
+  & $git -C $RepoCheckoutRoot add -A -- $validationsRelative
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL git_add_validations exit=$LASTEXITCODE"}
+
+  & $git -C $RepoCheckoutRoot diff --cached --quiet
+  if($LASTEXITCODE -eq 0){
+    Write-Host "EVIDENCE_UPLOAD=PASS no_changes path=$relativeDest"
+    Write-Host "LOG_PUBLISH=PASS no_changes branch=$SourceBranch path=$relativeDest"
+    exit 0
+  }
+
+  & $git -C $RepoCheckoutRoot commit -m "logs(android): $($ExpectedSha.Substring(0,12)) run $RunId"
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL git_commit exit=$LASTEXITCODE"}
+  $evidenceCommit=(& $git -C $RepoCheckoutRoot rev-parse HEAD).Trim()
+
+  # Never rebase or force-push evidence. If branch moved, fail stale.
+  $remoteBeforePush=(& $git -C $RepoCheckoutRoot ls-remote origin "refs/heads/$SourceBranch" | Out-String).Trim()
+  $remoteBeforePushSha=''
+  if($remoteBeforePush){$remoteBeforePushSha=($remoteBeforePush -split '\s+')[0]}
+  if($remoteBeforePushSha -ne $ExpectedSha){
+    throw "STALE_TEST_RESULT expected=$ExpectedSha remote_head=$remoteBeforePushSha before_evidence_push=true"
+  }
+
+  & $git -C $RepoCheckoutRoot push origin "HEAD:refs/heads/$SourceBranch"
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_PUSH_CONFLICT branch=$SourceBranch commit=$evidenceCommit"}
+
+  Write-Host "EVIDENCE_UPLOAD=PASS branch=$SourceBranch commit=$evidenceCommit path=$relativeDest files=$($published.Count)"
+  Write-Host "LOG_PUBLISH=PASS branch=$SourceBranch commit=$evidenceCommit path=$relativeDest files=$($published.Count) stale=false"
+  Write-Host "EVIDENCE_COMMIT_SHA=$evidenceCommit"
+  Write-Host "EVIDENCE_PATH=$relativeDest"
+} finally {
+  Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+}
+  )
+  $rankedPrevious=@()
+  foreach($shaDir in @($shaDirs | Where-Object {$_.Name -ne $ExpectedSha})){
+    $timestampDirs=@(
+      Get-ChildItem -LiteralPath $shaDir.FullName -Directory -ErrorAction SilentlyContinue |
+        Where-Object {$_.Name -match '^\d{8}T\d{6}Z
+  & $git -C $RepoCheckoutRoot config user.email 'actions@users.noreply.github.com'
+  & $git -C $RepoCheckoutRoot add -- $relativeDest
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL git_add exit=$LASTEXITCODE"}
+
+  & $git -C $RepoCheckoutRoot diff --cached --quiet
+  if($LASTEXITCODE -eq 0){
+    Write-Host "EVIDENCE_UPLOAD=PASS no_changes path=$relativeDest"
+    Write-Host "LOG_PUBLISH=PASS no_changes branch=$SourceBranch path=$relativeDest"
+    exit 0
+  }
+
+  & $git -C $RepoCheckoutRoot commit -m "logs(android): $($ExpectedSha.Substring(0,12)) run $RunId"
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL git_commit exit=$LASTEXITCODE"}
+  $evidenceCommit=(& $git -C $RepoCheckoutRoot rev-parse HEAD).Trim()
+
+  # Never rebase or force-push evidence. If branch moved, fail stale.
+  $remoteBeforePush=(& $git -C $RepoCheckoutRoot ls-remote origin "refs/heads/$SourceBranch" | Out-String).Trim()
+  $remoteBeforePushSha=''
+  if($remoteBeforePush){$remoteBeforePushSha=($remoteBeforePush -split '\s+')[0]}
+  if($remoteBeforePushSha -ne $ExpectedSha){
+    throw "STALE_TEST_RESULT expected=$ExpectedSha remote_head=$remoteBeforePushSha before_evidence_push=true"
+  }
+
+  & $git -C $RepoCheckoutRoot push origin "HEAD:refs/heads/$SourceBranch"
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_PUSH_CONFLICT branch=$SourceBranch commit=$evidenceCommit"}
+
+  Write-Host "EVIDENCE_UPLOAD=PASS branch=$SourceBranch commit=$evidenceCommit path=$relativeDest files=$($published.Count)"
+  Write-Host "LOG_PUBLISH=PASS branch=$SourceBranch commit=$evidenceCommit path=$relativeDest files=$($published.Count) stale=false"
+  Write-Host "EVIDENCE_COMMIT_SHA=$evidenceCommit"
+  Write-Host "EVIDENCE_PATH=$relativeDest"
+} finally {
+  Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+} |
+        Sort-Object Name -Descending
+    )
+    $sortKey=if($timestampDirs.Count -gt 0){
+      $timestampDirs[0].Name
+    } else {
+      $shaDir.LastWriteTimeUtc.ToString('yyyyMMddTHHmmssZ')
+    }
+    $rankedPrevious += [pscustomobject]@{
+      name=$shaDir.Name
+      sort_key=$sortKey
+    }
+  }
+  $keepShaNames=@($ExpectedSha)
+  foreach($entry in @(
+    $rankedPrevious |
+      Sort-Object -Property @{Expression='sort_key';Descending=$true},@{Expression='name';Descending=$true} |
+      Select-Object -First $previousShaLimit
+  )){
+    $keepShaNames += [string]$entry.name
+  }
+
+  $removedShaNames=@()
+  foreach($shaDir in $shaDirs){
+    if($keepShaNames -notcontains $shaDir.Name){
+      Remove-Item -LiteralPath $shaDir.FullName -Recurse -Force -ErrorAction Stop
+      $removedShaNames += $shaDir.Name
+    }
+  }
+
+  $remainingShaDirs=@(
+    Get-ChildItem -LiteralPath $validationsRoot -Directory -ErrorAction SilentlyContinue |
+      Where-Object {$_.Name -match '^[0-9a-fA-F]{40}
+  & $git -C $RepoCheckoutRoot config user.email 'actions@users.noreply.github.com'
+  & $git -C $RepoCheckoutRoot add -- $relativeDest
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL git_add exit=$LASTEXITCODE"}
+
+  & $git -C $RepoCheckoutRoot diff --cached --quiet
+  if($LASTEXITCODE -eq 0){
+    Write-Host "EVIDENCE_UPLOAD=PASS no_changes path=$relativeDest"
+    Write-Host "LOG_PUBLISH=PASS no_changes branch=$SourceBranch path=$relativeDest"
+    exit 0
+  }
+
+  & $git -C $RepoCheckoutRoot commit -m "logs(android): $($ExpectedSha.Substring(0,12)) run $RunId"
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_UPLOAD=FAIL git_commit exit=$LASTEXITCODE"}
+  $evidenceCommit=(& $git -C $RepoCheckoutRoot rev-parse HEAD).Trim()
+
+  # Never rebase or force-push evidence. If branch moved, fail stale.
+  $remoteBeforePush=(& $git -C $RepoCheckoutRoot ls-remote origin "refs/heads/$SourceBranch" | Out-String).Trim()
+  $remoteBeforePushSha=''
+  if($remoteBeforePush){$remoteBeforePushSha=($remoteBeforePush -split '\s+')[0]}
+  if($remoteBeforePushSha -ne $ExpectedSha){
+    throw "STALE_TEST_RESULT expected=$ExpectedSha remote_head=$remoteBeforePushSha before_evidence_push=true"
+  }
+
+  & $git -C $RepoCheckoutRoot push origin "HEAD:refs/heads/$SourceBranch"
+  if($LASTEXITCODE -ne 0){throw "EVIDENCE_PUSH_CONFLICT branch=$SourceBranch commit=$evidenceCommit"}
+
+  Write-Host "EVIDENCE_UPLOAD=PASS branch=$SourceBranch commit=$evidenceCommit path=$relativeDest files=$($published.Count)"
+  Write-Host "LOG_PUBLISH=PASS branch=$SourceBranch commit=$evidenceCommit path=$relativeDest files=$($published.Count) stale=false"
+  Write-Host "EVIDENCE_COMMIT_SHA=$evidenceCommit"
+  Write-Host "EVIDENCE_PATH=$relativeDest"
+} finally {
+  Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+}
+  )
+  if(-not ($remainingShaDirs.Name -contains $ExpectedSha)){
+    throw "EVIDENCE_RETENTION=FAIL current_tested_sha_missing tested_sha=$ExpectedSha"
+  }
+  if($remainingShaDirs.Count -gt $maxValidationShaDirs){
+    throw "EVIDENCE_RETENTION=FAIL remaining=$($remainingShaDirs.Count) max=$maxValidationShaDirs"
+  }
+  Write-Host "EVIDENCE_RETENTION=PASS current=$ExpectedSha previous_limit=$previousShaLimit remaining=$($remainingShaDirs.Count) removed=$($removedShaNames.Count) keep=$($keepShaNames -join ',')"
+
   & $git -C $RepoCheckoutRoot config user.name 'Army Attack CI'
   & $git -C $RepoCheckoutRoot config user.email 'actions@users.noreply.github.com'
   & $git -C $RepoCheckoutRoot add -- $relativeDest
