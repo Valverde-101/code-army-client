@@ -58,23 +58,23 @@
 			var airdropGraphics:String = null;
 			if(param1.mPowerUpEnemyUnit && param1.mPowerUpEnemyUnit.mGraphicsArray && param1.mPowerUpEnemyUnit.mGraphicsArray.length > 9) airdropGraphics = param1.mPowerUpEnemyUnit.mGraphicsArray[9] as String;
 			if(param1.mPowerUpUnit && param2 is PlayerUnit) {
-				freeCell = mScene.getSurroundingFreeCell(param2.getCell().mPosI,param2.getCell().mPosJ);
+				freeCell = mScene.getPowerUpSpawnCell(param2.getCell().mPosI,param2.getCell().mPosJ);
 				if(freeCell) {
 					spawned = mScene.addRewardedPlayerUnit(param1.mPowerUpUnit,freeCell);
-					var playerDrop:Boolean = spawned && mScene.playPvPPowerUpAirdrop(freeCell,spawned,airdropGraphics,"player");
+					var playerDrop:Boolean = spawned && mScene.playPvPPowerUpAirdrop(freeCell,spawned,airdropGraphics,"player",param1.mPowerUpUnit.mId);
 					Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpUnit.mId + ";result=spawned;airdrop=" + playerDrop + ";graphics=" + airdropGraphics);
 				}
 				else Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";result=no_free_cell");
 			}
 			if(param1.mPowerUpEnemyUnit && param2 is PvPEnemyUnit) {
-				freeCell = mScene.getSurroundingFreeCell(param2.getCell().mPosI,param2.getCell().mPosJ);
+				freeCell = mScene.getPowerUpSpawnCell(param2.getCell().mPosI,param2.getCell().mPosJ);
 				if(freeCell) {
 					spawned = mScene.createObject(param1.mPowerUpEnemyUnit,new Point(0,0));
 					if(spawned) {
 						spawned.setPos(mScene.getCenterPointXOfCell(freeCell),mScene.getCenterPointYOfCell(freeCell),0);
 						spawned.getContainer().visible = true;
 						spawned.mVisible = true;
-						var enemyDrop:Boolean = mScene.playPvPPowerUpAirdrop(freeCell,spawned,airdropGraphics,"enemy");
+						var enemyDrop:Boolean = mScene.playPvPPowerUpAirdrop(freeCell,spawned,airdropGraphics,"enemy",param1.mPowerUpEnemyUnit.mId);
 						Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpEnemyUnit.mId + ";result=enemy_spawned;airdrop=" + enemyDrop + ";graphics=" + airdropGraphics);
 					}
 				}

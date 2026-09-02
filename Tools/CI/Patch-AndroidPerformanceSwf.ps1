@@ -185,7 +185,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.18-pvp-powerup-visual-map-profile'
+  patch_version='mobile-engine-v3.19-pvp-embedded-visual-fallback-deep-map-profile'
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -223,6 +223,9 @@ $manifest=[ordered]@{
     'offline_world_map_single_canonical_switch_path',
     'offline_saved_map_id_normalization',
     'pvp_transient_map_single_build',
+    'pvp_powerup_authored_visual_with_embedded_fallback',
+    'pvp_paratrooper_radius3_spawn_recovery',
+    'campaign_fog_tilemap_environment_jank_profile',
     'pvp_returns_to_origin_map',
     'pvp_three_visible_opponent_slots_owned',
     'pvp_chance_bounded_percentage',

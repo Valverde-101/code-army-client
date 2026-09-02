@@ -1531,23 +1531,47 @@
 			return param1;
 		}
 
-		public function playPvPPowerUpAirdrop(param1:GridCell, param2:Renderable, param3:String, param4:String):Boolean {
-			if(!param1 || !param2 || !param3 || param3.length == 0) {
-				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=missing_input;side=" + param4 + ";source=" + param3);
+		public function playPvPPowerUpAirdrop(param1:GridCell, param2:Renderable, param3:String, param4:String, param5:String = ""):Boolean {
+			if(!param1 || !param2) {
+				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=missing_input;side=" + param4 + ";unit=" + param5 + ";source=" + param3);
 				return false;
 			}
-			var slash:int = param3.lastIndexOf("/");
-			var resource:String = slash >= 0 ? param3.substring(0,slash) : Config.SWF_EFFECTS_NAME;
-			var symbol:String = slash >= 0 ? param3.substring(slash + 1) : param3;
+			var requested:String = param3 ? param3 : "";
+			var slash:int = requested.lastIndexOf("/");
+			var resource:String = slash >= 0 ? requested.substring(0,slash) : Config.SWF_EFFECTS_NAME;
+			var symbol:String = slash >= 0 ? requested.substring(slash + 1) : requested;
 			var resources:DCResourceManager = DCResourceManager.getInstance();
-			var cls:Class = resources.getSWFClass(resource,symbol);
+			var cls:Class = null;
+			if(symbol.length > 0) {
+				try {
+					cls = resources.getSWFClass(resource,symbol);
+				} catch(preferredError:Error) {
+					Utils.DiagEvent("PVP_PARATROOPER_ASSET_FALLBACK","side=" + param4 + ";unit=" + param5 + ";requested=" + requested + ";error=" + preferredError.errorID);
+				}
+			}
 			if(!cls) {
-				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=class_miss;side=" + param4 + ";resource=" + resource + ";symbol=" + symbol);
+				resource = Config.SWF_EFFECTS_NAME;
+				if(param4 == "enemy" && (param5.indexOf("Commando") >= 0 || param5.indexOf("SpecialForces") >= 0)) {
+					symbol = "enemy_commando_airdrop";
+				} else if(param4 == "enemy") {
+					symbol = "enemy_infantry_airdrop";
+				} else {
+					symbol = "enemy_airdrop_01";
+				}
+				try {
+					cls = resources.getSWFClass(resource,symbol);
+				} catch(fallbackError:Error) {
+					Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=fallback_miss;side=" + param4 + ";unit=" + param5 + ";requested=" + requested + ";fallback=" + symbol + ";error=" + fallbackError.errorID);
+					return false;
+				}
+			}
+			if(!cls) {
+				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=class_miss;side=" + param4 + ";unit=" + param5 + ";resource=" + resource + ";symbol=" + symbol);
 				return false;
 			}
 			var clip:MovieClip = new cls() as MovieClip;
 			if(!clip) {
-				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=not_movieclip;side=" + param4 + ";resource=" + resource + ";symbol=" + symbol);
+				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=not_movieclip;side=" + param4 + ";unit=" + param5 + ";resource=" + resource + ";symbol=" + symbol);
 				return false;
 			}
 			var playback:MovieClip = this.resolveAirdropPlaybackClip(clip);
@@ -1560,8 +1584,8 @@
 			this.mSceneHud.addChild(clip);
 			if(playback) playback.gotoAndPlay(1);
 			clip.gotoAndPlay(1);
-			this.mPowerUpAirdropEffects.push({clip:clip,playback:playback,spawned:param2,started:getTimer(),side:param4,resource:resource,symbol:symbol});
-			Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=start;side=" + param4 + ";resource=" + resource + ";symbol=" + symbol + ";frames=" + (playback ? playback.totalFrames : clip.totalFrames));
+			this.mPowerUpAirdropEffects.push({clip:clip,playback:playback,spawned:param2,started:getTimer(),side:param4,resource:resource,symbol:symbol,unit:param5,requested:requested});
+			Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=start;side=" + param4 + ";unit=" + param5 + ";requested=" + requested + ";resource=" + resource + ";symbol=" + symbol + ";frames=" + (playback ? playback.totalFrames : clip.totalFrames));
 			return true;
 		}
 
@@ -2897,7 +2921,9 @@
 					}
 				}
 			}
+			var perfStart:int = getTimer();
 			EnvEffectManager.update(param1);
+			this.reportSceneSubsystem("environment",getTimer() - perfStart,0);
 			this.emitSceneProfile();
 			this.updatePvPPowerUpAirdrops();
 			this.mTimer += param1;
@@ -2905,8 +2931,12 @@
 			this.updateCharacters(param1);
 			this.updateStaticObjects(param1);
 			this.updateHudObjects(param1);
+			perfStart = getTimer();
 			this.updatePatrols(param1);
+			this.reportSceneSubsystem("patrols",getTimer() - perfStart,this.mCharacterElements ? this.mCharacterElements.length : 0);
+			perfStart = getTimer();
 			this.updateDebrisSpawn(param1);
+			this.reportSceneSubsystem("debris_spawn",getTimer() - perfStart,this.mGame && this.mGame.mMapData && this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);
 			this.mPointerUiAccumulator += param1;
 			var _loc4_: GridCell = this.getTileUnderMouse();
 			var pointerUiRefresh:Boolean = _loc4_ != this.mPreviousCell || this.mPointerUiAccumulator >= POINTER_UI_REFRESH_MS || mouseDownAction;
@@ -2988,20 +3018,28 @@
 			var _loc6_: Boolean = false;
 			if (this.mFog.mUpdateRequired) {
 				_loc6_ = true;
+				perfStart = getTimer();
 				this.mFog.recalculateFogEdges();
+				this.reportSceneSubsystem("fog_edges",getTimer() - perfStart,this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);
 				this.mFog.mUpdateRequired = false;
 			}
 			if (this.mGame.mMapData.mUpdateRequired) {
 				_loc6_ = true;
 				this.mGame.mMapData.mUpdateRequired = false;
+				perfStart = getTimer();
 				this.mGame.mMapData.countFriendlyTiles();
 				this.mTilemapGraphic.recalculateBorderEdges();
+				this.reportSceneSubsystem("map_edges",getTimer() - perfStart,this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);
 				MissionManager.increaseCounter("Control", null, 1);
 			}
 			if (_loc6_) {
+				perfStart = getTimer();
 				this.mTilemapGraphic.updateTilemap();
+				this.reportSceneSubsystem("tilemap_redraw",getTimer() - perfStart,this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);
 			}
+			perfStart = getTimer();
 			this.mEffectController.update(param1);
+			this.reportSceneSubsystem("effects",getTimer() - perfStart,0);
 			if (this.mEffectPending) {
 				this.mEffectPending = !this.mEffectController.startEffect(this, this.mEffectPendingMC, this.mEffectPendingType, this.mEffectPendingX, this.mEffectPendingY, this.mEffectPendingClipName);
 			}
@@ -4550,6 +4588,32 @@
 					_loc7_++;
 				}
 			}
+			return null;
+		}
+
+		public function getPowerUpSpawnCell(param1:int, param2:int, param3:int = 3):GridCell {
+			var origin:GridCell = this.getCellAt(param1,param2);
+			var area:MapArea = null;
+			var cells:Array = null;
+			var cell:GridCell = null;
+			var radius:int = 1;
+			var i:int = 0;
+			if(!origin) return null;
+			while(radius <= param3) {
+				area = MapArea.getAreaAroundCell(this,origin,radius);
+				cells = area.getCells();
+				i = 0;
+				while(i < cells.length) {
+					cell = cells[i] as GridCell;
+					if(cell && cell.mWalkable && !cell.mCharacter && !cell.mObject && !cell.mCharacterComingToThisTile && !cell.mPowerUp) {
+						Utils.DiagEvent("PVP_POWERUP_SPAWN_CELL","origin=" + param1 + "," + param2 + ";radius=" + radius + ";result=" + cell.mPosI + "," + cell.mPosJ);
+						return cell;
+					}
+					i++;
+				}
+				radius++;
+			}
+			Utils.DiagEvent("PVP_POWERUP_SPAWN_CELL","origin=" + param1 + "," + param2 + ";radius=" + param3 + ";result=none");
 			return null;
 		}
 
