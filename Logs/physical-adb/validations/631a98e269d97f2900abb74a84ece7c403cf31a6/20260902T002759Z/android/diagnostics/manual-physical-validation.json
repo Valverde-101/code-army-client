@@ -1,0 +1,21 @@
+﻿{
+    "schema_version":  2,
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "631a98e269d97f2900abb74a84ece7c403cf31a6",
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\631a98e269d97f2900abb74a84ece7c403cf31a6\\android\\ArmyAttack-android-arm64-gpu.apk",
+    "apk_size":  66913773,
+    "apk_sha256":  "deae29e17ee0a42438c452ef51306c64ba3111c856a2a20461489bd51b89ac63",
+    "method":  "manual_physical",
+    "adb_used":  false,
+    "status":  "PENDING_USER_VALIDATION",
+    "required_steps":  [
+                           "Install the exact APK on the physical Android phone",
+                           "Launch Army Attack and confirm the main game loads",
+                           "Recording starts automatically; PERF only opens or closes the metrics panel",
+                           "Play a representative gameplay session including placement, right HUD, supply aircraft, PvP FireMission and PvP loot debrief",
+                           "Press MARCAR LAG whenever a visible slowdown occurs",
+                           "Press ZIP to share a snapshot without stopping the recording",
+                           "Share the generated ZIP back for analysis"
+                       ]
+}
+
