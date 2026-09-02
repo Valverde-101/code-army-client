@@ -26,7 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           parent="$(git rev-parse HEAD^)"
-          mapfile -t changed < <(git diff --name-only "$parent" HEAD)
+          mapfile -d '' -t changed < <(git -c core.quotepath=false diff --name-only -z "$parent" HEAD)
           if [ "${#changed[@]}" -eq 0 ]; then
             echo "EVIDENCE_ONLY=FAIL no_changes"
             exit 1
@@ -42,4 +42,4 @@ jobs:
             exit 1
           fi
           echo "SANITIZATION=PASS"
-          echo "EVIDENCE_ONLY=PASS parent_tested_sha=$parent commit=${{ github.sha }}"
+          echo "EVIDENCE_ONLY=PASS parent_sha=$parent commit=${{ github.sha }}"
