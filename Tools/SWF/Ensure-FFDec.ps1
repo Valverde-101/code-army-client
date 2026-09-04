@@ -1,79 +1,34 @@
+# ANDROIDBUILD_CORE_SHIM: FFDec binary ownership moved to AndroidBuild Core 3.0.9+
 param(
-  [string]$RepositoryRoot,
-  [string]$Version = '26.2.1',
+  [Parameter(Mandatory=$true)][string]$RepositoryRoot,
+  [string]$Version='26.2.1',
   [string]$DownloadUri,
-  [string]$ExpectedSha256
+  [string]$ExpectedSha256='0333b56998a55bd83f4e0deb678a811fcdc45607582b4f5dd438309c8c3ad5ce'
 )
-
-$ErrorActionPreference = 'Stop'
-
-function Resolve-RepositoryRoot {
-  param([string]$ExplicitRoot)
-  if ($ExplicitRoot) { return (Resolve-Path -LiteralPath $ExplicitRoot -ErrorAction Stop).Path }
-  $candidate = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-  if (Test-Path -LiteralPath (Join-Path $candidate '.git')) { return (Resolve-Path -LiteralPath $candidate).Path }
-  throw 'FFDEC_PRECHECK=FAIL unable_to_resolve_repository_root'
+$ErrorActionPreference='Stop'
+Set-StrictMode -Version Latest
+$root=@($env:ANDROIDBUILD_ROOT,'V:\AndroidBuild','D:\AndroidBuild','C:\AndroidBuild')|Where-Object{$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -First 1
+if(-not $root){throw 'FFDEC_CORE_SHIM=FAIL androidbuild_root_not_found'}
+$root=(Resolve-Path -LiteralPath $root).Path
+Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+if([version](Get-AndroidBuildCoreVersion) -lt [version]'3.0.9'){throw 'FFDEC_CORE_SHIM=FAIL core_minimum=3.0.9'}
+$args=@{AndroidBuildRoot=$root;Version=$Version;ExpectedSha256=$ExpectedSha256}
+if($DownloadUri){$args.DownloadUri=$DownloadUri}
+$r=Ensure-AndroidBuildFFDec @args
+if([string]$r.status -ne 'PASS'){throw 'FFDEC_CORE_SHIM=FAIL resolver'}
+# Existing Army patchers discover FFDec under .work/tools. Keep only a junction; no duplicated executable bytes.
+$compatRoot=Join-Path $RepositoryRoot '.work\tools\ffdec'
+$compat=Join-Path $compatRoot $Version
+New-Item -ItemType Directory -Force -Path $compatRoot|Out-Null
+if(Test-Path -LiteralPath $compat){
+  $item=Get-Item -LiteralPath $compat -Force
+  $same=$false
+  if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){
+    $target=$item.Target;if($target -is [array]){$target=$target|Select-Object -First 1}
+    if($target){$same=([IO.Path]::GetFullPath([string]$target).TrimEnd('\') -ieq [IO.Path]::GetFullPath([string]$r.root).TrimEnd('\'))}
+    if(-not $same){$cmd=(Get-Command cmd.exe -ErrorAction Stop).Source;& $cmd /d /c ('rmdir "{0}"' -f $compat)|Out-Null}
+  }else{Remove-Item -LiteralPath $compat -Recurse -Force}
 }
-
-function Find-FFDec {
-  param([string]$Root)
-  foreach ($name in @('ffdec-cli.exe','ffdec.bat','ffdec.jar')) {
-    $match = Get-ChildItem -LiteralPath $Root -Recurse -File -Filter $name -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($match) { return $match.FullName }
-  }
-  return $null
-}
-
-$repoRoot = Resolve-RepositoryRoot -ExplicitRoot $RepositoryRoot
-$toolRoot = Join-Path $repoRoot ".work\tools\ffdec\$Version"
-$cacheRoot = Join-Path $repoRoot '.work\cache\tools'
-$zipPath = Join-Path $cacheRoot "ffdec_$Version.zip"
-
-if (-not $DownloadUri) {
-  $DownloadUri = "https://github.com/jindrapetrik/jpexs-decompiler/releases/download/version$Version/ffdec_$Version.zip"
-}
-if (-not $ExpectedSha256) {
-  if ($Version -ne '26.2.1') { throw "FFDEC_PRECHECK=FAIL expected_sha256_required_for_version=$Version" }
-  $ExpectedSha256 = '0333b56998a55bd83f4e0deb678a811fcdc45607582b4f5dd438309c8c3ad5ce'
-}
-
-New-Item -ItemType Directory -Force -Path $toolRoot,$cacheRoot | Out-Null
-$existing = Find-FFDec -Root $toolRoot
-if ($existing) {
-  Write-Host "FFDEC_READY=PASS source=existing path=$existing version=$Version"
-  Write-Host "FFDEC_PATH=$existing"
-  exit 0
-}
-
-$downloadRequired = $true
-if (Test-Path -LiteralPath $zipPath) {
-  $cachedHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-  if ($cachedHash -eq $ExpectedSha256.ToLowerInvariant()) {
-    $downloadRequired = $false
-    Write-Host "FFDEC_CACHE=PASS path=$zipPath sha256=$cachedHash"
-  } else {
-    Remove-Item -LiteralPath $zipPath -Force
-    Write-Host "FFDEC_CACHE=MISS reason=sha256_mismatch actual=$cachedHash"
-  }
-}
-if ($downloadRequired) {
-  Write-Host "FFDEC_DOWNLOAD=START uri=$DownloadUri"
-  Invoke-WebRequest -Uri $DownloadUri -OutFile $zipPath -UseBasicParsing
-}
-
-$actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actualHash -ne $ExpectedSha256.ToLowerInvariant()) {
-  throw "FFDEC_DOWNLOAD=FAIL expected_sha256=$ExpectedSha256 actual_sha256=$actualHash"
-}
-Write-Host "FFDEC_DOWNLOAD=PASS sha256=$actualHash size=$((Get-Item -LiteralPath $zipPath).Length)"
-
-if (Test-Path -LiteralPath $toolRoot) { Remove-Item -LiteralPath $toolRoot -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $toolRoot | Out-Null
-Expand-Archive -LiteralPath $zipPath -DestinationPath $toolRoot -Force
-
-$ffdec = Find-FFDec -Root $toolRoot
-if (-not $ffdec) { throw "FFDEC_PROVISION=FAIL executable_not_found_under=$toolRoot" }
-
-Write-Host "FFDEC_PROVISION=PASS version=$Version root=$toolRoot"
-Write-Host "FFDEC_READY=PASS source=downloaded path=$ffdec version=$Version"
-Write-Host "FFDEC_PATH=$ffdec"
+if(-not(Test-Path -LiteralPath $compat)){New-Item -ItemType Junction -Path $compat -Target ([string]$r.root)|Out-Null}
+Write-Host "FFDEC_READY=PASS provider=androidbuild-core version=$Version path=$($r.path) compatibility_alias=$compat duplicated_bytes=false"
+$r.path

@@ -1,496 +1,151 @@
 name: Army Attack Android candidate
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches:
-      - chore/local-army-bootstrap-20260827
-    paths-ignore:
-      - 'Tools/SWF/**'
-      - 'editable/armyattack-23.2/**'
-      - '.github/workflows/swf-extract.yml'
-      - '.github/workflows/android-candidate.yml'
-      - '.github/workflows/enable-autorepo-pool4.yml'
-      - '.github/workflows/cancel-stale-android.yml'
-      - 'Tools/CI/Enable-AutoRepoPool4.ps1'
-      - 'Tools/CI/Start-AutoRepoPool4.runtime.ps1'
-      - 'Logs/**'
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  actions: write
+  pull-requests: read
 
 concurrency:
-  group: army-attack-candidate-${{ github.ref }}
+  group: army-attack-core-candidate-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
-env:
-  EXPECTED_SOURCE_SHA: ${{ github.sha }}
-  SOURCE_BRANCH: ${{ github.ref_name }}
-
 jobs:
-  source-sync:
-    name: 1. Sync exact HEAD
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 10
+  cancel-stale:
+    name: Cancel stale Army candidate runs
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
-      - name: Bootstrap portable Git
+      - name: Cancel and drain older runs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $headers=@{Authorization="Bearer $env:GH_TOKEN";Accept='application/vnd.github+json';'X-GitHub-Api-Version'='2022-11-28'}
+          $current=[int64]$env:GITHUB_RUN_ID
+          $uri="https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs?per_page=100"
+          function Older {
+            $r=Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
+            @($r.workflow_runs|Where-Object{$_.name -eq 'Army Attack Android candidate' -and [string]$_.head_branch -eq $env:SOURCE_BRANCH -and [int64]$_.id -lt $current -and [string]$_.status -in @('queued','in_progress','pending')})
+          }
+          foreach($run in @(Older)){try{Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/cancel" -Method Post|Out-Null}catch{}}
+          for($i=1;$i -le 90;$i++){if(@(Older).Count -eq 0){Write-Host 'STALE_RUN_DRAIN=PASS';break};Start-Sleep 2;if($i -eq 90){throw 'STALE_RUN_DRAIN=FAIL timeout'}}
+
+  candidate:
+    name: Core candidate build and validation
+    needs: cancel-stale
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - name: Enable AndroidBuild Core 3.0.9
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $candidates=@()
-          $g=Get-Command git.exe -ErrorAction SilentlyContinue
-          if($g){$candidates+=$g.Source}
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidates+=@((Join-Path $drive.Root 'AndroidBuild\Tools\Git\cmd\git.exe'),(Join-Path $drive.Root 'AndroidBuild\PortableGit\cmd\git.exe'))}
-          }
-          $git=$candidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
-          if(-not $git){throw 'PRECHECK_GIT=FAIL'}
+          $root=@($env:ANDROIDBUILD_ROOT,'V:\AndroidBuild','D:\AndroidBuild','C:\AndroidBuild')|Where-Object{$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -First 1
+          if(-not $root){throw 'CORE_PRECHECK=FAIL androidbuild_root_not_found'}
+          $root=(Resolve-Path -LiteralPath $root).Path
+          Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $core=[version](Get-AndroidBuildCoreVersion)
+          if($core -lt [version]'3.0.9'){throw "CORE_PRECHECK=FAIL version=$core minimum=3.0.9"}
+          foreach($name in @('Resolve-AndroidBuildFlashToolchain','Ensure-AndroidBuildFFDec','Invoke-AndroidBuildCandidateValidation','Invoke-AndroidBuildProcess')){if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "CORE_PRECHECK=FAIL capability=$name"}}
+          Enable-AndroidBuildPortableTools -AndroidBuildRoot $root|Out-Null
+          $git=Get-AndroidBuildGitPath $root
           (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
-          $env:PATH="$(Split-Path -Parent $git);$env:PATH"
-          Write-Host "PRECHECK_GIT=PASS path=$git"
-
-      - name: Checkout exact workflow HEAD
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Validate exact checkout
-        shell: powershell
-        run: |
-          $actual=(git rev-parse HEAD).Trim()
-          if($actual -ne $env:EXPECTED_SOURCE_SHA){throw "EXACT_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$actual"}
-          Write-Host "EXACT_HEAD=PASS sha=$actual"
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-          Write-Host "RUN=$env:GITHUB_RUN_ID"
-
-      - name: Validate PowerShell syntax
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Test-PowerShellSyntax.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE
-
-      - name: Synchronize canonical physical repository
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Bootstrap-PhysicalClone.ps1' -Repository $env:GITHUB_REPOSITORY -ExpectedSha $env:EXPECTED_SOURCE_SHA -SourceBranch $env:SOURCE_BRANCH
-
-      - name: Prepare canonical repo workspace
-        shell: powershell
-        run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){
-              $candidate=Join-Path $drive.Root 'AndroidBuild'
-              $repo=Join-Path $candidate 'Repositories\code-army-client'
-              if(Test-Path -LiteralPath $repo){$root=$candidate;break}
-            }
-          }
-          if(-not $root){throw 'REPO_WORKSPACE=FAIL androidbuild_root'}
-          $repoRoot=Join-Path $root 'Repositories\code-army-client'
-          & '.\Tools\CI\Prepare-RepoWorkspace.ps1' -AndroidBuildRoot $root -RepoRoot $repoRoot -ExpectedSha $env:EXPECTED_SOURCE_SHA -KeepBuilds 3
-
-  published-audit:
-    name: 2A. Audit modern v23.2 base
-    needs: source-sync
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Resolve physical root
-        shell: powershell
-        run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
-          }
-          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
           "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PHYSICAL_REPO_ROOT=$(Join-Path $root 'Repositories\code-army-client')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-      - name: Audit published v23.2 and mods
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Audit-PublishedContent.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -BaseOnly
+          Write-Host "CORE_PRECHECK=PASS version=$core flash_toolchain=true git=$git"
 
-  toolchain-preflight:
-    name: 2B. Provision HARMAN/JDK/SDK
-    needs: source-sync
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Resolve AndroidBuild root
+      - name: Bootstrap exact source without codeload
         shell: powershell
         run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
-          }
-          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
-          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-      - name: Prepare HARMAN AIR 50.2.3.6
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Ensure-HarmanAir502.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
-      - name: Pin AIR50 Android SDK view
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -TargetApi '33' -BuildTools '33.0.2'
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $workspace=$PWD.Path
+          & $git config --global --add safe.directory $workspace
+          if(-not(Test-Path -LiteralPath (Join-Path $workspace '.git'))){& $git init $workspace|Out-Host;if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL git_init'}}
+          $repoUrl="https://github.com/$env:GITHUB_REPOSITORY.git"
+          & $git -C $workspace remote get-url origin *> $null
+          if($LASTEXITCODE -eq 0){& $git -C $workspace remote set-url origin $repoUrl}else{& $git -C $workspace remote add origin $repoUrl}
+          $pair="x-access-token:$env:GITHUB_TOKEN";$basic=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair));$extra="AUTHORIZATION: basic $basic"
+          & $git -C $workspace -c "http.https://github.com/.extraheader=$extra" fetch --force --no-tags origin $env:EXPECTED_SOURCE_SHA
+          if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL fetch'}
+          & $git -C $workspace checkout --detach --force $env:EXPECTED_SOURCE_SHA
+          if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL checkout'}
+          & $git -C $workspace clean -fdx
+          if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL clean'}
+          $head=(& $git -C $workspace rev-parse HEAD).Trim()
+          if($head -ne $env:EXPECTED_SOURCE_SHA){throw "SOURCE_BOOTSTRAP=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$head"}
+          Write-Host "SOURCE_BOOTSTRAP=PASS sha=$head"
 
-  reference-apk:
-    name: 2C. Inspect upstream Android APK
-    needs: source-sync
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Resolve AndroidBuild root
+      - name: Validate Army Core hooks
         shell: powershell
         run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
+          $ErrorActionPreference='Stop'
+          foreach($script in @('.\.github\scripts\armyattack-project-precheck.ps1','.\.github\scripts\armyattack-build.ps1','.\Tools\CI\Build-Android.ps1','.\Tools\CI\Validate-AndroidApk.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\SWF\Ensure-FFDec.ps1','.\Tools\CI\Ensure-HarmanAir502.ps1','.\Tools\CI\Ensure-PortableJdk17.ps1','.\Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1')){
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors)
+            if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$script line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw "PARSER_VALID=FAIL file=$script"}
+            Write-Host "PARSER_VALID=PASS file=$script"
           }
-          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
-          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-      - name: Inspect upstream Android reference
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Validate-UpstreamAndroidRelease.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
 
-  windows-regression:
-    name: 2D. Windows regression
-    if: false
-    needs: source-sync
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Resolve physical root
+      - name: Validate Army AndroidBuild project contract
         shell: powershell
         run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
-          }
-          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
-          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PHYSICAL_REPO_ROOT=$(Join-Path $root 'Repositories\code-army-client')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-      - name: Validate exact-source upstream Windows reference
-        id: upstream_reference
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Validate-UpstreamWindowsRelease.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
-      - name: Diagnostic source-only recompilation
-        id: source_rebuild
-        continue-on-error: true
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Build-Windows.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
-      - name: Assemble and validate full Windows candidate
-        id: full_candidate
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Build-WindowsFullCandidate.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
-      - name: Measure full candidate performance
-        id: performance
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Measure-WindowsPerformance.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -DurationSeconds 20 -SampleSeconds 2
-      - name: Windows gate
-        if: always()
-        shell: powershell
-        run: |
-          Write-Host "UPSTREAM_REFERENCE_OUTCOME=${{ steps.upstream_reference.outcome }}"
-          Write-Host "FULL_CANDIDATE_OUTCOME=${{ steps.full_candidate.outcome }}"
-          Write-Host "PERFORMANCE_OUTCOME=${{ steps.performance.outcome }}"
-          if('${{ steps.upstream_reference.outcome }}' -ne 'success'){throw 'WINDOWS_REGRESSION=FAIL upstream_reference'}
-          if('${{ steps.full_candidate.outcome }}' -ne 'success'){throw 'WINDOWS_REGRESSION=FAIL full_candidate'}
-          if('${{ steps.performance.outcome }}' -ne 'success'){throw 'WINDOWS_REGRESSION=FAIL performance'}
-          Write-Host "WINDOWS_REGRESSION=PASS"
+          & '.\.github\scripts\armyattack-project-precheck.ps1'
 
-  mod-variants:
-    name: 3M. Android mod ${{ matrix.variant }}
-    if: false
-    needs: [source-sync, published-audit, toolchain-preflight]
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        variant: [colossal, crimson, hardmode, none, swapped, swapped2, truecrimson]
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Resolve physical and pinned roots
+      - name: Build and validate Army candidate through Core 3.0.9
         shell: powershell
         run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
-          }
-          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
-          $pinned=Join-Path $root 'Toolchains\AIR50-API33-BT33.0.2'
-          foreach($p in @((Join-Path $root 'Tools\AIRSDK-50.2.3.6\bin\adt.bat'),(Join-Path $root 'Tools\Java\jdk-17\bin\java.exe'),(Join-Path $pinned 'AndroidSDK\build-tools\33.0.2\aapt.exe'))){if(-not (Test-Path -LiteralPath $p)){throw "MOD_TOOLCHAIN_PRECHECK=FAIL missing=$p"}}
-          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PINNED_ANDROID_BUILD_ROOT=$pinned"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PHYSICAL_REPO_ROOT=$(Join-Path $root 'Repositories\code-army-client')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-          Write-Host "MOD_VARIANT=${{ matrix.variant }}"
-      - name: Build and validate mod APK
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Build-AndroidModVariant.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -PhysicalAndroidBuildRoot $env:ANDROIDBUILD_ROOT -PinnedAndroidBuildRoot $env:PINNED_ANDROID_BUILD_ROOT -Variant '${{ matrix.variant }}'
-          Write-Host "GITHUB_ARTIFACT_UPLOAD=DISABLED"
+          $ErrorActionPreference='Stop'
+          $checkout=$PWD.Path
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $checkoutSha=(& $git -C $checkout rev-parse HEAD).Trim()
+          if($checkoutSha -ne $env:EXPECTED_SOURCE_SHA){throw "STALE_TEST_RESULT checkout=$checkoutSha expected=$env:EXPECTED_SOURCE_SHA"}
+          $persistent=Join-Path $env:ANDROIDBUILD_ROOT 'Repositories\code-army-client'
+          $pr=if([string]::IsNullOrWhiteSpace($env:PR_NUMBER)){0}else{[int]$env:PR_NUMBER}
+          $result=Invoke-AndroidBuildCandidateValidation -RepoRoot $persistent -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -Repository $env:GITHUB_REPOSITORY -PrNumber $pr -SourceRemote $checkout -PackageName 'air.army.attack'
 
-  android-candidate:
-    name: 3. Build and validate Android APK
-    needs: [published-audit, toolchain-preflight, reference-apk]
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 0
-          persist-credentials: true
-      - name: Resolve physical root
-        shell: powershell
-        run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
-          }
-          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
-          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PHYSICAL_REPO_ROOT=$(Join-Path $root 'Repositories\code-army-client')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-      - name: Initialize Android diagnostics
-        shell: powershell
-        run: |
-          $dir=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\diagnostics"
-          New-Item -ItemType Directory -Force -Path $dir|Out-Null
-          Write-Host "ANDROID_DIAGNOSTICS_INIT=PASS path=$dir"
-      - name: Reconfirm HARMAN AIR
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Ensure-HarmanAir502.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
-      - name: Reconfirm pinned Android SDK
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -TargetApi '33' -BuildTools '33.0.2'
-      - name: Build Android candidate
-        id: android_build
-        shell: powershell
-        run: |
-          if(-not $env:PINNED_ANDROID_BUILD_ROOT){throw 'PINNED_ANDROID_BUILD_ROOT=FAIL missing_env'}
-          & '.\Tools\CI\Build-Android.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:PINNED_ANDROID_BUILD_ROOT
-          $apk=Get-ChildItem (Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android") -File -Filter '*.apk'|Sort-Object Length -Descending|Select-Object -First 1
-          if(-not $apk){throw 'APK_GENERATED=FAIL not_found'}
-          "ANDROID_APK_PATH=$($apk.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Validate exact APK
-        id: apk_validate
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Validate-AndroidApk.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+          $pair="x-access-token:$env:GITHUB_TOKEN";$basic=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair));$extra="AUTHORIZATION: basic $basic"
+          $probe=Invoke-AndroidBuildProcess -FilePath $git -ArgumentList @('-C',$checkout,'-c',"http.https://github.com/.extraheader=$extra",'ls-remote','origin',("refs/heads/"+$env:SOURCE_BRANCH)) -WorkingDirectory $checkout -TimeoutSeconds 30 -Environment @{GIT_TERMINAL_PROMPT='0';GCM_INTERACTIVE='Never'} -AllowNonZeroExit
+          $line=([string]$probe.stdout).Trim()
+          if($probe.exit_code -ne 0 -or [string]::IsNullOrWhiteSpace($line)){throw "APK_CANDIDATE_HEAD_RECHECK=FAIL exit=$($probe.exit_code)"}
+          $remote=(($line -split '\s+')[0]).Trim()
+          if($remote -ne $env:EXPECTED_SOURCE_SHA){throw "STALE_TEST_RESULT remote_head=$remote expected=$env:EXPECTED_SOURCE_SHA"}
 
-      - name: Retain latest three repo builds
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Prepare-RepoWorkspace.ps1' -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -KeepBuilds 3
-      - name: Prepare manual physical validation
-        id: manual_physical
-        shell: powershell
-        run: |
-          $build=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android"
-          $apk=Get-Item -LiteralPath $env:ANDROID_APK_PATH
-          $apkSha=(Get-FileHash -LiteralPath $apk.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          $manual=[ordered]@{
-            schema_version=2
-            repository=$env:GITHUB_REPOSITORY
-            tested_sha=$env:EXPECTED_SOURCE_SHA
-            apk_path=$apk.FullName
-            apk_size=$apk.Length
-            apk_sha256=$apkSha
-            method='manual_physical'
-            adb_used=$false
-            status='PENDING_USER_VALIDATION'
-            required_steps=@(
-              'Install the exact APK on the physical Android phone',
-              'Launch Army Attack and confirm the main game loads',
-              'Recording starts automatically; PERF only opens or closes the metrics panel',
-              'Play a representative gameplay session including placement, right HUD, supply aircraft, PvP FireMission and PvP loot debrief',
-              'Press MARCAR LAG whenever a visible slowdown occurs',
-              'Press ZIP to share a snapshot without stopping the recording',
-              'Share the generated ZIP back for analysis'
-            )
-          }
-          $manualPath=Join-Path $build 'manual-physical-validation.json'
-          $manual|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $manualPath -Encoding UTF8
-          Write-Host "ADB_DEVICE=SKIPPED_WITH_REASON manual_physical_test"
-          Write-Host "INSTALL=SKIPPED_WITH_REASON user_manual_install"
-          Write-Host "START=SKIPPED_WITH_REASON user_manual_launch"
-          Write-Host "HEALTH=SKIPPED_WITH_REASON user_manual_validation"
-          Write-Host "SMOKE=SKIPPED_WITH_REASON user_manual_validation"
-          Write-Host "PHYSICAL_EVIDENCE=SKIPPED_WITH_REASON awaiting_user_manual_zip"
-          Write-Host "MANUAL_PHYSICAL_VALIDATION=PENDING path=$manualPath"
-      - name: Collect Android diagnostics
-        if: always()
-        shell: powershell
-        run: |
-          $build=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android"
-          $diag=Join-Path $build 'diagnostics'
-          New-Item -ItemType Directory -Force -Path $diag|Out-Null
-          Get-ChildItem -LiteralPath $build -File -Filter '*.p12' -ErrorAction SilentlyContinue|Remove-Item -Force -ErrorAction SilentlyContinue
-          @(
-            "REPOSITORY=$env:GITHUB_REPOSITORY"
-            "EXPECTED_SOURCE_SHA=$env:EXPECTED_SOURCE_SHA"
-            "RUN=$env:GITHUB_RUN_ID"
-            "RUNNER_NAME=$env:RUNNER_NAME"
-            "ANDROID_BUILD_OUTCOME=${{ steps.android_build.outcome }}"
-            "APK_VALIDATE_OUTCOME=${{ steps.apk_validate.outcome }}"
-            "ADB_TEST_OUTCOME=skipped_by_policy"
-            "MANUAL_PHYSICAL_OUTCOME=${{ steps.manual_physical.outcome }}"
-            "PHYSICAL_VALIDATION=PENDING_USER_MANUAL_TEST"
-          )|Set-Content -LiteralPath (Join-Path $diag 'ci-diagnostics.txt') -Encoding UTF8
-          foreach($name in @('adt-android.out.log','adt-android.err.log','ArmyAttack-android-app.xml','BUILD-PROVENANCE.json','TOOLCHAIN.json','apk-badging.txt','apk-permissions.txt','apk-manifest.txt','apk-signature.txt','apk-info.json','summary.json','REPORT.md','manual-physical-validation.json','SWF-PERFORMANCE-PATCH.json','ffdec-performance-tilemap.log','ffdec-performance-scene.log','ffdec-feature-mapdata.log','ffdec-feature-character-hints.log','ffdec-feature-animation-controller.log','ffdec-performance-utils.log','ffdec-feature-worldmap.log','ffdec-feature-pvp-matchup.log','ffdec-performance-dumpas3.log','ffdec-feature-offlinesave.log','ffdec-feature-gamestate.log','ffdec-feature-save-permission.log','ffdec-feature-pvp-match.log','ffdec-feature-pvp-combat.log','ffdec-feature-pvp-booster.log','ffdec-feature-pvp-hud.log')){
-            $src=Join-Path $build $name
-            if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination (Join-Path $diag $name) -Force}
-          }
-          Write-Host "GITHUB_ARTIFACT_UPLOAD=DISABLED"
-          Write-Host "LOCAL_BUILD_ROOT=$build"
-
-  unified-selector:
-    name: 4U. Unified Android mod selector
-    if: false
-    needs: [android-candidate, published-audit, toolchain-preflight]
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Resolve physical and pinned roots
-        shell: powershell
-        run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
-          }
-          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
-          $pinned=Join-Path $root 'Toolchains\AIR50-API33-BT33.0.2'
-          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PINNED_ANDROID_BUILD_ROOT=$pinned"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PHYSICAL_REPO_ROOT=$(Join-Path $root 'Repositories\code-army-client')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-      - name: Build unified selector APK
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Build-AndroidUnified.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -PhysicalAndroidBuildRoot $env:ANDROIDBUILD_ROOT -PinnedAndroidBuildRoot $env:PINNED_ANDROID_BUILD_ROOT
-          Write-Host "GITHUB_ARTIFACT_UPLOAD=DISABLED"
-
-  final-report:
-    name: 4. Publish logs and final gate
-    if: always()
-    needs: [source-sync, published-audit, toolchain-preflight, reference-apk, android-candidate]
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 10
-    steps:
-      - name: Bootstrap portable Git
-        shell: powershell
-        run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){
-              $candidate=Join-Path $drive.Root 'AndroidBuild'
-              if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}
-            }
-          }
-          if(-not $root){throw 'EVIDENCE_GIT_BOOTSTRAP=FAIL androidbuild_root'}
-          $git=@(
-            (Join-Path $root 'Tools\Git\cmd\git.exe'),
-            (Join-Path $root 'PortableGit\cmd\git.exe')
-          )|Where-Object{Test-Path -LiteralPath $_}|Select-Object -First 1
-          if(-not $git){throw 'EVIDENCE_GIT_BOOTSTRAP=FAIL git_not_found'}
-          (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
-          Write-Host "EVIDENCE_GIT_BOOTSTRAP=PASS path=$git"
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 0
-          persist-credentials: true
-      - name: Resolve AndroidBuild root
-        shell: powershell
-        run: |
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidate=Join-Path $drive.Root 'AndroidBuild';if(Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client')){$root=$candidate;break}}
-          }
-          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL'}
-          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-      - name: Publish sanitized logs to repository
-        id: publish_logs
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Publish-AndroidEvidence.ps1' -RepoCheckoutRoot $env:GITHUB_WORKSPACE -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -RunId $env:GITHUB_RUN_ID -SourceBranch $env:SOURCE_BRANCH
-      - name: Final candidate gate
-        if: always()
-        shell: powershell
-        run: |
-          Write-Host "SOURCE_SYNC=${{ needs.source-sync.result }}"
-          Write-Host "PUBLISHED_AUDIT=${{ needs.published-audit.result }}"
-          Write-Host "TOOLCHAIN_PREFLIGHT=${{ needs.toolchain-preflight.result }}"
-          Write-Host "REFERENCE_APK=${{ needs.reference-apk.result }}"
-          Write-Host "ANDROID_CANDIDATE=${{ needs.android-candidate.result }}"
-          Write-Host "WINDOWS_REGRESSION=SKIPPED_WITH_REASON android_base_only"
-          Write-Host "MOD_VARIANTS=SKIPPED_WITH_REASON android_base_only"
-          Write-Host "UNIFIED_SELECTOR=SKIPPED_WITH_REASON android_base_only"
-          Write-Host "LOG_PUBLISH_OUTCOME=${{ steps.publish_logs.outcome }}"
-          if('${{ needs.source-sync.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL source_sync'}
-          if('${{ needs.published-audit.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL published_audit'}
-          if('${{ needs.toolchain-preflight.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL toolchain_preflight'}
-          if('${{ needs.reference-apk.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL reference_apk'}
-          if('${{ needs.android-candidate.result }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL android_candidate'}
-          if('${{ steps.publish_logs.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL evidence_upload'}
-          Write-Host "BASE_ONLY_MODE=PASS modern_v23_2=true mods=false selector=false diagnostics_ane=true"
-          Write-Host "SWF_SOURCE_ORIGINAL=PASS canonical_v23_2=true"
-          Write-Host "SWF_PERFORMANCE_PATCH=PASS via_exact_android_candidate_manifest"
-          Write-Host "NATIVE_PERF_OVERLAY=PASS buttons=PERF,MARCAR_LAG,ZIP recording=always_on render_mode=gpu profiler=always_on_low_overhead_v3"
-          Write-Host "ADB_DEVICE=SKIPPED_WITH_REASON manual_physical_test"
-          Write-Host "INSTALL=SKIPPED_WITH_REASON user_manual_install"
-          Write-Host "START=SKIPPED_WITH_REASON user_manual_launch"
-          Write-Host "HEALTH=SKIPPED_WITH_REASON user_manual_validation"
-          Write-Host "SMOKE=SKIPPED_WITH_REASON user_manual_validation"
-          Write-Host "PHYSICAL_EVIDENCE=SKIPPED_WITH_REASON awaiting_user_manual_zip"
-          Write-Host "MANUAL_PHYSICAL_VALIDATION=PENDING_USER_VALIDATION"
-          Write-Host "SANITIZATION=PASS via_publish_logs"
-          Write-Host "EVIDENCE_UPLOAD=PASS via_publish_logs"
-          Write-Host "CANDIDATE_VALIDATION=PASS"
-          Write-Host "FINAL_VALIDATION=VALIDATION_INCOMPLETE physical_validation_required"
+          $metaPath=Join-Path $persistent '.work\artifacts\android\armyattack-build.json'
+          if(-not(Test-Path -LiteralPath $metaPath)){throw "CORE_CANDIDATE=FAIL metadata_missing=$metaPath"}
+          $meta=Get-Content -LiteralPath $metaPath -Raw|ConvertFrom-Json
+          if([string]$meta.source_sha -ne $env:EXPECTED_SOURCE_SHA){throw 'CORE_CANDIDATE=FAIL metadata_sha'}
+          if([string]$meta.core_version -ne '3.0.9'){throw "CORE_CANDIDATE=FAIL hook_core=$($meta.core_version)"}
+          if([string]$meta.toolchain_ownership -ne 'androidbuild-global'){throw "CORE_CANDIDATE=FAIL toolchain_ownership=$($meta.toolchain_ownership)"}
+          $apk=[string]$result.apk_path;$hash=(Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToUpperInvariant()
+          if($hash -ne ([string]$result.apk.identity.sha256).ToUpperInvariant()){throw 'CORE_CANDIDATE=FAIL apk_hash'}
+          Write-Host "CORE_BUILD_PROVENANCE=PASS core=$($result.build.provenance.core_version)"
+          Write-Host "ARMY_FLASH_TOOLCHAIN_OWNERSHIP=$($meta.toolchain_ownership)"
+          Write-Host "ARMY_AIR_VERSION=$($meta.air_version)"
+          Write-Host "ARMY_FFDEC_VERSION=$($meta.ffdec_version)"
+          Write-Host "APK_PACKAGE=$($result.apk.identity.package_name)"
+          Write-Host "APK_SIZE=$($result.apk.identity.bytes)"
+          Write-Host "APK_SHA256=$hash"
+          Write-Host "APK_CANDIDATE_REMOTE_HEAD=$remote"
+          Write-Host 'APK_CANDIDATE_HEAD_RECHECK=PASS'
+          Write-Host 'CANDIDATE_VALIDATION=PASS'
+          Write-Host 'PHYSICAL_VALIDATION=NOT_ACTIVATED'
+          Write-Host 'FINAL_VALIDATION=VALIDATION_INCOMPLETE'
+          Write-Host 'APK_FINAL_PUBLICATION=DEFERRED_UNTIL_PHYSICAL_VALIDATION'
