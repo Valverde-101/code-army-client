@@ -147,5 +147,7 @@ jobs:
           Write-Host 'APK_CANDIDATE_HEAD_RECHECK=PASS'
           Write-Host 'CANDIDATE_VALIDATION=PASS'
           Write-Host 'PHYSICAL_VALIDATION=NOT_ACTIVATED'
-          Write-Host 'FINAL_VALIDATION=VALIDATION_INCOMPLETE'
+          Write-Host 'MANUAL_PHYSICAL_PROFILE=Recording starts automatically; PERF only opens or closes the metrics panel'
+          Write-Host 'MANUAL_PHYSICAL_ZIP=Press ZIP to share a snapshot without stopping the recording'
+          Write-Host 'FINAL_VALIDATION=VALIDATION_INCOMPLETE physical_validation_required'
           Write-Host 'APK_FINAL_PUBLICATION=DEFERRED_UNTIL_PHYSICAL_VALIDATION'
