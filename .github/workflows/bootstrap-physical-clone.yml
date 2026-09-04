@@ -1,4 +1,4 @@
-name: Bootstrap Army Attack physical clone
+name: Army Attack Windows full candidate
 
 on:
   workflow_dispatch:
@@ -7,12 +7,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: army-attack-physical-clone-${{ github.ref }}
+  group: army-attack-windows-candidate-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  bootstrap-physical-clone:
-    name: Sync exact HEAD into AndroidBuild Repositories
+  windows-candidate:
+    name: Core-synced Windows full candidate
     runs-on: [windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 30
     env:
@@ -20,33 +20,22 @@ jobs:
       SOURCE_BRANCH: ${{ github.ref_name }}
 
     steps:
-      - name: Bootstrap portable Git
+      - name: Enable AndroidBuild Core repository sync
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $candidates=New-Object System.Collections.Generic.List[string]
-          function Add-Candidate([string]$p){if($p -and -not $candidates.Contains($p)){$candidates.Add($p)}}
-          $existing=Get-Command git.exe -ErrorAction SilentlyContinue
-          if($existing){Add-Candidate $existing.Source}
-          if($env:ProgramFiles){Add-Candidate (Join-Path $env:ProgramFiles 'Git\cmd\git.exe')}
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){
-              foreach($relative in @(
-                'AndroidBuild\Tools\Git\cmd\git.exe',
-                'AndroidBuild\PortableGit\cmd\git.exe',
-                'Git\cmd\git.exe'
-              )){
-                Add-Candidate (Join-Path $drive.Root $relative)
-              }
-            }
-          }
-          $git=$candidates|Where-Object{Test-Path -LiteralPath $_}|Select-Object -First 1
-          if(-not $git){throw ('PRECHECK_GIT=FAIL git.exe not found. Probed: '+($candidates -join '; '))}
-          $gitDir=Split-Path -Parent $git
-          $gitDir|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
-          $env:PATH="$gitDir;$env:PATH"
-          & $git config --global core.longPaths true
-          Write-Host "PRECHECK_GIT=PASS path=$git"
+          $root=@($env:ANDROIDBUILD_ROOT,'V:\AndroidBuild','D:\AndroidBuild','C:\AndroidBuild')|Where-Object{$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -First 1
+          if(-not $root){throw 'CORE_PRECHECK=FAIL androidbuild_root_not_found'}
+          $root=(Resolve-Path -LiteralPath $root).Path
+          Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $core=[version](Get-AndroidBuildCoreVersion)
+          if($core -lt [version]'3.0.9'){throw "CORE_PRECHECK=FAIL version=$core minimum=3.0.9"}
+          foreach($name in @('Sync-AndroidBuildRepositoryExactHead','Test-AndroidBuildExactHead','Get-AndroidBuildGitPath')){if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "CORE_PRECHECK=FAIL capability=$name"}}
+          Enable-AndroidBuildPortableTools -AndroidBuildRoot $root|Out-Null
+          $git=Get-AndroidBuildGitPath $root
+          (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "CORE_REPOSITORY_SYNC_PRECHECK=PASS version=$core git=$git"
 
       - name: Checkout exact workflow HEAD
         uses: actions/checkout@v4
@@ -55,50 +44,28 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Validate exact Actions checkout
+      - name: Synchronize canonical repository through Core
         shell: powershell
         run: |
-          $ErrorActionPreference='Stop'
-          $actual=(git rev-parse HEAD).Trim()
-          if($actual -ne $env:EXPECTED_SOURCE_SHA){
-            throw "EXACT_ACTIONS_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$actual"
-          }
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $checkout=$PWD.Path
+          $checkoutSha=(& $git -C $checkout rev-parse HEAD).Trim()
+          if($checkoutSha -ne $env:EXPECTED_SOURCE_SHA){throw "EXACT_ACTIONS_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$checkoutSha"}
+          $repo=Join-Path $env:ANDROIDBUILD_ROOT 'Repositories\code-army-client'
+          $sync=Sync-AndroidBuildRepositoryExactHead -RepoRoot $repo -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -AllowTrackedReset -CleanUntracked -SourceRemote $checkout
+          if([string]$sync.status -ne 'PASS' -or [string]$sync.actual_sha -ne $env:EXPECTED_SOURCE_SHA){throw "REPOSITORY_SYNC=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$($sync.actual_sha)"}
+          "PHYSICAL_REPO_ROOT=$repo"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "PRECHECK_GITHUB=PASS"
           Write-Host "BROKER=PASS runner=$env:RUNNER_NAME"
           Write-Host "RUNNER_ASSIGNMENT=PASS runner=$env:RUNNER_NAME"
-          Write-Host "EXACT_ACTIONS_HEAD=PASS sha=$actual"
+          Write-Host "EXACT_ACTIONS_HEAD=PASS sha=$checkoutSha"
+          Write-Host "CORE_REPOSITORY_SYNC=PASS sha=$($sync.actual_sha) repo=$repo"
           Write-Host "REPOSITORY=$env:GITHUB_REPOSITORY"
           Write-Host "BRANCH=$env:SOURCE_BRANCH"
-          Write-Host "EXPECTED_SOURCE_SHA=$env:EXPECTED_SOURCE_SHA"
           Write-Host "RUN=$env:GITHUB_RUN_ID"
-          Write-Host "JOB_ID=$env:GITHUB_JOB"
           Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-
-      - name: Synchronize canonical physical repository
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Bootstrap-PhysicalClone.ps1' `
-            -Repository $env:GITHUB_REPOSITORY `
-            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
-            -SourceBranch $env:SOURCE_BRANCH
-
-      - name: Resolve AndroidBuild root for Windows build
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $root=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if(-not $drive.Root){continue}
-            $candidate=Join-Path $drive.Root 'AndroidBuild'
-            if((Test-Path -LiteralPath (Join-Path $candidate 'Repositories\code-army-client'))){
-              $root=$candidate
-              break
-            }
-          }
-          if(-not $root){throw 'ANDROIDBUILD_ROOT=FAIL unable to resolve canonical root'}
-          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PHYSICAL_REPO_ROOT=$(Join-Path $root 'Repositories\code-army-client')"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "ANDROIDBUILD_ROOT=PASS root=$root"
 
       - name: Validate exact-source upstream Windows reference
         id: upstream_reference
