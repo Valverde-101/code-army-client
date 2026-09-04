@@ -16,10 +16,11 @@ $args=@{AndroidBuildRoot=$root;Version=$Version;ExpectedSha256=$ExpectedSha256}
 if($DownloadUri){$args.DownloadUri=$DownloadUri}
 $r=Ensure-AndroidBuildFFDec @args
 if([string]$r.status -ne 'PASS'){throw 'FFDEC_CORE_SHIM=FAIL resolver'}
-# Existing Army patchers discover FFDec under .work/tools. Keep only a junction; no duplicated executable bytes.
-$compatRoot=Join-Path $RepositoryRoot '.work\tools\ffdec'
-$compat=Join-Path $compatRoot $Version
-New-Item -ItemType Directory -Force -Path $compatRoot|Out-Null
+# Existing Army patchers enumerate .work/tools/ffdec recursively. Make that directory itself
+# the junction so Windows resolves the requested root directly into the globally owned Core tool.
+$compatParent=Join-Path $RepositoryRoot '.work\tools'
+$compat=Join-Path $compatParent 'ffdec'
+New-Item -ItemType Directory -Force -Path $compatParent|Out-Null
 if(Test-Path -LiteralPath $compat){
   $item=Get-Item -LiteralPath $compat -Force
   $same=$false
@@ -30,5 +31,7 @@ if(Test-Path -LiteralPath $compat){
   }else{Remove-Item -LiteralPath $compat -Recurse -Force}
 }
 if(-not(Test-Path -LiteralPath $compat)){New-Item -ItemType Junction -Path $compat -Target ([string]$r.root)|Out-Null}
+$resolved=Get-ChildItem -LiteralPath $compat -File -ErrorAction Stop|Where-Object{$_.Name -in @('ffdec-cli.exe','ffdec.bat','ffdec.jar')}|Select-Object -First 1
+if(-not $resolved){throw "FFDEC_CORE_SHIM=FAIL compatibility_root_unreadable=$compat"}
 Write-Host "FFDEC_READY=PASS provider=androidbuild-core version=$Version path=$($r.path) compatibility_alias=$compat duplicated_bytes=false"
 $r.path
