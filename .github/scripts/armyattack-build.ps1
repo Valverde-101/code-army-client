@@ -56,11 +56,14 @@ function Ensure-Junction([string]$Path,[string]$Target){
   New-Item -ItemType Junction -Path $Path -Target $targetFull|Out-Null
 }
 
-# Compatibility alias for the existing Army SWF patcher. Bytes remain globally owned by Core.
+# Compatibility alias for existing Army SWF patchers. The root itself is a junction so
+# Get-ChildItem on .work/tools/ffdec resolves directly into the globally owned Core tool.
 $ffdecGlobal=Join-Path $root 'Tools\FFDec\26.2.1'
-$ffdecCompat=Join-Path $repoRoot '.work\tools\ffdec\26.2.1'
+$ffdecCompat=Join-Path $repoRoot '.work\tools\ffdec'
 Ensure-Junction $ffdecCompat $ffdecGlobal
-Write-Host "ARMY_FFDEC_COMPAT=PASS alias=$ffdecCompat target=$ffdecGlobal duplicated_bytes=false"
+$ffdecCompatExe=Get-ChildItem -LiteralPath $ffdecCompat -File -ErrorAction Stop|Where-Object{$_.Name -in @('ffdec-cli.exe','ffdec.bat','ffdec.jar')}|Select-Object -First 1
+if(-not $ffdecCompatExe){throw "ARMY_FFDEC_COMPAT=FAIL unreadable_alias=$ffdecCompat"}
+Write-Host "ARMY_FFDEC_COMPAT=PASS alias=$ffdecCompat target=$ffdecGlobal executable=$($ffdecCompatExe.Name) duplicated_bytes=false"
 
 # Preserve the proven Army build path while moving its bytes under the repository .work pool.
 $repoBuildRoot=Join-Path $repoRoot '.work\Builds\code-army-client'
