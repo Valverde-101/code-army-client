@@ -12,7 +12,7 @@
     "directory": ".work",
     "retention_generations": 3,
     "reuse_enabled": true,
-    "pools": ["src","generated","materialized","build","dist","diagnostics","evidence-staging"]
+    "pools": ["src", "generated", "materialized", "build", "dist", "diagnostics", "evidence-staging"]
   },
   "cache": {
     "enabled": true,
@@ -20,10 +20,10 @@
     "repo_cache": true,
     "native_build_cache": true,
     "clean_build_only_on_diagnostic_or_release_gate": true,
-    "priority_stages": ["published-source","ffdec-patch","air-package","apk-validation"],
+    "priority_stages": ["published-source", "ffdec-patch", "air-package", "apk-validation"],
     "stage_fingerprints": {
-      "materialize": [".androidbuild.json","src","android","Tools/CI","Tools/SWF","vendor/Test_army_attack"],
-      "build": [".androidbuild.json","src","android","Tools/CI/Build-Android.ps1","Tools/CI/Patch-AndroidPerformanceSwf.ps1","Tools/CI/Build-AndroidDiagnosticsAne.ps1","Tools/CI/Test-AndroidRuntimePatch.ps1","Tools/SWF","vendor/Test_army_attack"]
+      "materialize": [".androidbuild.json", "src", "android", "Tools/CI", "Tools/SWF", "vendor/Test_army_attack"],
+      "build": [".androidbuild.json", "src", "android", "Tools/CI/Build-Android.ps1", "Tools/CI/Patch-AndroidPerformanceSwf.ps1", "Tools/CI/Build-AndroidDiagnosticsAne.ps1", "Tools/CI/Test-AndroidRuntimePatch.ps1", "Tools/SWF", "vendor/Test_army_attack"]
     }
   },
   "hooks": {
@@ -61,7 +61,7 @@
     "workflow": ".github/workflows/android-physical.yml",
     "final_apk_requires_physical_pass": true,
     "current_state": "prepared_not_activated",
-    "workflow_timeout_minutes": 45
+    "workflow_timeout_minutes": 25
   },
   "evidence": {
     "same_pr": true,
@@ -83,8 +83,9 @@
   "broker": {
     "mode": "existing-auto-repo-broker",
     "do_not_duplicate": true,
-    "runner_labels": ["self-hosted","Windows","X64"],
-    "selection": "global-broker-canonical-labels"
+    "runner_labels": ["self-hosted", "Windows", "X64"],
+    "selection": "global-broker-canonical-labels",
+    "repository_owned_broker_mutation": false
   },
   "timeouts": {
     "github_seconds": 60,
@@ -95,7 +96,10 @@
     "launch_seconds": 90,
     "functional_seconds": 1800
   },
-  "retry": {"transient_max_attempts": 2,"delay_seconds": 3},
+  "retry": {
+    "transient_max_attempts": 2,
+    "delay_seconds": 3
+  },
   "validation": {
     "required_physical_hooks": [],
     "not_applicable_physical_hooks": [],
@@ -103,8 +107,8 @@
     "require_anr_check": true,
     "require_visual_on_visual_failure": true,
     "publish_final_apk_after": "PHYSICALLY_VALIDATED",
-    "static_gates": ["published-v23.2-audit","runtime-patch-regression","FFDec SWF patch","HARMAN AIR package","Army APK deep validation","AndroidBuild generic APK validation"],
-    "baseline_physical_flows": ["cold_launch","home_map_navigation","unit_placement_confirm_cancel","right_hud_open_close","supply_aircraft","world_map_open_close","desert_map","pvp_match_start","pvp_cancel_action","pvp_firemission","pvp_paratrooper","pvp_loot_debrief","background_foreground","diagnostics_perf","diagnostics_mark_lag","diagnostics_zip","crash_anr_check"],
+    "static_gates": ["published-v23.2-audit", "runtime-patch-regression", "FFDec SWF patch", "HARMAN AIR package", "Army APK deep validation", "AndroidBuild generic APK validation"],
+    "baseline_physical_flows": ["cold_launch", "home_map_navigation", "unit_placement_confirm_cancel", "right_hud_open_close", "supply_aircraft", "world_map_open_close", "desert_map", "pvp_match_start", "pvp_cancel_action", "pvp_firemission", "pvp_paratrooper", "pvp_loot_debrief", "background_foreground", "diagnostics_perf", "diagnostics_mark_lag", "diagnostics_zip", "crash_anr_check"],
     "candidate_without_physical": "CANDIDATE_VALIDATION=PASS",
     "final_without_physical": "FINAL_VALIDATION=VALIDATION_INCOMPLETE",
     "post_merge_candidate_revalidation": true
@@ -124,17 +128,21 @@
     "update_model": "single-current-one-rollback"
   },
   "migration": {
-    "mode": "progressive",
-    "preserve_legacy_until_equivalence": true,
+    "mode": "complete-core-orchestrated",
+    "status": "COMPLETE",
+    "preserve_legacy_until_equivalence": false,
     "current_build_adapter": ".github/scripts/armyattack-build.ps1",
-    "legacy_build_adapter": "Tools/CI/Build-Android.ps1",
+    "project_builder": "Tools/CI/Build-Android.ps1",
     "global_core_candidate_orchestration": true,
     "global_build_lease": true,
     "global_repository_sync": true,
     "global_build_provenance": true,
     "global_flash_toolchain": true,
-    "legacy_infrastructure_candidates": ["Tools/CI/Bootstrap-PhysicalClone.ps1","Tools/CI/Ensure-HarmanAir502.ps1","Tools/CI/Ensure-PortableJdk17.ps1","Tools/CI/Ensure-PinnedAndroidSdkRoot.ps1","Tools/SWF/Ensure-FFDec.ps1","Tools/CI/Enable-AutoRepoPool4.ps1","Tools/CI/Start-AutoRepoPool4.runtime.ps1"],
-    "project_specific_behavior_to_keep": ["Army Attack v23.2 published-content contract","SWF class patch set and FFDec preprocessing","PvP/runtime configuration and asset validation","diagnostics ANE","Army AIR descriptor and package semantics","Army deep APK validation","manual physical gameplay flows"]
+    "global_broker_ownership": true,
+    "global_apk_final_gate": true,
+    "compatibility_shims": ["Tools/CI/Ensure-HarmanAir502.ps1", "Tools/CI/Ensure-PortableJdk17.ps1", "Tools/CI/Ensure-PinnedAndroidSdkRoot.ps1", "Tools/SWF/Ensure-FFDec.ps1"],
+    "retired_repository_infrastructure": ["Tools/CI/Bootstrap-PhysicalClone.ps1", "Tools/CI/Enable-AutoRepoPool4.ps1", "Tools/CI/Start-AutoRepoPool4.runtime.ps1", ".github/workflows/enable-autorepo-pool4.yml", ".github/workflows/cancel-stale-android.yml", ".github/workflows/runner-pool-diagnostic.yml"],
+    "project_specific_behavior_to_keep": ["Army Attack v23.2 published-content contract", "SWF class patch set and FFDec preprocessing", "PvP/runtime configuration and asset validation", "diagnostics ANE", "Army AIR descriptor and package semantics", "Army deep APK validation", "manual physical gameplay flows", "Windows full-candidate diagnostics"]
   },
   "toolchain": {
     "androidbuild_core_minimum": "3.0.9",
