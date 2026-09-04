@@ -1,11 +1,6 @@
 name: Army Attack Android physical validation
 
 on:
-  push:
-    branches:
-      - chore/local-army-bootstrap-20260827
-    paths-ignore:
-      - 'Logs/**'
   workflow_dispatch:
 
 permissions:
