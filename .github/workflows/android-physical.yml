@@ -87,6 +87,16 @@ jobs:
           & '.\Tools\CI\Analyze-AndroidRuntimeDiagnostics.ps1' -EvidenceRoot $evidence -ExpectedSha $env:EXPECTED_SOURCE_SHA -ExpectedApkSha256 $env:ANDROID_APK_SHA256
           if($LASTEXITCODE -ne 0){throw "RUNTIME_DIAGNOSTICS=FAIL exit=$LASTEXITCODE"}
 
+      - name: Publish APK-FINAL after physical PASS
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if(-not $env:ANDROID_APK_PATH){throw 'APK_FINAL_COPY=FAIL candidate_path_missing'}
+          $actual=(Get-FileHash -LiteralPath $env:ANDROID_APK_PATH -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -ne ([string]$env:ANDROID_APK_SHA256).ToLowerInvariant()){throw "APK_FINAL_COPY=FAIL candidate_hash expected=$env:ANDROID_APK_SHA256 actual=$actual"}
+          & '.\Tools\CI\Publish-ApkFinal.ps1' -SourceApk $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -RelativePath 'ArmyAttack-23.2.apk' -Kind 'base-23.2' -PhysicalValidated
+          Write-Host 'FINAL_VALIDATION=PASS physical_validation=PASS'
+
       - name: Physical validation summary
         if: always()
         shell: powershell
