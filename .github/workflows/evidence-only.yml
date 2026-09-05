@@ -2,8 +2,6 @@ name: Army Attack evidence-only
 
 on:
   push:
-    branches:
-      - chore/local-army-bootstrap-20260827
     paths:
       - 'Logs/**'
 
@@ -16,30 +14,152 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 2
           persist-credentials: false
-      - name: Validate logs-only commit
+
+      - name: Classify commit and validate evidence policy
         shell: bash
         run: |
           set -euo pipefail
           parent="$(git rev-parse HEAD^)"
           mapfile -d '' -t changed < <(git -c core.quotepath=false diff --name-only -z "$parent" HEAD)
           if [ "${#changed[@]}" -eq 0 ]; then
-            echo "EVIDENCE_ONLY=FAIL no_changes"
+            echo "EVIDENCE_TRIGGER=FAIL no_changes"
             exit 1
           fi
+
+          evidence_changed=0
+          non_evidence=()
           for path in "${changed[@]}"; do
             case "$path" in
-              Logs/*) ;;
-              *) echo "EVIDENCE_ONLY=FAIL non_logs_path=$path"; exit 1 ;;
+              Logs/physical-adb/*) evidence_changed=1 ;;
+              *) non_evidence+=("$path") ;;
             esac
           done
-          if grep -RIE --exclude='manifest.json' -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}' Logs; then
+          if [ "$evidence_changed" -ne 1 ]; then
+            echo "EVIDENCE_TRIGGER=FAIL no_physical_evidence_change"
+            exit 1
+          fi
+
+          if [ "${#non_evidence[@]}" -eq 0 ]; then
+            commit_class="EVIDENCE_ONLY"
+            echo "EVIDENCE_COMMIT_CLASS=EVIDENCE_ONLY"
+          else
+            commit_class="MIXED_SOURCE_AND_EVIDENCE"
+            echo "EVIDENCE_COMMIT_CLASS=MIXED_SOURCE_AND_EVIDENCE non_evidence_count=${#non_evidence[@]}"
+            printf 'EVIDENCE_MIXED_NON_EVIDENCE_PATH=%s\n' "${non_evidence[@]}"
+          fi
+
+          if grep -RIE --exclude='manifest.json' -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}' Logs/physical-adb; then
             echo "SANITIZATION=FAIL secret_marker"
             exit 1
           fi
+
+          python - <<'PY'
+          import hashlib, json, pathlib
+          root=pathlib.Path('Logs/physical-adb')
+          forbidden={'.apk','.aab','.apks','.zip','.7z','.img','.iso','.so','.dex','.vdex','.odex','.oat','.bin'}
+          legacy_text={'.log','.txt','.json','.md','.xml','.csv'}
+          runs=[]
+          for cls in ('validations','failures'):
+              c=root/cls
+              if not c.exists():
+                  continue
+              for sha_dir in c.iterdir():
+                  if not sha_dir.is_dir():
+                      continue
+                  for run in sha_dir.iterdir():
+                      if run.is_dir():
+                          runs.append(run)
+          if len(runs)>3:
+              raise SystemExit(f'EVIDENCE_RETENTION=FAIL runs={len(runs)} maximum=3')
+          core_runs=0
+          legacy_runs=0
+          legacy_crlf_reconstructed=0
+          for run in runs:
+              all_files=[p for p in run.rglob('*') if p.is_file()]
+              manifest=run/'manifest.json'
+              payload=[p for p in all_files if p != manifest]
+              if len(payload)>200:
+                  raise SystemExit(f'EVIDENCE_POLICY=FAIL run={run} payload_files={len(payload)} maximum=200')
+              total=sum(p.stat().st_size for p in payload)
+              if total>26214400:
+                  raise SystemExit(f'EVIDENCE_POLICY=FAIL run={run} payload_bytes={total} maximum=26214400')
+              screenshots=0
+              for p in payload:
+                  size=p.stat().st_size
+                  if p.suffix.lower() in forbidden:
+                      raise SystemExit(f'EVIDENCE_POLICY=FAIL forbidden_binary={p}')
+                  if size>8388608:
+                      raise SystemExit(f'EVIDENCE_POLICY=FAIL file={p} bytes={size} maximum=8388608')
+                  if p.suffix.lower() in {'.png','.jpg','.jpeg','.webp'}:
+                      screenshots+=1
+              if screenshots>8:
+                  raise SystemExit(f'EVIDENCE_POLICY=FAIL run={run} screenshots={screenshots} maximum=8')
+              if not manifest.is_file():
+                  raise SystemExit(f'EVIDENCE_MANIFEST=FAIL missing={manifest}')
+              data=json.loads(manifest.read_text(encoding='utf-8-sig'))
+              core=(data.get('schema')=='androidbuild-evidence/v1')
+              legacy=(data.get('schema_version')==1 and isinstance(data.get('published_files'),list))
+              if not core and not legacy:
+                  raise SystemExit(f'EVIDENCE_MANIFEST=FAIL unknown_schema run={run}')
+              if core:
+                  core_runs+=1
+                  listed=data.get('files') or []
+              else:
+                  legacy_runs+=1
+                  listed=data.get('published_files') or []
+              listed_paths=set()
+              for item in listed:
+                  rel=item.get('path','')
+                  target=(run/rel).resolve()
+                  try:
+                      target.relative_to(run.resolve())
+                  except ValueError:
+                      raise SystemExit(f'EVIDENCE_MANIFEST=FAIL unsafe_path={rel}')
+                  if not target.is_file():
+                      raise SystemExit(f'EVIDENCE_MANIFEST=FAIL file_missing={rel}')
+                  raw=target.read_bytes()
+                  expected_bytes=int(item.get('bytes',-1))
+                  expected_hash=str(item.get('sha256','')).lower()
+                  raw_hash=hashlib.sha256(raw).hexdigest().lower()
+                  if core:
+                      if len(raw)!=expected_bytes:
+                          raise SystemExit(f'EVIDENCE_MANIFEST=FAIL size={rel}')
+                      if raw_hash!=expected_hash:
+                          raise SystemExit(f'EVIDENCE_MANIFEST=FAIL sha256={rel}')
+                      if item.get('sanitized') is not True:
+                          raise SystemExit(f'EVIDENCE_MANIFEST=FAIL sanitized={rel}')
+                  else:
+                      candidates=[('git_checkout',raw)]
+                      if target.suffix.lower() in legacy_text:
+                          crlf=raw.replace(b'\r\n',b'\n').replace(b'\n',b'\r\n')
+                          if crlf!=raw:
+                              candidates.append(('windows_crlf_reconstruction',crlf))
+                      matched=None
+                      for mode,candidate in candidates:
+                          if len(candidate)==expected_bytes and hashlib.sha256(candidate).hexdigest().lower()==expected_hash:
+                              matched=mode
+                              break
+                      if matched is None:
+                          raise SystemExit(f'EVIDENCE_MANIFEST=FAIL legacy_integrity={rel}')
+                      if matched=='windows_crlf_reconstruction':
+                          legacy_crlf_reconstructed+=1
+                  listed_paths.add(rel.replace('\\','/'))
+              actual={p.relative_to(run).as_posix() for p in payload}
+              if listed_paths!=actual:
+                  raise SystemExit(f'EVIDENCE_MANIFEST=FAIL inventory_mismatch run={run}')
+          print(f'EVIDENCE_POLICY=PASS runs={len(runs)} payload_max_files=200 payload_max_bytes=26214400 payload_max_file_bytes=8388608 max_screenshots=8 forbidden_binary_count=0')
+          print(f'EVIDENCE_MANIFEST=PASS core_runs={core_runs} legacy_retained_runs={legacy_runs} legacy_crlf_reconstructed={legacy_crlf_reconstructed}')
+          PY
+
           echo "SANITIZATION=PASS"
-          echo "EVIDENCE_ONLY=PASS parent_sha=$parent commit=${{ github.sha }}"
+          if [ "$commit_class" = "EVIDENCE_ONLY" ]; then
+            echo "EVIDENCE_ONLY=PASS parent_sha=$parent commit=${{ github.sha }}"
+          else
+            echo "EVIDENCE_ONLY=NOT_APPLICABLE reason=mixed_source_commit parent_sha=$parent commit=${{ github.sha }}"
+            echo "EVIDENCE_POLICY_CHECK=PASS commit_class=MIXED_SOURCE_AND_EVIDENCE"
+          fi

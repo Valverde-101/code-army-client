@@ -9,32 +9,17 @@ param(
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
-# One-time migration repair: candidate c3ec09ff was proven valid but was incorrectly
-# copied to APK-FINAL before physical validation by the pre-Core publisher contract.
-# Delete only Army-owned entries whose sidecar proves that exact SHA; never touch
-# another project's APK-FINAL ownership.
-function Remove-PrematureMigrationFinal {
-  $badSha='c3ec09fff4c06da08aeebdd070bf570534cd4fbe'
-  $finalRoot=Join-Path $AndroidBuildRoot 'APK-FINAL'
-  $targets=@(
-    (Join-Path $finalRoot (Join-Path (Join-Path 'archive' $badSha) 'ArmyAttack-23.2.apk')),
-    (Join-Path $finalRoot 'ArmyAttack-23.2.apk')
-  )
-  foreach($apkPath in $targets){
-    $metaPath=$apkPath+'.json'
-    if(-not(Test-Path -LiteralPath $metaPath -PathType Leaf)){continue}
-    try{$meta=Get-Content -LiteralPath $metaPath -Raw|ConvertFrom-Json}catch{continue}
-    if([string]$meta.repository -ne 'Valverde-101/code-army-client' -or [string]$meta.tested_sha -ne $badSha){continue}
-    Remove-Item -LiteralPath $apkPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $metaPath -Force -ErrorAction SilentlyContinue
-    Write-Host "APK_FINAL_MIGRATION_CLEANUP=PASS tested_sha=$badSha path=$apkPath ownership=army-attack"
-  }
-}
-
-Remove-PrematureMigrationFinal
+$repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$configPath=Join-Path $repoRoot '.androidbuild.json'
+if(-not(Test-Path -LiteralPath $configPath -PathType Leaf)){throw "APK_FINAL_COPY=FAIL config_missing=$configPath"}
+$config=Get-Content -LiteralPath $configPath -Raw|ConvertFrom-Json
+$ownedName=[string]$config.delivery.final_apk_name
+if([string]::IsNullOrWhiteSpace($ownedName)){throw 'APK_FINAL_COPY=FAIL owned_name_missing'}
+if([IO.Path]::GetFileName($RelativePath) -ne $RelativePath){throw "APK_FINAL_COPY=FAIL invalid_relative_path=$RelativePath"}
+if($RelativePath -ne $ownedName){throw "APK_FINAL_COPY=FAIL ownership expected=$ownedName actual=$RelativePath"}
 
 if(-not $PhysicalValidated){
-  Write-Host "APK_FINAL_PUBLICATION=DEFERRED_UNTIL_PHYSICAL_VALIDATION tested_sha=$ExpectedSha kind=$Kind"
+  Write-Host "APK_FINAL_PUBLICATION=DEFERRED_UNTIL_PHYSICAL_VALIDATION tested_sha=$ExpectedSha kind=$Kind owned_name=$ownedName"
   return
 }
 
@@ -44,8 +29,8 @@ $sourceSha=(Get-FileHash -LiteralPath $SourceApk -Algorithm SHA256).Hash.ToLower
 
 $finalRoot=Join-Path $AndroidBuildRoot 'APK-FINAL'
 $archiveRoot=Join-Path $finalRoot (Join-Path 'archive' $ExpectedSha)
-$archiveDest=Join-Path $archiveRoot $RelativePath
-$latestDest=Join-Path $finalRoot $RelativePath
+$archiveDest=Join-Path $archiveRoot $ownedName
+$latestDest=Join-Path $finalRoot $ownedName
 
 foreach($dir in @((Split-Path -Parent $archiveDest),(Split-Path -Parent $latestDest))){
   New-Item -ItemType Directory -Force -Path $dir|Out-Null
@@ -93,4 +78,4 @@ $latestSha=(Get-FileHash -LiteralPath $latestDest -Algorithm SHA256).Hash.ToLowe
 if($latestSha -ne $sourceSha){throw "APK_FINAL_LATEST=FAIL expected=$sourceSha actual=$latestSha path=$latestDest"}
 $meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath ($latestDest+'.json') -Encoding UTF8
 Write-Host "APK_FINAL_LATEST=PASS path=$latestDest sha256=$latestSha physical_validation=PASS"
-Write-Host "APK_FINAL_COPY=PASS kind=$Kind physical_validation=PASS"
+Write-Host "APK_FINAL_COPY=PASS kind=$Kind physical_validation=PASS owned_name=$ownedName"

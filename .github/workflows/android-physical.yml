@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: army-attack-physical-${{ github.ref }}
@@ -41,21 +41,55 @@ jobs:
           $env:PATH="$(Split-Path -Parent $git);$env:PATH"
           Write-Host "PRECHECK_GIT=PASS path=$git"
 
-      - name: Checkout exact HEAD
+      - name: Checkout exact HEAD with evidence-push credentials
         uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_SOURCE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
+          fetch-depth: 2
+          persist-credentials: true
 
-      - name: Validate exact checkout and portable ADB
+      - name: Validate exact checkout, Core and portable ADB
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
+          if($env:SOURCE_BRANCH -eq 'main'){
+            throw 'PHYSICAL_PRECHECK=FAIL same_pr_evidence_requires_feature_branch'
+          }
           & '.\Tools\CI\Precheck-AndroidPhysical.ps1' -ExpectedSha $env:EXPECTED_SOURCE_SHA
           if($LASTEXITCODE -ne 0){throw "PHYSICAL_PRECHECK=FAIL exit=$LASTEXITCODE"}
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $core=[version](Get-AndroidBuildCoreVersion)
+          if($core -lt [version]'3.0.9'){throw "PHYSICAL_PRECHECK=FAIL core=$core minimum=3.0.9"}
+          foreach($name in @('Reduce-AndroidBuildEvidence','Publish-AndroidBuildEvidence','Publish-AndroidBuildEvidenceCommit')){
+            if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "PHYSICAL_PRECHECK=FAIL core_evidence_capability=$name"}
+          }
+          Write-Host "PHYSICAL_CORE_PRECHECK=PASS core=$core evidence_publisher=androidbuild-global branch=$env:SOURCE_BRANCH"
+
+      - name: Prepare isolated raw evidence staging
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          $raw=Join-Path $PWD.Path (".work\evidence-staging\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
+          if(Test-Path -LiteralPath $raw){Remove-Item -LiteralPath $raw -Recurse -Force}
+          New-Item -ItemType Directory -Force -Path $raw|Out-Null
+          $legacy=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\physical"
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $legacy)|Out-Null
+          if(Test-Path -LiteralPath $legacy){
+            $item=Get-Item -LiteralPath $legacy -Force
+            if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){
+              & cmd.exe /d /c ('rmdir "{0}"' -f $legacy)|Out-Null
+            }else{
+              Remove-Item -LiteralPath $legacy -Recurse -Force
+            }
+          }
+          New-Item -ItemType Junction -Path $legacy -Target $raw|Out-Null
+          "PHYSICAL_RAW_EVIDENCE=$raw"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PHYSICAL_EVIDENCE_LINK=$legacy"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "EVIDENCE_STAGING=PASS raw=$raw compatibility_link=$legacy ownership=androidbuild-core"
 
       - name: Wait for exact validated APK
+        id: apk_wait
+        continue-on-error: true
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
@@ -72,7 +106,10 @@ jobs:
           "ANDROID_APK_SHA256=$sha"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "APK_EXACT=PASS tested_sha=$env:EXPECTED_SOURCE_SHA path=$($apk.FullName) size=$($apk.Length) sha256=$sha"
 
-      - name: Test exact APK on physical device when available
+      - name: Test exact APK on physical device
+        id: device_test
+        if: steps.apk_wait.outcome == 'success'
+        continue-on-error: true
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
@@ -80,22 +117,138 @@ jobs:
           if($LASTEXITCODE -ne 0){throw "PHYSICAL_VALIDATION=FAIL exit=$LASTEXITCODE"}
 
       - name: Validate always-on runtime and SWF traces
+        id: runtime_diag
+        if: always() && steps.device_test.outcome == 'success'
+        continue-on-error: true
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $evidence=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\physical"
-          & '.\Tools\CI\Analyze-AndroidRuntimeDiagnostics.ps1' -EvidenceRoot $evidence -ExpectedSha $env:EXPECTED_SOURCE_SHA -ExpectedApkSha256 $env:ANDROID_APK_SHA256
+          if(-not $env:ANDROID_APK_SHA256){throw 'RUNTIME_DIAGNOSTICS=FAIL apk_sha_missing'}
+          & '.\Tools\CI\Analyze-AndroidRuntimeDiagnostics.ps1' -EvidenceRoot $env:PHYSICAL_RAW_EVIDENCE -ExpectedSha $env:EXPECTED_SOURCE_SHA -ExpectedApkSha256 $env:ANDROID_APK_SHA256
           if($LASTEXITCODE -ne 0){throw "RUNTIME_DIAGNOSTICS=FAIL exit=$LASTEXITCODE"}
 
+      - name: Resolve physical validation truth
+        id: truth
+        if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          $apkOutcome='${{ steps.apk_wait.outcome }}'
+          $deviceOutcome='${{ steps.device_test.outcome }}'
+          $diagOutcome='${{ steps.runtime_diag.outcome }}'
+          $result='FAIL';$reason='upstream_gate_failed'
+          $summaryPath=Join-Path $env:PHYSICAL_RAW_EVIDENCE 'summary.json'
+          $summary=$null
+          if(Test-Path -LiteralPath $summaryPath){
+            try{$summary=Get-Content -LiteralPath $summaryPath -Raw|ConvertFrom-Json}catch{}
+          }
+          if($apkOutcome -ne 'success'){$reason='candidate_apk_unavailable'}
+          elseif($deviceOutcome -ne 'success'){$reason='device_test_failed'}
+          elseif(-not $summary){$reason='physical_summary_missing'}
+          elseif([string]$summary.result -eq 'SKIPPED_WITH_REASON'){$reason='physical_test_skipped_'+[string]$summary.reason}
+          elseif($diagOutcome -ne 'success'){$reason='runtime_diagnostics_failed'}
+          else{
+            $required=@('ADB_DEVICE','INSTALL','START','HEALTH','SMOKE','FUNCTIONAL_TESTS','CRASH_CHECK','ANR_CHECK','PHYSICAL_EVIDENCE')
+            $bad=@()
+            foreach($gate in $required){
+              $value=[string]$summary.results.$gate
+              if($value -ne 'PASS'){$bad+="$gate=$value"}
+            }
+            if($bad.Count -eq 0){$result='PASS';$reason='all_mandatory_physical_gates_pass'}
+            else{$reason='mandatory_gate_'+($bad -join ',')}
+          }
+          [ordered]@{
+            repository=$env:GITHUB_REPOSITORY
+            tested_sha=$env:EXPECTED_SOURCE_SHA
+            run_id=$env:GITHUB_RUN_ID
+            apk_outcome=$apkOutcome
+            device_outcome=$deviceOutcome
+            diagnostics_outcome=$diagOutcome
+            physical_result=$result
+            reason=$reason
+            generated_utc=[DateTime]::UtcNow.ToString('o')
+          }|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $env:PHYSICAL_RAW_EVIDENCE 'physical-gate.json') -Encoding UTF8
+          "PHYSICAL_RESULT=$result"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PHYSICAL_REASON=$reason"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "result=$result"|Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "reason=$reason"|Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "PHYSICAL_TRUTH=$result reason=$reason tested_sha=$env:EXPECTED_SOURCE_SHA"
+
+      - name: Publish sanitized bounded evidence through Core
+        id: evidence_publish
+        if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          if(-not(Test-Path -LiteralPath $env:PHYSICAL_RAW_EVIDENCE -PathType Container)){throw 'EVIDENCE_PUBLISH=FAIL raw_missing'}
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $cfg=Get-Content -LiteralPath '.\.androidbuild.json' -Raw|ConvertFrom-Json
+          Reduce-AndroidBuildEvidence -Path $env:PHYSICAL_RAW_EVIDENCE|Out-Null
+          $r=Publish-AndroidBuildEvidence -RepoRoot $PWD.Path -RawEvidencePath $env:PHYSICAL_RAW_EVIDENCE -Result $env:PHYSICAL_RESULT -TestedSha $env:EXPECTED_SOURCE_SHA -KeepRuns ([int]$cfg.evidence.keep_runs_global) -MaxFiles ([int]$cfg.evidence.max_files_per_run) -MaxBytes ([int64]$cfg.evidence.max_total_bytes_per_run) -MaxFileBytes ([int64]$cfg.evidence.max_file_bytes) -MaxScreenshots ([int]$cfg.evidence.max_screenshots)
+          if([string]$r.status -ne 'PASS'){throw "EVIDENCE_PUBLISH=FAIL status=$($r.status)"}
+          "EVIDENCE_PUBLISHED_PATH=$($r.path)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "EVIDENCE_PUBLISH=PASS path=$($r.path) result=$($r.result) tested_sha=$($r.tested_sha) policy=core"
+
+      - name: Commit evidence to the tested PR branch
+        id: evidence_commit
+        if: always() && steps.evidence_publish.outcome == 'success'
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $r=Publish-AndroidBuildEvidenceCommit -RepoRoot $PWD.Path -Branch $env:SOURCE_BRANCH -TestedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
+          if([string]$r.status -notin @('PASS','NO_CHANGES')){throw "EVIDENCE_PUSH=FAIL status=$($r.status)"}
+          $evidenceSha=[string]$r.evidence_commit_sha
+          if($evidenceSha){"EVIDENCE_COMMIT_SHA=$evidenceSha"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
+          Write-Host "TESTED_SHA=$env:EXPECTED_SOURCE_SHA"
+          Write-Host "EVIDENCE_COMMIT_SHA=$(if($evidenceSha){$evidenceSha}else{'NO_CHANGES'})"
+          Write-Host "EVIDENCE_PUSH=$($r.status)"
+
       - name: Publish APK-FINAL after physical PASS
+        id: final_apk
+        if: steps.truth.outputs.result == 'PASS' && steps.evidence_publish.outcome == 'success' && steps.evidence_commit.outcome == 'success'
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           if(-not $env:ANDROID_APK_PATH){throw 'APK_FINAL_COPY=FAIL candidate_path_missing'}
           $actual=(Get-FileHash -LiteralPath $env:ANDROID_APK_PATH -Algorithm SHA256).Hash.ToLowerInvariant()
           if($actual -ne ([string]$env:ANDROID_APK_SHA256).ToLowerInvariant()){throw "APK_FINAL_COPY=FAIL candidate_hash expected=$env:ANDROID_APK_SHA256 actual=$actual"}
-          & '.\Tools\CI\Publish-ApkFinal.ps1' -SourceApk $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -RelativePath 'ArmyAttack-23.2.apk' -Kind 'base-23.2' -PhysicalValidated
-          Write-Host 'FINAL_VALIDATION=PASS physical_validation=PASS'
+          $cfg=Get-Content -LiteralPath '.\.androidbuild.json' -Raw|ConvertFrom-Json
+          $ownedName=[string]$cfg.delivery.final_apk_name
+          if([string]::IsNullOrWhiteSpace($ownedName)){throw 'APK_FINAL_COPY=FAIL owned_name_missing'}
+          & '.\Tools\CI\Publish-ApkFinal.ps1' -SourceApk $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -RelativePath $ownedName -Kind 'base-23.2' -PhysicalValidated
+          Write-Host "APK_FINAL_OWNED_NAME=$ownedName"
+
+      - name: Enforce terminal physical gate
+        if: always()
+        shell: powershell
+        run: |
+          $truth='${{ steps.truth.outputs.result }}'
+          $publish='${{ steps.evidence_publish.outcome }}'
+          $commit='${{ steps.evidence_commit.outcome }}'
+          $final='${{ steps.final_apk.outcome }}'
+          Write-Host "PHYSICAL_TRUTH=$truth"
+          Write-Host "EVIDENCE_PUBLISH_OUTCOME=$publish"
+          Write-Host "EVIDENCE_COMMIT_OUTCOME=$commit"
+          Write-Host "APK_FINAL_OUTCOME=$final"
+          if($truth -ne 'PASS'){throw "PHYSICAL_VALIDATION=FAIL reason=${{ steps.truth.outputs.reason }}"}
+          if($publish -ne 'success'){throw "FINAL_VALIDATION=FAIL evidence_publish=$publish"}
+          if($commit -ne 'success'){throw "FINAL_VALIDATION=FAIL evidence_commit=$commit"}
+          if($final -ne 'success'){throw "FINAL_VALIDATION=FAIL apk_final=$final"}
+          Write-Host 'PHYSICAL_VALIDATION=PASS'
+          Write-Host 'FINAL_VALIDATION=PASS physical_validation=PASS evidence=PASS apk_final=PASS'
+
+      - name: Cleanup evidence compatibility link
+        if: always()
+        shell: powershell
+        run: |
+          if($env:PHYSICAL_EVIDENCE_LINK -and (Test-Path -LiteralPath $env:PHYSICAL_EVIDENCE_LINK)){
+            $item=Get-Item -LiteralPath $env:PHYSICAL_EVIDENCE_LINK -Force
+            if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){
+              & cmd.exe /d /c ('rmdir "{0}"' -f $env:PHYSICAL_EVIDENCE_LINK)|Out-Null
+              Write-Host "EVIDENCE_COMPAT_LINK_CLEANUP=PASS path=$env:PHYSICAL_EVIDENCE_LINK"
+            }
+          }
 
       - name: Physical validation summary
         if: always()
@@ -104,12 +257,11 @@ jobs:
           Write-Host "REPOSITORY=$env:GITHUB_REPOSITORY"
           Write-Host "BRANCH=$env:SOURCE_BRANCH"
           Write-Host "TESTED_SHA=$env:EXPECTED_SOURCE_SHA"
+          Write-Host "EVIDENCE_COMMIT_SHA=$(if($env:EVIDENCE_COMMIT_SHA){$env:EVIDENCE_COMMIT_SHA}else{'NOT_PUBLISHED'})"
           Write-Host "RUN=$env:GITHUB_RUN_ID"
           Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
+          Write-Host "PHYSICAL_RESULT=$(if($env:PHYSICAL_RESULT){$env:PHYSICAL_RESULT}else{'NOT_RESOLVED'})"
+          Write-Host "PHYSICAL_REASON=$(if($env:PHYSICAL_REASON){$env:PHYSICAL_REASON}else{'NOT_RESOLVED'})"
           if($env:ANDROID_APK_PATH){Write-Host "APK_PATH=$env:ANDROID_APK_PATH"}
           if($env:ANDROID_APK_SHA256){Write-Host "APK_SHA256=$env:ANDROID_APK_SHA256"}
-          if($env:ANDROIDBUILD_ROOT){
-            Write-Host "PHYSICAL_EVIDENCE_ROOT=$(Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\physical")"
-          } else {
-            Write-Host "PHYSICAL_EVIDENCE_ROOT=UNAVAILABLE precheck_failed"
-          }
+          if($env:EVIDENCE_PUBLISHED_PATH){Write-Host "PHYSICAL_EVIDENCE_ROOT=$env:EVIDENCE_PUBLISHED_PATH"}
