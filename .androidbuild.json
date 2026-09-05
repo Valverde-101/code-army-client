@@ -91,6 +91,7 @@
     "github_seconds": 60,
     "runner_assignment_seconds": 1800,
     "build_seconds": 2400,
+    "build_lease_wait_seconds": 180,
     "adb_seconds": 120,
     "install_seconds": 300,
     "launch_seconds": 90,
