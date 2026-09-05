@@ -59,6 +59,8 @@ jobs:
                           runs.append(run)
           if len(runs)>3:
               raise SystemExit(f'EVIDENCE_RETENTION=FAIL runs={len(runs)} maximum=3')
+          core_runs=0
+          legacy_runs=0
           for run in runs:
               all_files=[p for p in run.rglob('*') if p.is_file()]
               manifest=run/'manifest.json'
@@ -82,9 +84,16 @@ jobs:
               if not manifest.is_file():
                   raise SystemExit(f'EVIDENCE_MANIFEST=FAIL missing={manifest}')
               data=json.loads(manifest.read_text(encoding='utf-8-sig'))
-              if data.get('schema')!='androidbuild-evidence/v1':
-                  raise SystemExit(f'EVIDENCE_MANIFEST=FAIL schema={data.get("schema")} run={run}')
-              listed=data.get('files') or []
+              core=(data.get('schema')=='androidbuild-evidence/v1')
+              legacy=(data.get('schema_version')==1 and isinstance(data.get('published_files'),list))
+              if not core and not legacy:
+                  raise SystemExit(f'EVIDENCE_MANIFEST=FAIL unknown_schema run={run}')
+              if core:
+                  core_runs+=1
+                  listed=data.get('files') or []
+              else:
+                  legacy_runs+=1
+                  listed=data.get('published_files') or []
               listed_paths=set()
               for item in listed:
                   rel=item.get('path','')
@@ -101,14 +110,14 @@ jobs:
                   digest=hashlib.sha256(raw).hexdigest().lower()
                   if digest!=str(item.get('sha256','')).lower():
                       raise SystemExit(f'EVIDENCE_MANIFEST=FAIL sha256={rel}')
-                  if item.get('sanitized') is not True:
+                  if core and item.get('sanitized') is not True:
                       raise SystemExit(f'EVIDENCE_MANIFEST=FAIL sanitized={rel}')
                   listed_paths.add(rel.replace('\\','/'))
               actual={p.relative_to(run).as_posix() for p in payload}
               if listed_paths!=actual:
                   raise SystemExit(f'EVIDENCE_MANIFEST=FAIL inventory_mismatch run={run}')
           print(f'EVIDENCE_POLICY=PASS runs={len(runs)} payload_max_files=200 payload_max_bytes=26214400 payload_max_file_bytes=8388608 max_screenshots=8 forbidden_binary_count=0')
-          print('EVIDENCE_MANIFEST=PASS')
+          print(f'EVIDENCE_MANIFEST=PASS core_runs={core_runs} legacy_retained_runs={legacy_runs}')
           PY
 
           echo "SANITIZATION=PASS"

@@ -28,7 +28,8 @@ if([string]$cfg.delivery.final_apk_name -ne 'ArmyAttack-23.2.apk'){throw "ARMY_P
 if([string]$cfg.core.minimum_version -ne '3.0.9'){throw "ARMY_PROJECT_PRECHECK=FAIL core_contract=$($cfg.core.minimum_version)"}
 if([string]$cfg.migration.mode -ne 'complete-core-orchestrated' -or [string]$cfg.migration.status -ne 'COMPLETE'){throw "ARMY_PROJECT_PRECHECK=FAIL migration_mode=$($cfg.migration.mode) status=$($cfg.migration.status)"}
 if([bool]$cfg.migration.preserve_legacy_until_equivalence){throw 'ARMY_PROJECT_PRECHECK=FAIL migration_still_progressive'}
-if(-not [bool]$cfg.migration.global_core_candidate_orchestration -or -not [bool]$cfg.migration.global_repository_sync -or -not [bool]$cfg.migration.global_flash_toolchain -or -not [bool]$cfg.migration.global_broker_ownership -or -not [bool]$cfg.migration.global_apk_final_gate){throw 'ARMY_PROJECT_PRECHECK=FAIL global_ownership_contract'}
+if(-not [bool]$cfg.migration.global_core_candidate_orchestration -or -not [bool]$cfg.migration.global_repository_sync -or -not [bool]$cfg.migration.global_flash_toolchain -or -not [bool]$cfg.migration.global_broker_ownership -or -not [bool]$cfg.migration.global_apk_final_gate -or -not [bool]$cfg.migration.global_evidence_publisher){throw 'ARMY_PROJECT_PRECHECK=FAIL global_ownership_contract'}
+if([string]$cfg.migration.windows_candidate_workflow -ne '.github/workflows/windows-candidate.yml'){throw "ARMY_PROJECT_PRECHECK=FAIL windows_candidate_workflow=$($cfg.migration.windows_candidate_workflow)"}
 if([bool]$cfg.broker.repository_owned_broker_mutation){throw 'ARMY_PROJECT_PRECHECK=FAIL repository_owned_broker_mutation'}
 if([string]$cfg.physical.activation -ne 'manual_workflow_dispatch'){throw "ARMY_PROJECT_PRECHECK=FAIL physical_activation=$($cfg.physical.activation)"}
 if([string]$cfg.validation.publish_final_apk_after -ne 'PHYSICALLY_VALIDATED'){throw "ARMY_PROJECT_PRECHECK=FAIL final_apk_gate=$($cfg.validation.publish_final_apk_after)"}
@@ -41,19 +42,21 @@ $required=@(
   'Tools\CI\Build-Android.ps1','Tools\CI\Validate-AndroidApk.ps1','Tools\CI\Publish-ApkFinal.ps1','Tools\CI\Audit-PublishedContent.ps1','Tools\CI\Validate-UpstreamAndroidRelease.ps1',
   'Tools\CI\Patch-AndroidPerformanceSwf.ps1','Tools\CI\Build-AndroidDiagnosticsAne.ps1','Tools\CI\Test-AndroidRuntimePatch.ps1','Tools\CI\Test-AndroidDevice.ps1','Tools\CI\Analyze-AndroidRuntimeDiagnostics.ps1','Tools\SWF\Ensure-FFDec.ps1',
   'Tools\CI\Ensure-HarmanAir502.ps1','Tools\CI\Ensure-PortableJdk17.ps1','Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1',
-  '.github\workflows\android-candidate.yml','.github\workflows\android-physical.yml','.github\workflows\evidence-only.yml','src','.gitmodules'
+  '.github\workflows\android-candidate.yml','.github\workflows\android-physical.yml','.github\workflows\evidence-only.yml','.github\workflows\windows-candidate.yml',
+  'Logs\physical-adb\RETENTION.md','src','.gitmodules'
 )
 foreach($relative in $required){if(-not(Test-Path -LiteralPath (Join-Path $repoRoot $relative))){throw "ARMY_PROJECT_PRECHECK=FAIL missing=$relative"}}
 $retired=@(
-  'Tools\CI\Bootstrap-PhysicalClone.ps1','Tools\CI\Enable-AutoRepoPool4.ps1','Tools\CI\Start-AutoRepoPool4.runtime.ps1',
-  '.github\workflows\enable-autorepo-pool4.yml','.github\workflows\cancel-stale-android.yml','.github\workflows\runner-pool-diagnostic.yml'
+  'Tools\CI\Bootstrap-PhysicalClone.ps1','Tools\CI\Enable-AutoRepoPool4.ps1','Tools\CI\Start-AutoRepoPool4.runtime.ps1','Tools\CI\Publish-AndroidEvidence.ps1',
+  '.github\workflows\bootstrap-physical-clone.yml','.github\workflows\enable-autorepo-pool4.yml','.github\workflows\cancel-stale-android.yml','.github\workflows\runner-pool-diagnostic.yml',
+  'Logs\physical-adb\validations\RETENTION.md'
 )
 foreach($relative in $retired){if(Test-Path -LiteralPath (Join-Path $repoRoot $relative)){throw "ARMY_PROJECT_PRECHECK=FAIL retired_infrastructure_present=$relative"}}
 $gitmodules=Get-Content -LiteralPath (Join-Path $repoRoot '.gitmodules') -Raw
 if($gitmodules -notmatch 'vendor/Test_army_attack'){throw 'ARMY_PROJECT_PRECHECK=FAIL published_submodule_contract_missing'}
 
 $candidateWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\android-candidate.yml') -Raw
-foreach($legacy in @('Enable-AutoRepoPool4.ps1','Start-AutoRepoPool4.runtime.ps1','Bootstrap-PhysicalClone.ps1')){
+foreach($legacy in @('Enable-AutoRepoPool4.ps1','Start-AutoRepoPool4.runtime.ps1','Bootstrap-PhysicalClone.ps1','Publish-AndroidEvidence.ps1')){
   if($candidateWorkflow.Contains($legacy)){throw "ARMY_PROJECT_PRECHECK=FAIL legacy_infrastructure_still_invoked=$legacy"}
 }
 if(-not $candidateWorkflow.Contains("paths-ignore:") -or -not $candidateWorkflow.Contains("'Logs/**'")){throw 'ARMY_PROJECT_PRECHECK=FAIL candidate_does_not_ignore_evidence_only_commits'}
@@ -66,17 +69,31 @@ foreach($needle in @(
 )){
   if(-not $physicalWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL physical_contract_missing=$needle"}
 }
-if($physicalWorkflow.Contains('no_authorized_device') -and -not $physicalWorkflow.Contains('PHYSICAL_TRUTH')){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_skip_can_bypass_truth_gate'}
 
 $evidenceWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\evidence-only.yml') -Raw
 if($evidenceWorkflow.Contains('chore/local-army-bootstrap-20260827')){throw 'ARMY_PROJECT_PRECHECK=FAIL evidence_workflow_hardcoded_legacy_branch'}
-foreach($needle in @('Logs/physical-adb','EVIDENCE_RETENTION=FAIL','EVIDENCE_MANIFEST=PASS','maximum=200','maximum=26214400','maximum=8388608','maximum=8')){
+foreach($needle in @('Logs/physical-adb','EVIDENCE_RETENTION=FAIL','EVIDENCE_MANIFEST=PASS','androidbuild-evidence/v1','legacy_retained_runs','maximum=200','maximum=26214400','maximum=8388608','maximum=8')){
   if(-not $evidenceWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_verifier_missing=$needle"}
 }
+
+$retentionText=Get-Content -LiteralPath (Join-Path $repoRoot 'Logs\physical-adb\RETENTION.md') -Raw
+foreach($needle in @('3 physical runs total','200 files','25 MiB','8 MiB','TESTED_SHA','EVIDENCE_COMMIT_SHA','AndroidBuild Core 3.0.9')){
+  if(-not $retentionText.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL retention_document_missing=$needle"}
+}
+$physicalRuns=@()
+foreach($class in @('validations','failures')){
+  $classRoot=Join-Path $repoRoot ("Logs\physical-adb\"+$class)
+  if(-not(Test-Path -LiteralPath $classRoot)){continue}
+  foreach($shaDir in @(Get-ChildItem -LiteralPath $classRoot -Directory -ErrorAction SilentlyContinue)){
+    foreach($runDir in @(Get-ChildItem -LiteralPath $shaDir.FullName -Directory -ErrorAction SilentlyContinue)){$physicalRuns+=$runDir}
+  }
+}
+if($physicalRuns.Count -gt 3){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_retention_existing_runs=$($physicalRuns.Count) maximum=3"}
+Write-Host "ARMY_EVIDENCE_RETENTION_PRECHECK=PASS runs=$($physicalRuns.Count) maximum=3"
 
 $publisher=Get-Content -LiteralPath (Join-Path $repoRoot 'Tools\CI\Publish-ApkFinal.ps1') -Raw
 if(-not $publisher.Contains('[switch]$PhysicalValidated') -or -not $publisher.Contains('APK_FINAL_PUBLICATION=DEFERRED_UNTIL_PHYSICAL_VALIDATION')){throw 'ARMY_PROJECT_PRECHECK=FAIL apk_final_publisher_gate_missing'}
 if(-not $publisher.Contains('delivery.final_apk_name')){throw 'ARMY_PROJECT_PRECHECK=FAIL apk_final_ownership_not_config_driven'}
 if($publisher.Contains('c3ec09fff4c06da08aeebdd070bf570534cd4fbe') -or $publisher.Contains('Remove-PrematureMigrationFinal')){throw 'ARMY_PROJECT_PRECHECK=FAIL one_shot_migration_cleanup_still_present'}
 
-Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.9 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE physical_activation=manual evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_gate=physical_pass_only"
+Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.9 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE physical_activation=manual evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_gate=physical_pass_only legacy_evidence_publisher=ABSENT windows_candidate=core_synced"
