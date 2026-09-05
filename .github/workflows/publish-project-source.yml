@@ -1,0 +1,104 @@
+name: Publish Army Attack Project Source
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: armyattack-project-source-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '0' }}
+      SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Enable AndroidBuild Core
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=@($env:ANDROIDBUILD_ROOT,'V:\AndroidBuild','D:\AndroidBuild','C:\AndroidBuild')|Where-Object{$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -First 1
+          if(-not $root){throw 'ARMY_PROJECT_SOURCE_PRECHECK=FAIL androidbuild_root_not_found'}
+          $root=(Resolve-Path -LiteralPath $root).Path
+          Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $core=[version](Get-AndroidBuildCoreVersion)
+          if($core -lt [version]'3.0.9'){throw "ARMY_PROJECT_SOURCE_PRECHECK=FAIL core=$core minimum=3.0.9"}
+          Enable-AndroidBuildPortableTools -AndroidBuildRoot $root|Out-Null
+          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "ARMY_PROJECT_SOURCE_PRECHECK=PASS core=$core root=$root"
+
+      - name: Bootstrap exact Army source
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $workspace=$PWD.Path
+          & $git config --global --add safe.directory $workspace
+          if(-not(Test-Path -LiteralPath (Join-Path $workspace '.git'))){& $git init $workspace|Out-Host;if($LASTEXITCODE -ne 0){throw 'ARMY_PROJECT_SOURCE_BOOTSTRAP=FAIL git_init'}}
+          $repoUrl="https://github.com/$env:GITHUB_REPOSITORY.git"
+          & $git -C $workspace remote get-url origin *> $null
+          if($LASTEXITCODE -eq 0){& $git -C $workspace remote set-url origin $repoUrl}else{& $git -C $workspace remote add origin $repoUrl}
+          $pair="x-access-token:$env:GITHUB_TOKEN";$basic=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair));$extra="AUTHORIZATION: basic $basic"
+          & $git -C $workspace -c "http.https://github.com/.extraheader=$extra" fetch --force --no-tags origin $env:EXPECTED_SOURCE_SHA
+          if($LASTEXITCODE -ne 0){throw 'ARMY_PROJECT_SOURCE_BOOTSTRAP=FAIL fetch'}
+          & $git -C $workspace checkout --detach --force $env:EXPECTED_SOURCE_SHA
+          if($LASTEXITCODE -ne 0){throw 'ARMY_PROJECT_SOURCE_BOOTSTRAP=FAIL checkout'}
+          & $git -C $workspace clean -fdx
+          if($LASTEXITCODE -ne 0){throw 'ARMY_PROJECT_SOURCE_BOOTSTRAP=FAIL clean'}
+          $head=(& $git -C $workspace rev-parse HEAD).Trim()
+          if($head -ne $env:EXPECTED_SOURCE_SHA){throw "ARMY_PROJECT_SOURCE_BOOTSTRAP=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$head"}
+          Write-Host "ARMY_PROJECT_SOURCE_BOOTSTRAP=PASS sha=$head"
+
+      - name: Validate Project Source publisher
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $script='.\.github\scripts\publish-armyattack-project-source.ps1'
+          $tokens=$null;$errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors)
+          if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw 'ARMY_PROJECT_SOURCE_PARSER=FAIL'}
+          Write-Host 'ARMY_PROJECT_SOURCE_PARSER=PASS'
+
+      - name: Publish exact Project Source
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $args=@{
+            RepoRoot=$PWD.Path
+            ExpectedSha=$env:EXPECTED_SOURCE_SHA
+            AndroidBuildRoot=$env:ANDROIDBUILD_ROOT
+          }
+          if($env:GITHUB_EVENT_NAME -eq 'pull_request'){
+            $args.PrNumber=[int]$env:PR_NUMBER
+          } else {
+            $args.MainPromotion=$true
+          }
+          & '.\.github\scripts\publish-armyattack-project-source.ps1' @args
+
+      - name: Recheck remote exact head
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $pair="x-access-token:$env:GITHUB_TOKEN";$basic=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair));$extra="AUTHORIZATION: basic $basic"
+          $probe=Invoke-AndroidBuildProcess -FilePath $git -ArgumentList @('-C',$PWD.Path,'-c',"http.https://github.com/.extraheader=$extra",'ls-remote','origin',("refs/heads/"+$env:SOURCE_BRANCH)) -WorkingDirectory $PWD.Path -TimeoutSeconds 30 -Environment @{GIT_TERMINAL_PROMPT='0';GCM_INTERACTIVE='Never'} -AllowNonZeroExit
+          $line=([string]$probe.stdout).Trim()
+          if($probe.exit_code -ne 0 -or [string]::IsNullOrWhiteSpace($line)){throw "ARMY_PROJECT_SOURCE_HEAD_RECHECK=FAIL exit=$($probe.exit_code)"}
+          $remote=(($line -split '\s+')[0]).Trim()
+          if($remote -ne $env:EXPECTED_SOURCE_SHA){throw "ARMY_PROJECT_SOURCE_HEAD_RECHECK=FAIL remote=$remote expected=$env:EXPECTED_SOURCE_SHA"}
+          Write-Host "ARMY_PROJECT_SOURCE_HEAD_RECHECK=PASS sha=$remote"
