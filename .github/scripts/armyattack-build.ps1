@@ -10,7 +10,7 @@ $repoRoot=(Resolve-Path -LiteralPath $repoRoot).Path
 $root=(Resolve-Path -LiteralPath $root).Path
 Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
 $core=[version](Get-AndroidBuildCoreVersion)
-if($core -lt [version]'3.0.9'){throw "ARMY_BUILD_HOOK=FAIL core=$core minimum=3.0.9"}
+if($core -lt [version]'3.0.11'){throw "ARMY_BUILD_HOOK=FAIL core=$core minimum=3.0.11"}
 $identity=Test-AndroidBuildExactHead -RepoRoot $repoRoot -ExpectedSha $expected -AndroidBuildRoot $root
 if([string]$identity.status -ne 'PASS' -or [string]$identity.actual -ne $expected){throw "ARMY_BUILD_HOOK=FAIL repo_head expected=$expected actual=$($identity.actual)"}
 Write-Host 'ARMY_REPO_EXACT_HEAD=PASS'
@@ -117,5 +117,5 @@ Write-Host "ARMY_CANDIDATE_APK=PASS path=$candidate sha256=$candidateHash"
 Write-Host "ARMY_BUILD_METADATA=PASS path=$metaPath"
 Write-Host 'ARMY_CORE_MIGRATION=PASS mode=complete-core-orchestrated toolchain=androidbuild-global broker=androidbuild-global repository_sync=androidbuild-core project_state=repo-work'
 Write-Host "PHYSICAL_VALIDATION=NOT_ACTIVATED manual=$manualPath"
-Write-Host 'APK_FINAL_PUBLICATION=DEFERRED_UNTIL_PHYSICAL_VALIDATION'
+Write-Host 'APK_FINAL_DELIVERY=CORE_CANDIDATE_VALIDATION_PENDING'
 Write-Host 'ARMY_BUILD_HOOK=PASS'
