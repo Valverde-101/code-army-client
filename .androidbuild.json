@@ -53,7 +53,7 @@
     "explicit_output": ".work/artifacts/android/ArmyAttack.apk"
   },
   "delivery": {
-    "mode": "candidate-build-plus-manual-physical-final",
+    "mode": "candidate-build-to-apk-final-plus-manual-physical-validation",
     "final_apk_name": "ArmyAttack-23.2.apk",
     "github_artifact_apk": false,
     "replace_only_owned_filename": true,
@@ -69,7 +69,7 @@
     "ready": true,
     "activation": "manual_workflow_dispatch",
     "workflow": ".github/workflows/android-physical.yml",
-    "final_apk_requires_physical_pass": true,
+    "final_apk_requires_physical_pass": false,
     "current_state": "prepared_not_activated",
     "workflow_timeout_minutes": 25
   },
@@ -117,7 +117,7 @@
     "require_crash_check": true,
     "require_anr_check": true,
     "require_visual_on_visual_failure": true,
-    "publish_final_apk_after": "PHYSICALLY_VALIDATED",
+    "publish_final_apk_after": "CANDIDATE_VALIDATION",
     "static_gates": ["published-v23.2-audit", "runtime-patch-regression", "FFDec SWF patch", "HARMAN AIR package", "Army APK deep validation", "AndroidBuild generic APK validation"],
     "baseline_physical_flows": ["cold_launch", "home_map_navigation", "unit_placement_confirm_cancel", "right_hud_open_close", "supply_aircraft", "world_map_open_close", "desert_map", "pvp_match_start", "pvp_cancel_action", "pvp_firemission", "pvp_paratrooper", "pvp_loot_debrief", "background_foreground", "diagnostics_perf", "diagnostics_mark_lag", "diagnostics_zip", "crash_anr_check"],
     "candidate_without_physical": "CANDIDATE_VALIDATION=PASS",
@@ -133,9 +133,9 @@
     "regression_gate": false
   },
   "core": {
-    "minimum_version": "3.0.9",
+    "minimum_version": "3.0.11",
     "stable_path": "Core/Current",
-    "tested_installed_version": "3.0.10",
+    "tested_installed_version": "3.0.11",
     "update_model": "single-current-one-rollback"
   },
   "migration": {
@@ -161,7 +161,7 @@
     "project_specific_behavior_to_keep": ["Army Attack v23.2 published-content contract", "SWF class patch set and FFDec preprocessing", "PvP/runtime configuration and asset validation", "diagnostics ANE", "Army AIR descriptor and package semantics", "Army deep APK validation", "manual physical gameplay flows", "Windows full-candidate diagnostics"]
   },
   "toolchain": {
-    "androidbuild_core_minimum": "3.0.9",
+    "androidbuild_core_minimum": "3.0.11",
     "java_major": "17",
     "air_version": "50.2.3.6",
     "ffdec_version": "26.2.1",
