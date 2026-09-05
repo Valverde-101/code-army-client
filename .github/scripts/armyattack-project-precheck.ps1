@@ -36,7 +36,6 @@ if([bool]$cfg.broker.repository_owned_broker_mutation){throw 'ARMY_PROJECT_PRECH
 if([string]$cfg.physical.activation -ne 'manual_workflow_dispatch'){throw "ARMY_PROJECT_PRECHECK=FAIL physical_activation=$($cfg.physical.activation)"}
 if([string]$cfg.validation.publish_final_apk_after -ne 'PHYSICALLY_VALIDATED'){throw "ARMY_PROJECT_PRECHECK=FAIL final_apk_gate=$($cfg.validation.publish_final_apk_after)"}
 
-# Canonical repo-local runtime state. Only global tools/Core/Project-Sources/APK-FINAL may live outside .work.
 $workspaceContract=[ordered]@{
   directory='.work'
   build_directory='.work/build'
@@ -60,12 +59,13 @@ if([int]$cfg.evidence.max_files_per_run -ne 200){throw "ARMY_PROJECT_PRECHECK=FA
 if([int64]$cfg.evidence.max_total_bytes_per_run -ne 26214400){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_max_total_bytes=$($cfg.evidence.max_total_bytes_per_run)"}
 if([int64]$cfg.evidence.max_file_bytes -ne 8388608){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_max_file_bytes=$($cfg.evidence.max_file_bytes)"}
 if([int]$cfg.evidence.max_screenshots -ne 8){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_max_screenshots=$($cfg.evidence.max_screenshots)"}
+
 $required=@(
   'Tools\CI\Build-Android.ps1','Tools\CI\Validate-AndroidApk.ps1','Tools\CI\Publish-ApkFinal.ps1','Tools\CI\Audit-PublishedContent.ps1','Tools\CI\Validate-UpstreamAndroidRelease.ps1',
   'Tools\CI\Patch-AndroidPerformanceSwf.ps1','Tools\CI\Build-AndroidDiagnosticsAne.ps1','Tools\CI\Test-AndroidRuntimePatch.ps1','Tools\CI\Test-AndroidDevice.ps1','Tools\CI\Analyze-AndroidRuntimeDiagnostics.ps1','Tools\SWF\Ensure-FFDec.ps1',
   'Tools\CI\Ensure-HarmanAir502.ps1','Tools\CI\Ensure-PortableJdk17.ps1','Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1',
   '.github\scripts\armyattack-workspace.ps1','.github\scripts\publish-armyattack-project-source.ps1',
-  '.github\workflows\android-candidate.yml','.github\workflows\android-physical.yml','.github\workflows\evidence-only.yml','.github\workflows\windows-candidate.yml','.github\workflows\publish-project-source.yml',
+  '.github\workflows\android-candidate.yml','.github\workflows\android-physical.yml','.github\workflows\evidence-only.yml','.github\workflows\windows-candidate.yml','.github\workflows\swf-extract.yml','.github\workflows\publish-project-source.yml',
   'Logs\physical-adb\RETENTION.md','src','.gitmodules'
 )
 foreach($relative in $required){if(-not(Test-Path -LiteralPath (Join-Path $repoRoot $relative))){throw "ARMY_PROJECT_PRECHECK=FAIL missing=$relative"}}
@@ -79,8 +79,8 @@ $gitmodules=Get-Content -LiteralPath (Join-Path $repoRoot '.gitmodules') -Raw
 if($gitmodules -notmatch 'vendor/Test_army_attack'){throw 'ARMY_PROJECT_PRECHECK=FAIL published_submodule_contract_missing'}
 
 $workspaceScript=Get-Content -LiteralPath (Join-Path $repoRoot '.github\scripts\armyattack-workspace.ps1') -Raw
-foreach($needle in @("'.work'","'build'","'cache\\inputs'","'scratch'","'runtime\\AndroidBuild'",'ARMY_BUILD_RETENTION=PASS','ARMY_WORKSPACE_ISOLATION')){
-  if(-not $workspaceScript.Contains($needle) -and $needle -ne 'ARMY_WORKSPACE_ISOLATION'){throw "ARMY_PROJECT_PRECHECK=FAIL workspace_helper_missing=$needle"}
+foreach($needle in @("'.work'","'build'","'cache\inputs'","'scratch'","'runtime\AndroidBuild'",'ARMY_BUILD_RETENTION=PASS','ARMY_WORKSPACE_MIGRATION=PASS','ARMY_WORKSPACE_LAYOUT=PASS')){
+  if(-not $workspaceScript.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL workspace_helper_missing=$needle"}
 }
 
 $candidateWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\android-candidate.yml') -Raw
@@ -88,6 +88,22 @@ foreach($legacy in @('Enable-AutoRepoPool4.ps1','Start-AutoRepoPool4.runtime.ps1
   if($candidateWorkflow.Contains($legacy)){throw "ARMY_PROJECT_PRECHECK=FAIL legacy_infrastructure_still_invoked=$legacy"}
 }
 if(-not $candidateWorkflow.Contains("paths-ignore:") -or -not $candidateWorkflow.Contains("'Logs/**'")){throw 'ARMY_PROJECT_PRECHECK=FAIL candidate_does_not_ignore_evidence_only_commits'}
+
+$windowsWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\windows-candidate.yml') -Raw
+foreach($needle in @('Resolve-AndroidBuildFlashToolchain','Initialize-ArmyAttackWorkspace','ARMY_RUNTIME_ROOT','WINDOWS_WORKSPACE_ISOLATION=PASS')){
+  if(-not $windowsWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL windows_workspace_contract_missing=$needle"}
+}
+foreach($legacy in @("Builds\\code-army-client","Inputs\\code-army-client","-AndroidBuildRoot `$env:ANDROIDBUILD_ROOT")){
+  if($windowsWorkflow.Contains($legacy)){throw "ARMY_PROJECT_PRECHECK=FAIL windows_legacy_state_reference=$legacy"}
+}
+
+$swfWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\swf-extract.yml') -Raw
+foreach($needle in @('Sync-AndroidBuildRepositoryExactHead','CORE_REPOSITORY_SYNC=PASS','.work\swf-extracted\23.2','Ensure-AndroidBuildFFDec')){
+  if(-not $swfWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL swf_extract_contract_missing=$needle"}
+}
+foreach($legacy in @('Bootstrap-PhysicalClone.ps1','chore/local-army-bootstrap-20260827')){
+  if($swfWorkflow.Contains($legacy)){throw "ARMY_PROJECT_PRECHECK=FAIL swf_extract_legacy_reference=$legacy"}
+}
 
 $physicalWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\android-physical.yml') -Raw
 if($physicalWorkflow -match '(?m)^\s*push\s*:'){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_workflow_not_manual_only'}
@@ -124,4 +140,4 @@ if(-not $publisher.Contains('[switch]$PhysicalValidated') -or -not $publisher.Co
 if(-not $publisher.Contains('delivery.final_apk_name')){throw 'ARMY_PROJECT_PRECHECK=FAIL apk_final_ownership_not_config_driven'}
 if($publisher.Contains('c3ec09fff4c06da08aeebdd070bf570534cd4fbe') -or $publisher.Contains('Remove-PrematureMigrationFinal')){throw 'ARMY_PROJECT_PRECHECK=FAIL one_shot_migration_cleanup_still_present'}
 
-Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.9 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE project_state=repo-work build_retention=3 input_cache=sha256 scratch=ephemeral physical_activation=manual evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_gate=physical_pass_only legacy_evidence_publisher=ABSENT windows_candidate=core_synced"
+Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.9 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE project_state=repo-work build_retention=3 input_cache=sha256 scratch=ephemeral windows=repo-work swf_extract=core-synced physical_activation=manual evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_gate=physical_pass_only legacy_evidence_publisher=ABSENT"
