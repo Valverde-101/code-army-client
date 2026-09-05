@@ -44,7 +44,7 @@
   },
   "delivery": {
     "mode": "candidate-build-plus-manual-physical-final",
-    "final_apk_name": "ArmyAttack.apk",
+    "final_apk_name": "ArmyAttack-23.2.apk",
     "github_artifact_apk": false,
     "replace_only_owned_filename": true,
     "candidate_path": "Repositories/code-army-client/.work/artifacts/android/ArmyAttack.apk"
@@ -68,9 +68,9 @@
     "directory": "Logs/physical-adb",
     "raw_directory": ".work/evidence-staging",
     "keep_runs_global": 3,
-    "max_files_per_run": 250,
-    "max_total_bytes_per_run": 52428800,
-    "max_file_bytes": 16777216,
+    "max_files_per_run": 200,
+    "max_total_bytes_per_run": 26214400,
+    "max_file_bytes": 8388608,
     "max_screenshots": 8,
     "github_artifacts": false
   },
