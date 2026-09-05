@@ -30,9 +30,31 @@ if([string]$cfg.migration.mode -ne 'complete-core-orchestrated' -or [string]$cfg
 if([bool]$cfg.migration.preserve_legacy_until_equivalence){throw 'ARMY_PROJECT_PRECHECK=FAIL migration_still_progressive'}
 if(-not [bool]$cfg.migration.global_core_candidate_orchestration -or -not [bool]$cfg.migration.global_repository_sync -or -not [bool]$cfg.migration.global_flash_toolchain -or -not [bool]$cfg.migration.global_broker_ownership -or -not [bool]$cfg.migration.global_apk_final_gate -or -not [bool]$cfg.migration.global_evidence_publisher){throw 'ARMY_PROJECT_PRECHECK=FAIL global_ownership_contract'}
 if([string]$cfg.migration.windows_candidate_workflow -ne '.github/workflows/windows-candidate.yml'){throw "ARMY_PROJECT_PRECHECK=FAIL windows_candidate_workflow=$($cfg.migration.windows_candidate_workflow)"}
+if([string]$cfg.migration.workspace_adapter -ne '.github/scripts/armyattack-workspace.ps1'){throw "ARMY_PROJECT_PRECHECK=FAIL workspace_adapter=$($cfg.migration.workspace_adapter)"}
+if([string]$cfg.migration.project_state_canonical_root -ne '.work' -or -not [bool]$cfg.migration.external_builds_inputs_scratch_retired){throw 'ARMY_PROJECT_PRECHECK=FAIL project_state_migration_contract'}
 if([bool]$cfg.broker.repository_owned_broker_mutation){throw 'ARMY_PROJECT_PRECHECK=FAIL repository_owned_broker_mutation'}
 if([string]$cfg.physical.activation -ne 'manual_workflow_dispatch'){throw "ARMY_PROJECT_PRECHECK=FAIL physical_activation=$($cfg.physical.activation)"}
 if([string]$cfg.validation.publish_final_apk_after -ne 'PHYSICALLY_VALIDATED'){throw "ARMY_PROJECT_PRECHECK=FAIL final_apk_gate=$($cfg.validation.publish_final_apk_after)"}
+
+# Canonical repo-local runtime state. Only global tools/Core/Project-Sources/APK-FINAL may live outside .work.
+$workspaceContract=[ordered]@{
+  directory='.work'
+  build_directory='.work/build'
+  input_cache_directory='.work/cache/inputs'
+  scratch_directory='.work/scratch'
+  runtime_directory='.work/runtime/AndroidBuild'
+  artifacts_directory='.work/artifacts'
+}
+foreach($entry in $workspaceContract.GetEnumerator()){
+  $actual=[string]$cfg.workspace.($entry.Key)
+  if($actual -ne [string]$entry.Value){throw "ARMY_PROJECT_PRECHECK=FAIL workspace_$($entry.Key) expected=$($entry.Value) actual=$actual"}
+}
+if([int]$cfg.workspace.retention_generations -ne 3){throw "ARMY_PROJECT_PRECHECK=FAIL build_retention=$($cfg.workspace.retention_generations)"}
+if([bool]$cfg.workspace.project_state_outside_work_allowed){throw 'ARMY_PROJECT_PRECHECK=FAIL external_project_state_allowed'}
+if([string]$cfg.cache.input_cache_reuse -ne 'version-and-sha256'){throw "ARMY_PROJECT_PRECHECK=FAIL input_cache_reuse=$($cfg.cache.input_cache_reuse)"}
+if([string]$cfg.cache.build_retention -ne 'latest-3-tested-shas'){throw "ARMY_PROJECT_PRECHECK=FAIL cache_build_retention=$($cfg.cache.build_retention)"}
+if([string]$cfg.cache.scratch_retention -ne 'ephemeral-current-build'){throw "ARMY_PROJECT_PRECHECK=FAIL scratch_retention=$($cfg.cache.scratch_retention)"}
+
 if([int]$cfg.evidence.keep_runs_global -ne 3){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_keep_runs=$($cfg.evidence.keep_runs_global)"}
 if([int]$cfg.evidence.max_files_per_run -ne 200){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_max_files=$($cfg.evidence.max_files_per_run)"}
 if([int64]$cfg.evidence.max_total_bytes_per_run -ne 26214400){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_max_total_bytes=$($cfg.evidence.max_total_bytes_per_run)"}
@@ -42,7 +64,8 @@ $required=@(
   'Tools\CI\Build-Android.ps1','Tools\CI\Validate-AndroidApk.ps1','Tools\CI\Publish-ApkFinal.ps1','Tools\CI\Audit-PublishedContent.ps1','Tools\CI\Validate-UpstreamAndroidRelease.ps1',
   'Tools\CI\Patch-AndroidPerformanceSwf.ps1','Tools\CI\Build-AndroidDiagnosticsAne.ps1','Tools\CI\Test-AndroidRuntimePatch.ps1','Tools\CI\Test-AndroidDevice.ps1','Tools\CI\Analyze-AndroidRuntimeDiagnostics.ps1','Tools\SWF\Ensure-FFDec.ps1',
   'Tools\CI\Ensure-HarmanAir502.ps1','Tools\CI\Ensure-PortableJdk17.ps1','Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1',
-  '.github\workflows\android-candidate.yml','.github\workflows\android-physical.yml','.github\workflows\evidence-only.yml','.github\workflows\windows-candidate.yml',
+  '.github\scripts\armyattack-workspace.ps1','.github\scripts\publish-armyattack-project-source.ps1',
+  '.github\workflows\android-candidate.yml','.github\workflows\android-physical.yml','.github\workflows\evidence-only.yml','.github\workflows\windows-candidate.yml','.github\workflows\publish-project-source.yml',
   'Logs\physical-adb\RETENTION.md','src','.gitmodules'
 )
 foreach($relative in $required){if(-not(Test-Path -LiteralPath (Join-Path $repoRoot $relative))){throw "ARMY_PROJECT_PRECHECK=FAIL missing=$relative"}}
@@ -54,6 +77,11 @@ $retired=@(
 foreach($relative in $retired){if(Test-Path -LiteralPath (Join-Path $repoRoot $relative)){throw "ARMY_PROJECT_PRECHECK=FAIL retired_infrastructure_present=$relative"}}
 $gitmodules=Get-Content -LiteralPath (Join-Path $repoRoot '.gitmodules') -Raw
 if($gitmodules -notmatch 'vendor/Test_army_attack'){throw 'ARMY_PROJECT_PRECHECK=FAIL published_submodule_contract_missing'}
+
+$workspaceScript=Get-Content -LiteralPath (Join-Path $repoRoot '.github\scripts\armyattack-workspace.ps1') -Raw
+foreach($needle in @("'.work'","'build'","'cache\\inputs'","'scratch'","'runtime\\AndroidBuild'",'ARMY_BUILD_RETENTION=PASS','ARMY_WORKSPACE_ISOLATION')){
+  if(-not $workspaceScript.Contains($needle) -and $needle -ne 'ARMY_WORKSPACE_ISOLATION'){throw "ARMY_PROJECT_PRECHECK=FAIL workspace_helper_missing=$needle"}
+}
 
 $candidateWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\android-candidate.yml') -Raw
 foreach($legacy in @('Enable-AutoRepoPool4.ps1','Start-AutoRepoPool4.runtime.ps1','Bootstrap-PhysicalClone.ps1','Publish-AndroidEvidence.ps1')){
@@ -96,4 +124,4 @@ if(-not $publisher.Contains('[switch]$PhysicalValidated') -or -not $publisher.Co
 if(-not $publisher.Contains('delivery.final_apk_name')){throw 'ARMY_PROJECT_PRECHECK=FAIL apk_final_ownership_not_config_driven'}
 if($publisher.Contains('c3ec09fff4c06da08aeebdd070bf570534cd4fbe') -or $publisher.Contains('Remove-PrematureMigrationFinal')){throw 'ARMY_PROJECT_PRECHECK=FAIL one_shot_migration_cleanup_still_present'}
 
-Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.9 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE physical_activation=manual evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_gate=physical_pass_only legacy_evidence_publisher=ABSENT windows_candidate=core_synced"
+Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.9 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE project_state=repo-work build_retention=3 input_cache=sha256 scratch=ephemeral physical_activation=manual evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_gate=physical_pass_only legacy_evidence_publisher=ABSENT windows_candidate=core_synced"
