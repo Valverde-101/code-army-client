@@ -14,6 +14,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  actions: write
 
 jobs:
   classify:
@@ -24,6 +25,8 @@ jobs:
       run_candidate: ${{ steps.classify.outputs.run_candidate }}
     env:
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout exact PR HEAD for delta classification
         if: github.event_name == 'pull_request'
@@ -58,6 +61,33 @@ jobs:
           }
           "run_candidate=true" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "CANDIDATE_TRIGGER_CLASS=SOURCE_HEAD_DELTA run_candidate=true head=$head parent=$parent source_files=$($sourceChanges.Count) total_files=$($changed.Count)"
+
+      - name: Drain stale queued candidates without touching lease holders
+        if: steps.classify.outputs.run_candidate == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $headers=@{Authorization="Bearer $env:GH_TOKEN";Accept='application/vnd.github+json';'X-GitHub-Api-Version'='2022-11-28'}
+          $current=[int64]$env:GITHUB_RUN_ID
+          $uri="https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs?per_page=100"
+          $response=Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
+          $stale=@($response.workflow_runs|Where-Object{
+            $_.name -eq 'Army Attack Android candidate' -and
+            [string]$_.head_branch -eq $env:SOURCE_BRANCH -and
+            [int64]$_.id -lt $current -and
+            [string]$_.status -in @('queued','pending')
+          })
+          $cancelled=0
+          foreach($run in $stale){
+            try{
+              Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/cancel" -Method Post|Out-Null
+              $cancelled++
+              Write-Host "STALE_QUEUED_CANCELLED run=$($run.id) sha=$($run.head_sha) status=$($run.status)"
+            }catch{
+              Write-Host "STALE_QUEUED_CANCEL_RACE run=$($run.id) message=$($_.Exception.Message)"
+            }
+          }
+          Write-Host "STALE_QUEUED_DRAIN=PASS cancelled=$cancelled in_progress_untouched=true branch=$env:SOURCE_BRANCH"
 
   candidate:
     name: Core candidate build and validation
@@ -118,7 +148,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          foreach($script in @('.\.github\scripts\armyattack-project-precheck.ps1','.\.github\scripts\armyattack-build.ps1','.\Tools\CI\Build-Android.ps1','.\Tools\CI\Validate-AndroidApk.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\SWF\Ensure-FFDec.ps1','.\Tools\CI\Ensure-HarmanAir502.ps1','.\Tools\CI\Ensure-PortableJdk17.ps1','.\Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1')){
+          foreach($script in @('.\.github\scripts\armyattack-project-precheck.ps1','.\.github\scripts\armyattack-workspace.ps1','.\.github\scripts\armyattack-build.ps1','.\.github\scripts\publish-armyattack-project-source.ps1','.\Tools\CI\Build-Android.ps1','.\Tools\CI\Validate-AndroidApk.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\SWF\Ensure-FFDec.ps1','.\Tools\CI\Ensure-HarmanAir502.ps1','.\Tools\CI\Ensure-PortableJdk17.ps1','.\Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1')){
             $tokens=$null;$errors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors)
             if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$script line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw "PARSER_VALID=FAIL file=$script"}
@@ -160,10 +190,13 @@ jobs:
           if([string]$meta.source_sha -ne $env:EXPECTED_SOURCE_SHA){throw 'CORE_CANDIDATE=FAIL metadata_sha'}
           if([string]$meta.core_version -ne '3.0.9'){throw "CORE_CANDIDATE=FAIL hook_core=$($meta.core_version)"}
           if([string]$meta.toolchain_ownership -ne 'androidbuild-global'){throw "CORE_CANDIDATE=FAIL toolchain_ownership=$($meta.toolchain_ownership)"}
+          if([string]$meta.workspace.build_root -notlike (Join-Path $persistent '.work\build*')){throw "CORE_CANDIDATE=FAIL workspace_build_root=$($meta.workspace.build_root)"}
+          if([int]$meta.workspace.retention_generations -ne 3){throw "CORE_CANDIDATE=FAIL workspace_retention=$($meta.workspace.retention_generations)"}
           $apk=[string]$result.apk_path;$hash=(Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToUpperInvariant()
           if($hash -ne ([string]$result.apk.identity.sha256).ToUpperInvariant()){throw 'CORE_CANDIDATE=FAIL apk_hash'}
           Write-Host "CORE_BUILD_PROVENANCE=PASS core=$($result.build.provenance.core_version)"
           Write-Host "ARMY_FLASH_TOOLCHAIN_OWNERSHIP=$($meta.toolchain_ownership)"
+          Write-Host "ARMY_WORKSPACE_OWNERSHIP=PASS build=$($meta.workspace.build_root) cache=$($meta.workspace.input_cache_root) scratch=$($meta.workspace.scratch_root) retention=$($meta.workspace.retention_generations)"
           Write-Host "ARMY_AIR_VERSION=$($meta.air_version)"
           Write-Host "ARMY_FFDEC_VERSION=$($meta.ffdec_version)"
           Write-Host "APK_PACKAGE=$($result.apk.identity.package_name)"
