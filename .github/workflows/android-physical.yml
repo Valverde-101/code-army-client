@@ -94,7 +94,11 @@ jobs:
           if(-not $env:ANDROID_APK_PATH){throw 'APK_FINAL_COPY=FAIL candidate_path_missing'}
           $actual=(Get-FileHash -LiteralPath $env:ANDROID_APK_PATH -Algorithm SHA256).Hash.ToLowerInvariant()
           if($actual -ne ([string]$env:ANDROID_APK_SHA256).ToLowerInvariant()){throw "APK_FINAL_COPY=FAIL candidate_hash expected=$env:ANDROID_APK_SHA256 actual=$actual"}
-          & '.\Tools\CI\Publish-ApkFinal.ps1' -SourceApk $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -RelativePath 'ArmyAttack-23.2.apk' -Kind 'base-23.2' -PhysicalValidated
+          $cfg=Get-Content -LiteralPath '.\.androidbuild.json' -Raw|ConvertFrom-Json
+          $ownedName=[string]$cfg.delivery.final_apk_name
+          if([string]::IsNullOrWhiteSpace($ownedName)){throw 'APK_FINAL_COPY=FAIL owned_name_missing'}
+          & '.\Tools\CI\Publish-ApkFinal.ps1' -SourceApk $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -RelativePath $ownedName -Kind 'base-23.2' -PhysicalValidated
+          Write-Host "APK_FINAL_OWNED_NAME=$ownedName"
           Write-Host 'FINAL_VALIDATION=PASS physical_validation=PASS'
 
       - name: Physical validation summary
