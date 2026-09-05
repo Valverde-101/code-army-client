@@ -104,7 +104,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number || '' }}
       SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
-      - name: Enable AndroidBuild Core 3.0.9
+      - name: Enable compatible AndroidBuild Core >= 3.0.9
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
@@ -119,7 +119,7 @@ jobs:
           $git=Get-AndroidBuildGitPath $root
           (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
           "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "CORE_PRECHECK=PASS version=$core flash_toolchain=true git=$git"
+          Write-Host "CORE_PRECHECK=PASS version=$core minimum=3.0.9 flash_toolchain=true git=$git"
 
       - name: Bootstrap exact source without codeload
         shell: powershell
@@ -160,7 +160,7 @@ jobs:
         run: |
           & '.\.github\scripts\armyattack-project-precheck.ps1'
 
-      - name: Build and validate Army candidate through Core 3.0.9
+      - name: Build and validate Army candidate through compatible Core
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
@@ -188,13 +188,16 @@ jobs:
           if(-not(Test-Path -LiteralPath $metaPath)){throw "CORE_CANDIDATE=FAIL metadata_missing=$metaPath"}
           $meta=Get-Content -LiteralPath $metaPath -Raw|ConvertFrom-Json
           if([string]$meta.source_sha -ne $env:EXPECTED_SOURCE_SHA){throw 'CORE_CANDIDATE=FAIL metadata_sha'}
-          if([string]$meta.core_version -ne '3.0.9'){throw "CORE_CANDIDATE=FAIL hook_core=$($meta.core_version)"}
+          $hookCore=[version]([string]$meta.core_version)
+          if($hookCore -lt [version]'3.0.9'){throw "CORE_CANDIDATE=FAIL hook_core=$hookCore minimum=3.0.9"}
+          $provenanceCore=[version]([string]$result.build.provenance.core_version)
+          if($hookCore -ne $provenanceCore){throw "CORE_CANDIDATE=FAIL core_provenance_mismatch hook=$hookCore provenance=$provenanceCore"}
           if([string]$meta.toolchain_ownership -ne 'androidbuild-global'){throw "CORE_CANDIDATE=FAIL toolchain_ownership=$($meta.toolchain_ownership)"}
           if([string]$meta.workspace.build_root -notlike (Join-Path $persistent '.work\build*')){throw "CORE_CANDIDATE=FAIL workspace_build_root=$($meta.workspace.build_root)"}
           if([int]$meta.workspace.retention_generations -ne 3){throw "CORE_CANDIDATE=FAIL workspace_retention=$($meta.workspace.retention_generations)"}
           $apk=[string]$result.apk_path;$hash=(Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToUpperInvariant()
           if($hash -ne ([string]$result.apk.identity.sha256).ToUpperInvariant()){throw 'CORE_CANDIDATE=FAIL apk_hash'}
-          Write-Host "CORE_BUILD_PROVENANCE=PASS core=$($result.build.provenance.core_version)"
+          Write-Host "CORE_BUILD_PROVENANCE=PASS core=$provenanceCore minimum=3.0.9"
           Write-Host "ARMY_FLASH_TOOLCHAIN_OWNERSHIP=$($meta.toolchain_ownership)"
           Write-Host "ARMY_WORKSPACE_OWNERSHIP=PASS build=$($meta.workspace.build_root) cache=$($meta.workspace.input_cache_root) scratch=$($meta.workspace.scratch_root) retention=$($meta.workspace.retention_generations)"
           Write-Host "ARMY_AIR_VERSION=$($meta.air_version)"
