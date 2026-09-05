@@ -21,13 +21,18 @@ if([string]$cfg.project.id -ne 'army-attack' -or [string]$cfg.project.repository
 if([string]$cfg.hooks.build -ne '.github/scripts/armyattack-build.ps1'){throw "ARMY_PROJECT_PRECHECK=FAIL build_hook=$($cfg.hooks.build)"}
 if([string]$cfg.apk.package_name -ne 'air.army.attack'){throw "ARMY_PROJECT_PRECHECK=FAIL package=$($cfg.apk.package_name)"}
 if([string]$cfg.apk.explicit_output -ne '.work/artifacts/android/ArmyAttack.apk'){throw "ARMY_PROJECT_PRECHECK=FAIL apk_output=$($cfg.apk.explicit_output)"}
+if([string]$cfg.delivery.final_apk_name -ne 'ArmyAttack-23.2.apk'){throw "ARMY_PROJECT_PRECHECK=FAIL final_apk_name=$($cfg.delivery.final_apk_name)"}
 if([string]$cfg.core.minimum_version -ne '3.0.9'){throw "ARMY_PROJECT_PRECHECK=FAIL core_contract=$($cfg.core.minimum_version)"}
 if([string]$cfg.migration.mode -ne 'complete-core-orchestrated' -or [string]$cfg.migration.status -ne 'COMPLETE'){throw "ARMY_PROJECT_PRECHECK=FAIL migration_mode=$($cfg.migration.mode) status=$($cfg.migration.status)"}
 if([bool]$cfg.migration.preserve_legacy_until_equivalence){throw 'ARMY_PROJECT_PRECHECK=FAIL migration_still_progressive'}
-if(-not [bool]$cfg.migration.global_core_candidate_orchestration -or -not [bool]$cfg.migration.global_repository_sync -or -not [bool]$cfg.migration.global_flash_toolchain -or -not [bool]$cfg.migration.global_broker_ownership){throw 'ARMY_PROJECT_PRECHECK=FAIL global_ownership_contract'}
+if(-not [bool]$cfg.migration.global_core_candidate_orchestration -or -not [bool]$cfg.migration.global_repository_sync -or -not [bool]$cfg.migration.global_flash_toolchain -or -not [bool]$cfg.migration.global_broker_ownership -or -not [bool]$cfg.migration.global_apk_final_gate){throw 'ARMY_PROJECT_PRECHECK=FAIL global_ownership_contract'}
 if([bool]$cfg.broker.repository_owned_broker_mutation){throw 'ARMY_PROJECT_PRECHECK=FAIL repository_owned_broker_mutation'}
 if([string]$cfg.physical.activation -ne 'manual_workflow_dispatch'){throw "ARMY_PROJECT_PRECHECK=FAIL physical_activation=$($cfg.physical.activation)"}
 if([string]$cfg.validation.publish_final_apk_after -ne 'PHYSICALLY_VALIDATED'){throw "ARMY_PROJECT_PRECHECK=FAIL final_apk_gate=$($cfg.validation.publish_final_apk_after)"}
+if([int]$cfg.evidence.keep_runs_global -ne 3){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_keep_runs=$($cfg.evidence.keep_runs_global)"}
+if([int]$cfg.evidence.max_files_per_run -ne 200){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_max_files=$($cfg.evidence.max_files_per_run)"}
+if([int64]$cfg.evidence.max_total_bytes_per_run -ne 26214400){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_max_total_bytes=$($cfg.evidence.max_total_bytes_per_run)"}
+if([int64]$cfg.evidence.max_file_bytes -ne 8388608){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_max_file_bytes=$($cfg.evidence.max_file_bytes)"}
 $required=@(
   'Tools\CI\Build-Android.ps1','Tools\CI\Validate-AndroidApk.ps1','Tools\CI\Publish-ApkFinal.ps1','Tools\CI\Audit-PublishedContent.ps1','Tools\CI\Validate-UpstreamAndroidRelease.ps1',
   'Tools\CI\Patch-AndroidPerformanceSwf.ps1','Tools\CI\Build-AndroidDiagnosticsAne.ps1','Tools\CI\Test-AndroidRuntimePatch.ps1','Tools\SWF\Ensure-FFDec.ps1',
@@ -52,6 +57,8 @@ if(Test-Path -LiteralPath $workflow){
 $physicalWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\android-physical.yml') -Raw
 if($physicalWorkflow -match '(?m)^\s*push\s*:'){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_workflow_not_manual_only'}
 if(-not $physicalWorkflow.Contains('-PhysicalValidated')){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_final_publisher_gate_missing'}
+if(-not $physicalWorkflow.Contains('delivery.final_apk_name')){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_final_name_not_config_driven'}
 $publisher=Get-Content -LiteralPath (Join-Path $repoRoot 'Tools\CI\Publish-ApkFinal.ps1') -Raw
 if(-not $publisher.Contains('[switch]$PhysicalValidated') -or -not $publisher.Contains('APK_FINAL_PUBLICATION=DEFERRED_UNTIL_PHYSICAL_VALIDATION')){throw 'ARMY_PROJECT_PRECHECK=FAIL apk_final_publisher_gate_missing'}
-Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.9 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE physical_activation=manual"
+if($publisher.Contains('c3ec09fff4c06da08aeebdd070bf570534cd4fbe') -or $publisher.Contains('Remove-PrematureMigrationFinal')){throw 'ARMY_PROJECT_PRECHECK=FAIL one_shot_migration_cleanup_still_present'}
+Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.9 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE physical_activation=manual evidence_contract=canonical"
