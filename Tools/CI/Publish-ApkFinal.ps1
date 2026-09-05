@@ -19,63 +19,34 @@ if([IO.Path]::GetFileName($RelativePath) -ne $RelativePath){throw "APK_FINAL_COP
 if($RelativePath -ne $ownedName){throw "APK_FINAL_COPY=FAIL ownership expected=$ownedName actual=$RelativePath"}
 
 if(-not $PhysicalValidated){
-  Write-Host "APK_FINAL_PUBLICATION=DEFERRED_UNTIL_PHYSICAL_VALIDATION tested_sha=$ExpectedSha kind=$Kind owned_name=$ownedName"
+  Write-Host "APK_FINAL_PHYSICAL_REPUBLICATION=SKIPPED physical_validation=NOT_ACTIVATED tested_sha=$ExpectedSha kind=$Kind owned_name=$ownedName candidate_delivery=core"
   return
 }
 
-if(-not (Test-Path -LiteralPath $SourceApk)){throw "APK_FINAL_COPY=FAIL source_missing=$SourceApk"}
-$source=Get-Item -LiteralPath $SourceApk
+if(-not(Test-Path -LiteralPath $SourceApk -PathType Leaf)){throw "APK_FINAL_COPY=FAIL source_missing=$SourceApk"}
 $sourceSha=(Get-FileHash -LiteralPath $SourceApk -Algorithm SHA256).Hash.ToLowerInvariant()
+$manifest=Join-Path $AndroidBuildRoot 'Core\Current\AndroidBuild.psd1'
+if(-not(Test-Path -LiteralPath $manifest -PathType Leaf)){throw "APK_FINAL_COPY=FAIL core_manifest_missing=$manifest"}
+Import-Module $manifest -DisableNameChecking -Force
+$core=[version](Get-AndroidBuildCoreVersion)
+if($core -lt [version]'3.0.11'){throw "APK_FINAL_COPY=FAIL core=$core minimum=3.0.11"}
+if(-not(Get-Command Publish-AndroidBuildFinalApk -ErrorAction SilentlyContinue)){throw 'APK_FINAL_COPY=FAIL core_publisher_missing'}
 
-$finalRoot=Join-Path $AndroidBuildRoot 'APK-FINAL'
-$archiveRoot=Join-Path $finalRoot (Join-Path 'archive' $ExpectedSha)
-$archiveDest=Join-Path $archiveRoot $ownedName
-$latestDest=Join-Path $finalRoot $ownedName
+$published=Publish-AndroidBuildFinalApk -AndroidBuildRoot $AndroidBuildRoot -Repository 'Valverde-101/code-army-client' -ApkPath $SourceApk -FinalFileName $ownedName -TestedSha $ExpectedSha
+if([string]$published.status -ne 'PASS'){throw "APK_FINAL_COPY=FAIL core_status=$($published.status)"}
+$expectedDest=Join-Path $AndroidBuildRoot ("APK-FINAL\"+$ownedName)
+$actualDest=[IO.Path]::GetFullPath([string]$published.path)
+if($actualDest -ne [IO.Path]::GetFullPath($expectedDest)){throw "APK_FINAL_COPY=FAIL destination expected=$expectedDest actual=$actualDest"}
+if(-not(Test-Path -LiteralPath $actualDest -PathType Leaf)){throw "APK_FINAL_COPY=FAIL destination_missing=$actualDest"}
+$publishedSha=(Get-FileHash -LiteralPath $actualDest -Algorithm SHA256).Hash.ToLowerInvariant()
+if($publishedSha -ne $sourceSha -or ([string]$published.sha256).ToLowerInvariant() -ne $sourceSha){throw "APK_FINAL_COPY=FAIL hash source=$sourceSha result=$($published.sha256) disk=$publishedSha"}
 
-foreach($dir in @((Split-Path -Parent $archiveDest),(Split-Path -Parent $latestDest))){
-  New-Item -ItemType Directory -Force -Path $dir|Out-Null
-}
+# Remove only legacy sidecars for this owned file/current tested SHA. Never enumerate
+# or delete APKs owned by another project; Core ownership remains authoritative.
+$legacySidecar=$actualDest+'.json'
+if(Test-Path -LiteralPath $legacySidecar -PathType Leaf){Remove-Item -LiteralPath $legacySidecar -Force;Write-Host "APK_FINAL_LEGACY_SIDECAR_CLEANUP=PASS path=$legacySidecar"}
+$legacyArchive=Join-Path $AndroidBuildRoot ("APK-FINAL\archive\$ExpectedSha\"+$ownedName)
+foreach($legacy in @($legacyArchive,$legacyArchive+'.json')){if(Test-Path -LiteralPath $legacy -PathType Leaf){Remove-Item -LiteralPath $legacy -Force;Write-Host "APK_FINAL_LEGACY_ARCHIVE_CLEANUP=PASS path=$legacy"}}
 
-Copy-Item -LiteralPath $SourceApk -Destination $archiveDest -Force
-$archiveSha=(Get-FileHash -LiteralPath $archiveDest -Algorithm SHA256).Hash.ToLowerInvariant()
-if($archiveSha -ne $sourceSha){throw "APK_FINAL_ARCHIVE=FAIL expected=$sourceSha actual=$archiveSha path=$archiveDest"}
-
-$meta=[ordered]@{
-  repository='Valverde-101/code-army-client'
-  tested_sha=$ExpectedSha
-  kind=$Kind
-  physical_validation='PASS'
-  source_apk=$SourceApk
-  apk_size=$source.Length
-  apk_sha256=$sourceSha
-  archive_path=$archiveDest
-  latest_path=$latestDest
-  published_utc=(Get-Date).ToUniversalTime().ToString('o')
-}
-$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath ($archiveDest+'.json') -Encoding UTF8
-Write-Host "APK_FINAL_ARCHIVE=PASS path=$archiveDest sha256=$archiveSha physical_validation=PASS"
-
-$canonicalRepo=Join-Path $AndroidBuildRoot 'Repositories\code-army-client'
-$gitCandidates=@()
-$gitCmd=Get-Command git.exe -ErrorAction SilentlyContinue
-if($gitCmd){$gitCandidates+=$gitCmd.Source}
-$gitCandidates+=@(
-  (Join-Path $AndroidBuildRoot 'Tools\Git\cmd\git.exe'),
-  (Join-Path $AndroidBuildRoot 'PortableGit\cmd\git.exe')
-)
-$git=$gitCandidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
-$canonicalSha=''
-if($git -and (Test-Path -LiteralPath $canonicalRepo)){
-  $canonicalSha=(& $git -C $canonicalRepo rev-parse HEAD 2>$null).Trim()
-}
-if($canonicalSha -ne $ExpectedSha){
-  Write-Host "APK_FINAL_LATEST=SKIPPED_WITH_REASON stale_head expected=$ExpectedSha canonical=$canonicalSha archive=$archiveDest"
-  return
-}
-
-Copy-Item -LiteralPath $SourceApk -Destination $latestDest -Force
-$latestSha=(Get-FileHash -LiteralPath $latestDest -Algorithm SHA256).Hash.ToLowerInvariant()
-if($latestSha -ne $sourceSha){throw "APK_FINAL_LATEST=FAIL expected=$sourceSha actual=$latestSha path=$latestDest"}
-$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath ($latestDest+'.json') -Encoding UTF8
-Write-Host "APK_FINAL_LATEST=PASS path=$latestDest sha256=$latestSha physical_validation=PASS"
-Write-Host "APK_FINAL_COPY=PASS kind=$Kind physical_validation=PASS owned_name=$ownedName"
+Write-Host "APK_FINAL_LATEST=PASS path=$actualDest sha256=$publishedSha physical_validation=PASS validation_scope=physical_reconfirmation"
+Write-Host "APK_FINAL_COPY=PASS kind=$Kind physical_validation=PASS owned_name=$ownedName publisher=androidbuild-core metadata=State/apk-final"
