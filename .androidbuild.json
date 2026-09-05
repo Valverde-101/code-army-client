@@ -10,17 +10,27 @@
   },
   "workspace": {
     "directory": ".work",
+    "build_directory": ".work/build",
+    "input_cache_directory": ".work/cache/inputs",
+    "scratch_directory": ".work/scratch",
+    "runtime_directory": ".work/runtime/AndroidBuild",
+    "artifacts_directory": ".work/artifacts",
     "retention_generations": 3,
     "reuse_enabled": true,
-    "pools": ["src", "generated", "materialized", "build", "dist", "diagnostics", "evidence-staging"]
+    "project_state_outside_work_allowed": false,
+    "pools": ["src", "generated", "materialized", "build", "cache", "scratch", "runtime", "artifacts", "dist", "diagnostics", "evidence-staging"]
   },
   "cache": {
     "enabled": true,
     "global_content_addressed": true,
     "repo_cache": true,
     "native_build_cache": true,
+    "input_cache_reuse": "version-and-sha256",
+    "input_cache_retention": "immutable-versioned",
+    "build_retention": "latest-3-tested-shas",
+    "scratch_retention": "ephemeral-current-build",
     "clean_build_only_on_diagnostic_or_release_gate": true,
-    "priority_stages": ["published-source", "ffdec-patch", "air-package", "apk-validation"],
+    "priority_stages": ["published-source", "upstream-inputs", "ffdec-patch", "air-package", "apk-validation"],
     "stage_fingerprints": {
       "materialize": [".androidbuild.json", "src", "android", "Tools/CI", "Tools/SWF", "vendor/Test_army_attack"],
       "build": [".androidbuild.json", "src", "android", "Tools/CI/Build-Android.ps1", "Tools/CI/Patch-AndroidPerformanceSwf.ps1", "Tools/CI/Build-AndroidDiagnosticsAne.ps1", "Tools/CI/Test-AndroidRuntimePatch.ps1", "Tools/SWF", "vendor/Test_army_attack"]
@@ -133,6 +143,7 @@
     "status": "COMPLETE",
     "preserve_legacy_until_equivalence": false,
     "current_build_adapter": ".github/scripts/armyattack-build.ps1",
+    "workspace_adapter": ".github/scripts/armyattack-workspace.ps1",
     "project_builder": "Tools/CI/Build-Android.ps1",
     "windows_candidate_workflow": ".github/workflows/windows-candidate.yml",
     "global_core_candidate_orchestration": true,
@@ -143,6 +154,8 @@
     "global_broker_ownership": true,
     "global_apk_final_gate": true,
     "global_evidence_publisher": true,
+    "project_state_canonical_root": ".work",
+    "external_builds_inputs_scratch_retired": true,
     "compatibility_shims": ["Tools/CI/Ensure-HarmanAir502.ps1", "Tools/CI/Ensure-PortableJdk17.ps1", "Tools/CI/Ensure-PinnedAndroidSdkRoot.ps1", "Tools/SWF/Ensure-FFDec.ps1"],
     "retired_repository_infrastructure": ["Tools/CI/Bootstrap-PhysicalClone.ps1", "Tools/CI/Enable-AutoRepoPool4.ps1", "Tools/CI/Start-AutoRepoPool4.runtime.ps1", "Tools/CI/Publish-AndroidEvidence.ps1", ".github/workflows/bootstrap-physical-clone.yml", ".github/workflows/enable-autorepo-pool4.yml", ".github/workflows/cancel-stale-android.yml", ".github/workflows/runner-pool-diagnostic.yml"],
     "project_specific_behavior_to_keep": ["Army Attack v23.2 published-content contract", "SWF class patch set and FFDec preprocessing", "PvP/runtime configuration and asset validation", "diagnostics ANE", "Army AIR descriptor and package semantics", "Army deep APK validation", "manual physical gameplay flows", "Windows full-candidate diagnostics"]
