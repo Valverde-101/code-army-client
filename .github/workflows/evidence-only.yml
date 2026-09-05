@@ -43,8 +43,9 @@ jobs:
           fi
 
           python - <<'PY'
-          import hashlib, json, pathlib, sys
+          import hashlib, json, pathlib
           root=pathlib.Path('Logs/physical-adb')
+          forbidden={'.apk','.aab','.apks','.zip','.7z','.img','.iso','.so','.dex','.vdex','.odex','.oat','.bin'}
           runs=[]
           for cls in ('validations','failures'):
               c=root/cls
@@ -59,22 +60,25 @@ jobs:
           if len(runs)>3:
               raise SystemExit(f'EVIDENCE_RETENTION=FAIL runs={len(runs)} maximum=3')
           for run in runs:
-              files=[p for p in run.rglob('*') if p.is_file()]
-              if len(files)>200:
-                  raise SystemExit(f'EVIDENCE_POLICY=FAIL run={run} files={len(files)} maximum=200')
-              total=sum(p.stat().st_size for p in files)
+              all_files=[p for p in run.rglob('*') if p.is_file()]
+              manifest=run/'manifest.json'
+              payload=[p for p in all_files if p != manifest]
+              if len(payload)>200:
+                  raise SystemExit(f'EVIDENCE_POLICY=FAIL run={run} payload_files={len(payload)} maximum=200')
+              total=sum(p.stat().st_size for p in payload)
               if total>26214400:
-                  raise SystemExit(f'EVIDENCE_POLICY=FAIL run={run} bytes={total} maximum=26214400')
+                  raise SystemExit(f'EVIDENCE_POLICY=FAIL run={run} payload_bytes={total} maximum=26214400')
               screenshots=0
-              for p in files:
+              for p in payload:
                   size=p.stat().st_size
+                  if p.suffix.lower() in forbidden:
+                      raise SystemExit(f'EVIDENCE_POLICY=FAIL forbidden_binary={p}')
                   if size>8388608:
                       raise SystemExit(f'EVIDENCE_POLICY=FAIL file={p} bytes={size} maximum=8388608')
                   if p.suffix.lower() in {'.png','.jpg','.jpeg','.webp'}:
                       screenshots+=1
               if screenshots>8:
                   raise SystemExit(f'EVIDENCE_POLICY=FAIL run={run} screenshots={screenshots} maximum=8')
-              manifest=run/'manifest.json'
               if not manifest.is_file():
                   raise SystemExit(f'EVIDENCE_MANIFEST=FAIL missing={manifest}')
               data=json.loads(manifest.read_text(encoding='utf-8-sig'))
@@ -100,10 +104,10 @@ jobs:
                   if item.get('sanitized') is not True:
                       raise SystemExit(f'EVIDENCE_MANIFEST=FAIL sanitized={rel}')
                   listed_paths.add(rel.replace('\\','/'))
-              actual={p.relative_to(run).as_posix() for p in files if p.name!='manifest.json'}
+              actual={p.relative_to(run).as_posix() for p in payload}
               if listed_paths!=actual:
                   raise SystemExit(f'EVIDENCE_MANIFEST=FAIL inventory_mismatch run={run}')
-          print(f'EVIDENCE_POLICY=PASS runs={len(runs)} max_files=200 max_bytes=26214400 max_file_bytes=8388608 max_screenshots=8')
+          print(f'EVIDENCE_POLICY=PASS runs={len(runs)} payload_max_files=200 payload_max_bytes=26214400 payload_max_file_bytes=8388608 max_screenshots=8 forbidden_binary_count=0')
           print('EVIDENCE_MANIFEST=PASS')
           PY
 
