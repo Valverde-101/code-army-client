@@ -93,8 +93,11 @@ $windowsWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflow
 foreach($needle in @('Resolve-AndroidBuildFlashToolchain','Initialize-ArmyAttackWorkspace','ARMY_RUNTIME_ROOT','WINDOWS_WORKSPACE_ISOLATION=PASS')){
   if(-not $windowsWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL windows_workspace_contract_missing=$needle"}
 }
-foreach($legacy in @("Builds\\code-army-client","Inputs\\code-army-client","-AndroidBuildRoot `$env:ANDROIDBUILD_ROOT")){
-  if($windowsWorkflow.Contains($legacy)){throw "ARMY_PROJECT_PRECHECK=FAIL windows_legacy_state_reference=$legacy"}
+$windowsStateCommands=@('Validate-UpstreamWindowsRelease.ps1','Build-Windows.ps1','Build-WindowsFullCandidate.ps1','Measure-WindowsPerformance.ps1')
+foreach($command in $windowsStateCommands){
+  $escaped=[regex]::Escape($command)
+  if($windowsWorkflow -match ($escaped+'.*?-AndroidBuildRoot\s+\$env:ANDROIDBUILD_ROOT')){throw "ARMY_PROJECT_PRECHECK=FAIL windows_command_uses_global_state_root=$command"}
+  if($windowsWorkflow -notmatch ($escaped+'.*?-AndroidBuildRoot\s+\$env:ARMY_RUNTIME_ROOT')){throw "ARMY_PROJECT_PRECHECK=FAIL windows_command_missing_repo_runtime=$command"}
 }
 
 $swfWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\swf-extract.yml') -Raw
