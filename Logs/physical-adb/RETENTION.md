@@ -12,6 +12,7 @@ AndroidBuild Core 3.0.9 is the single authority for physical-evidence publicatio
 - Candidate workflows ignore `Logs/**`, so an evidence-only commit does not manufacture a new candidate/tested SHA.
 - GitHub `paths: Logs/**` is only a wake-up filter: a commit that changes both source and `Logs/**` also triggers the verifier. The workflow therefore classifies commits as `EVIDENCE_ONLY` or `MIXED_SOURCE_AND_EVIDENCE`; mixed commits still validate the stored evidence policy but are not falsely required to contain only evidence paths.
 - Legacy `schema_version: 1` manifests were produced on Windows before Git applied `* text=auto` LF normalization. For retained legacy text only, the verifier accepts the file if either the checked-out bytes or a deterministic LF→CRLF reconstruction reproduces the manifest's original byte count and SHA-256 exactly. New Core `androidbuild-evidence/v1` evidence remains byte-for-byte strict with no normalization fallback.
+- Pure `Logs/**` commits are independently classified and must finish with `EVIDENCE_COMMIT_CLASS=EVIDENCE_ONLY` and `EVIDENCE_ONLY=PASS`; this is the strict same-PR evidence path and must not trigger a new candidate build.
 - APK-FINAL publication is allowed only after a real physical PASS and successful evidence publication/commit.
 
 Historical evidence produced before the Core migration may retain the legacy `schema_version: 1` manifest until it ages out under the same global three-run policy. All newly published evidence must use the Core `androidbuild-evidence/v1` manifest.
