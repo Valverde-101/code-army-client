@@ -14,28 +14,44 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 2
           persist-credentials: false
 
-      - name: Validate logs-only commit and evidence policy
+      - name: Classify commit and validate evidence policy
         shell: bash
         run: |
           set -euo pipefail
           parent="$(git rev-parse HEAD^)"
           mapfile -d '' -t changed < <(git -c core.quotepath=false diff --name-only -z "$parent" HEAD)
           if [ "${#changed[@]}" -eq 0 ]; then
-            echo "EVIDENCE_ONLY=FAIL no_changes"
+            echo "EVIDENCE_TRIGGER=FAIL no_changes"
             exit 1
           fi
+
+          evidence_changed=0
+          non_evidence=()
           for path in "${changed[@]}"; do
             case "$path" in
-              Logs/physical-adb/*) ;;
-              *) echo "EVIDENCE_ONLY=FAIL non_evidence_path=$path"; exit 1 ;;
+              Logs/physical-adb/*) evidence_changed=1 ;;
+              *) non_evidence+=("$path") ;;
             esac
           done
+          if [ "$evidence_changed" -ne 1 ]; then
+            echo "EVIDENCE_TRIGGER=FAIL no_physical_evidence_change"
+            exit 1
+          fi
+
+          if [ "${#non_evidence[@]}" -eq 0 ]; then
+            commit_class="EVIDENCE_ONLY"
+            echo "EVIDENCE_COMMIT_CLASS=EVIDENCE_ONLY"
+          else
+            commit_class="MIXED_SOURCE_AND_EVIDENCE"
+            echo "EVIDENCE_COMMIT_CLASS=MIXED_SOURCE_AND_EVIDENCE non_evidence_count=${#non_evidence[@]}"
+            printf 'EVIDENCE_MIXED_NON_EVIDENCE_PATH=%s\n' "${non_evidence[@]}"
+          fi
 
           if grep -RIE --exclude='manifest.json' -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}' Logs/physical-adb; then
             echo "SANITIZATION=FAIL secret_marker"
@@ -121,4 +137,9 @@ jobs:
           PY
 
           echo "SANITIZATION=PASS"
-          echo "EVIDENCE_ONLY=PASS parent_sha=$parent commit=${{ github.sha }}"
+          if [ "$commit_class" = "EVIDENCE_ONLY" ]; then
+            echo "EVIDENCE_ONLY=PASS parent_sha=$parent commit=${{ github.sha }}"
+          else
+            echo "EVIDENCE_ONLY=NOT_APPLICABLE reason=mixed_source_commit parent_sha=$parent commit=${{ github.sha }}"
+            echo "EVIDENCE_POLICY_CHECK=PASS commit_class=MIXED_SOURCE_AND_EVIDENCE"
+          fi
