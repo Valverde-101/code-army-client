@@ -158,9 +158,14 @@ if($apksigner){
   if($sigExit -ne 0){$signature="FAIL($sigExit)";$failures.Add("signature_exit=$sigExit")}else{$signature='PASS'}
 }
 $alignment='SKIPPED'
+$alignmentMode='SKIPPED'
 if($zipalign){
-  & $zipalign.FullName -c -P 16 4 $ApkPath|Out-Null
+  # AIR 50 is pinned to Android Build Tools 33.0.2. Its zipalign supports -p
+  # (page-align uncompressed .so files) but not the newer -P <page-size-kb> flag.
+  # Keep alignment validation enabled and use the syntax guaranteed by the pinned toolchain.
+  & $zipalign.FullName -c -p 4 $ApkPath|Out-Null
   $alignExit=$LASTEXITCODE
+  $alignmentMode='BT33_LEGACY_PAGE_ALIGN'
   if($alignExit -ne 0){$alignment="FAIL($alignExit)";$failures.Add("zipalign_exit=$alignExit")}else{$alignment='PASS'}
 }
 
@@ -184,7 +189,7 @@ $report=[ordered]@{
   native_performance_overlay=[bool]$prov.native_performance_overlay
   native_performance_overlay_mode=[string]$prov.native_performance_overlay_mode
   diagnostics_ane_sha256=[string]$prov.diagnostics_ane_sha256
-  signature=$signature;zipalign=$alignment
+  signature=$signature;zipalign=$alignment;zipalign_mode=$alignmentMode
   build_tier=$buildTier;published_source_sha=[string]$prov.binary_seed_source_sha;game_version=[string]$prov.game_version
   failures=@($failures)
 }
@@ -212,7 +217,7 @@ $reportMd=Join-Path $reportRoot 'REPORT.md'
   "- profiler ANE SHA256: $($prov.diagnostics_ane_sha256)",
   "- build tier: $buildTier",
   "- signature: $signature",
-  "- zipalign: $alignment",
+  "- zipalign: $alignment ($alignmentMode)",
   "- validation failures: $($failures.Count)",
   $(if($failures.Count -gt 0){"- failures: $($failures -join '; ')"}else{"- failures: none"})
 )|Set-Content -LiteralPath $reportMd -Encoding UTF8
@@ -230,6 +235,7 @@ Write-Host "SWF_PATH=$seedEntryPath"
 Write-Host "SWF_SHA256=$seedHash"
 Write-Host "SIGNATURE=$signature"
 Write-Host "ZIPALIGN=$alignment"
+Write-Host "ZIPALIGN_MODE=$alignmentMode"
 Write-Host "BUILD_TIER=$buildTier"
 Write-Host "GAME_VERSION=$($prov.game_version)"
 Write-Host "BASE_ONLY_VALIDATE_STATE profiles=$($profileEntries.Count) selector_entries=$($selectorEntries.Count) root_swf_count=$($rootSwfEntries.Count)"
