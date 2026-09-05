@@ -41,12 +41,13 @@ if(-not(Test-Path -LiteralPath $actualDest -PathType Leaf)){throw "APK_FINAL_COP
 $publishedSha=(Get-FileHash -LiteralPath $actualDest -Algorithm SHA256).Hash.ToLowerInvariant()
 if($publishedSha -ne $sourceSha -or ([string]$published.sha256).ToLowerInvariant() -ne $sourceSha){throw "APK_FINAL_COPY=FAIL hash source=$sourceSha result=$($published.sha256) disk=$publishedSha"}
 
-# Remove only legacy sidecars for this owned file/current tested SHA. Never enumerate
-# or delete APKs owned by another project; Core ownership remains authoritative.
+# The Core stores publication metadata under State\apk-final. Remove only the old
+# sidecar for this repository-owned filename if a previous legacy flow left one.
 $legacySidecar=$actualDest+'.json'
-if(Test-Path -LiteralPath $legacySidecar -PathType Leaf){Remove-Item -LiteralPath $legacySidecar -Force;Write-Host "APK_FINAL_LEGACY_SIDECAR_CLEANUP=PASS path=$legacySidecar"}
-$legacyArchive=Join-Path $AndroidBuildRoot ("APK-FINAL\archive\$ExpectedSha\"+$ownedName)
-foreach($legacy in @($legacyArchive,$legacyArchive+'.json')){if(Test-Path -LiteralPath $legacy -PathType Leaf){Remove-Item -LiteralPath $legacy -Force;Write-Host "APK_FINAL_LEGACY_ARCHIVE_CLEANUP=PASS path=$legacy"}}
+if(Test-Path -LiteralPath $legacySidecar -PathType Leaf){
+  Remove-Item -LiteralPath $legacySidecar -Force
+  Write-Host "APK_FINAL_LEGACY_SIDECAR_CLEANUP=PASS path=$legacySidecar"
+}
 
 Write-Host "APK_FINAL_LATEST=PASS path=$actualDest sha256=$publishedSha physical_validation=PASS validation_scope=physical_reconfirmation"
 Write-Host "APK_FINAL_COPY=PASS kind=$Kind physical_validation=PASS owned_name=$ownedName publisher=androidbuild-core metadata=State/apk-final"
