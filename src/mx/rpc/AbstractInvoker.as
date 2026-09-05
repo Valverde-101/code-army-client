@@ -168,6 +168,8 @@ package mx.rpc
       {
          var fault:Fault = null;
          var errorText:String = null;
+         var dispatchArgs:Array = null;
+         var resourceArgs:Array = null;
          var message:IMessage = param1;
          var token:AsyncToken = param2;
          if(token == null)
@@ -187,15 +189,18 @@ package mx.rpc
          catch(e:MessagingError)
          {
             _log.warn(e.toString());
-            errorText = resourceManager.getString("rpc","cannotConnectToDestination",[mx_internal::asyncRequest.destination]);
+            resourceArgs = new Array(mx_internal::asyncRequest.destination);
+            errorText = resourceManager.getString("rpc","cannotConnectToDestination",resourceArgs);
             fault = new Fault("InvokeFailed",e.toString(),errorText);
-            new AsyncDispatcher(mx_internal::dispatchRpcEvent,[FaultEvent.createEvent(fault,token,message)],10);
+            dispatchArgs = new Array(FaultEvent.createEvent(fault,token,message));
+            new AsyncDispatcher(mx_internal::dispatchRpcEvent,dispatchArgs,10);
          }
          catch(e2:Error)
          {
             _log.warn(e2.toString());
             fault = new Fault("InvokeFailed",e2.message);
-            new AsyncDispatcher(mx_internal::dispatchRpcEvent,[FaultEvent.createEvent(fault,token,message)],10);
+            dispatchArgs = new Array(FaultEvent.createEvent(fault,token,message));
+            new AsyncDispatcher(mx_internal::dispatchRpcEvent,dispatchArgs,10);
          }
          return token;
       }

@@ -21,6 +21,8 @@
 
 		protected var mCloseTransitionName: String;
 
+		private var mLifecycleOpen: Boolean = false;
+
 		public function PopUpWindow(param1: MovieClip, param2: Boolean = true, param3: Boolean = true) {
 			super(param1);
 			this.mClip = param1;
@@ -89,13 +91,16 @@
 		}
 
 		override public function open(param1: DisplayObjectContainer, param2: Boolean = false): void {
+			if (this.mLifecycleOpen) {
+				Utils.DiagEvent("POPUP_OPEN_DUP","class=" + String((this as Object).constructor) + ";total=" + PopUpManager.mTotalOpenCount + ";modal=" + PopUpManager.mModalOpenCount);
+				return;
+			}
 			super.open(param1, param2);
+			this.mLifecycleOpen = true;
 			addEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown, false, 0, true);
 			++PopUpManager.mTotalOpenCount;
-			if (param2) {
-				++PopUpManager.mModalOpenCount;
-			}
-			if (Config.DEBUG_MODE) {}
+			if (param2) ++PopUpManager.mModalOpenCount;
+			Utils.DiagEvent("POPUP_OPEN","class=" + String((this as Object).constructor) + ";modal_request=" + param2 + ";total=" + PopUpManager.mTotalOpenCount + ";modal=" + PopUpManager.mModalOpenCount);
 		}
 
 		protected function doOpeningTransition(): void {
@@ -107,15 +112,17 @@
 		}
 
 		override public function close(): void {
-			removeEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown);
-			--PopUpManager.mTotalOpenCount;
-			if (mIsModal) {
-				--PopUpManager.mModalOpenCount;
-				if (PopUpManager.mModalOpenCount == 0) {}
+			if (!this.mLifecycleOpen) {
+				Utils.DiagEvent("POPUP_CLOSE_DUP","class=" + String((this as Object).constructor) + ";total=" + PopUpManager.mTotalOpenCount + ";modal=" + PopUpManager.mModalOpenCount);
+				return;
 			}
+			this.mLifecycleOpen = false;
+			removeEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown);
+			PopUpManager.mTotalOpenCount = Math.max(0, PopUpManager.mTotalOpenCount - 1);
+			if (mIsModal) PopUpManager.mModalOpenCount = Math.max(0, PopUpManager.mModalOpenCount - 1);
+			Utils.DiagEvent("POPUP_LIFECYCLE_CLOSE","class=" + String((this as Object).constructor) + ";total=" + PopUpManager.mTotalOpenCount + ";modal=" + PopUpManager.mModalOpenCount);
 			super.close();
 			this.mDoneCallback = null;
-			if (Config.DEBUG_MODE) {}
 		}
 
 		private function mouseDown(param1: MouseEvent): void {

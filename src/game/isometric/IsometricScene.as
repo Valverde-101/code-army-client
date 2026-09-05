@@ -1,5 +1,6 @@
 ﻿package game.isometric {
 	import com.dchoc.graphics.DCResourceManager;
+	import com.dchoc.GUI.DCWindow;
 	import flash.display.DisplayObject;
 	import flash.display.DisplayObjectContainer;
 	import flash.display.MovieClip;
@@ -9,10 +10,14 @@
 	import flash.events.MouseEvent;
 	import flash.events.TimerEvent;
 	import flash.events.TransformGestureEvent;
+	import flash.ui.Multitouch;
+	import flash.ui.MultitouchInputMode;
 	import flash.geom.Point;
 	import flash.geom.Rectangle;
 	import flash.geom.Vector3D;
 	import flash.utils.Timer;
+	import flash.utils.Dictionary;
+	import flash.utils.getTimer;
 	import game.actions.NeighborActionQueue;
 	import game.actions.RepairConstructionAction;
 	import game.actions.RepairDecorationAction;
@@ -35,6 +40,7 @@
 	import game.gui.CursorManager;
 	import game.gui.HUDInterface;
 	import game.gui.popups.PopUpManager;
+	import game.gui.popups.WorldMapWindow;
 	import game.isometric.camera.IsoCamera;
 	import game.isometric.characters.IsometricCharacter;
 	import game.isometric.elements.DisplayContainer;
@@ -60,6 +66,7 @@
 	import game.sound.ArmySoundManager;
 	import game.states.GameState;
 	import game.utils.EffectController;
+	import game.utils.OfflineSave;
 
 	public class IsometricScene {
 
@@ -118,6 +125,26 @@
 
 		public var mAllElements: Array;
 
+		private var mCharacterElements: Array;
+		private var mStaticElements: Array;
+		private var mLastSortX: Dictionary;
+		private var mLastSortY: Dictionary;
+		private var mVisibleLookup: Dictionary;
+		private var mSortDirty: Boolean = true;
+		private var mViewportDirty: Boolean = true;
+		private var mLastViewportCullX: Number = NaN;
+		private var mLastViewportCullY: Number = NaN;
+		private static const VIEWPORT_CULL_MARGIN: Number = 384;
+		private static const VIEWPORT_CULL_RECHECK_DISTANCE: Number = 128;
+		private static const VIEWPORT_FALLBACK_INTERVAL_FRAMES: int = 20;
+		private static const SOUND_TRANSFORM_REFRESH_MS: int = 100;
+		private var mSoundTransformAccumulator: Number = SOUND_TRANSFORM_REFRESH_MS;
+		private static const OFFLINE_WORLD_MAP_RESOURCE: String = "swf/map";
+
+		private var mOfflineFeatureHudBottom: MovieClip;
+		private var mOfflineFeatureButtonsHooked: Boolean = false;
+		private var mOfflineWorldMapLoading: Boolean = false;
+
 		public var mCamera: IsoCamera;
 
 		private var mPointTmp: Point;
@@ -170,6 +197,12 @@
 
 		private var mParatrooperLocation: GridCell = null;
 
+		private var mPowerUpAirdropEffects: Array = new Array();
+
+		private var mLastSceneProfileAt: int = 0;
+
+		private var mSubsystemProfileLastAt: Object = new Object();
+
 		private var mAllowedToCheckMisplacedDebris: Boolean = true;
 
 		public var mSpawningBeaconObject: SpawningBeaconObject;
@@ -194,7 +227,7 @@
 
 		private var mAppearTimer: Timer;
 
-		private const mAppearDelayMs: int = Math.ceil(1000 / GameState.mInstance.getMainClip().stage.frameRate);
+		private static const TOOLTIP_TIMEOUT_MS: int = 1000;
 
 		private var mZoomActivated: Boolean;
 
@@ -203,6 +236,14 @@
 		private var mMouseX: Number = 0;
 
 		private var mMouseY: Number = 0;
+
+		private var mCachedMouseCell: GridCell;
+
+		private var mMouseCellDirty: Boolean = true;
+
+		private var mPointerUiAccumulator: int = 0;
+
+		private static const POINTER_UI_REFRESH_MS: int = 200;
 
 		private var mMouseScrollStartX: Number = 0;
 
@@ -277,11 +318,25 @@
 			this.mGridDimZ = param4;
 			this.mSwitch = 0;
 			this.mTimer = 0;
+			this.mPointerUiAccumulator = 0;
+			this.mMouseCellDirty = true;
+			this.mCachedMouseCell = null;
 			this.mZoomActivated = false;
 			this.mObjectLoader = new ObjectLoader();
 			this.mAllElements = new Array();
+			this.mCharacterElements = new Array();
+			this.mStaticElements = new Array();
+			this.mLastSortX = new Dictionary(true);
+			this.mLastSortY = new Dictionary(true);
+			this.mVisibleLookup = new Dictionary(true);
+			this.mSortDirty = true;
+			this.mViewportDirty = true;
 			if (FeatureTuner.USE_ZOOM_IN_OUT) {
-				this.mContainer.addEventListener(TransformGestureEvent.GESTURE_ZOOM, this.ZoomInOut, false);
+				try {
+					Multitouch.inputMode = MultitouchInputMode.GESTURE;
+				} catch (error: Error) {
+				}
+				this.mContainer.addEventListener(TransformGestureEvent.GESTURE_ZOOM, this.ZoomInOut, false, 0, true);
 			}
 			this.mContainer.addEventListener(MouseEvent.MOUSE_MOVE, this.mouseMove);
 			this.mContainer.addEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown);
@@ -291,46 +346,68 @@
 		}
 
 		private function ZoomInOut(param1: TransformGestureEvent): void {
-			if (this.mGame.getStageHeight() > 725) {
-				this.mZoomActivated = true;
-				this.setZoomInOut(param1.scaleX);
-			} else {
-				this.mContainer.removeEventListener(TransformGestureEvent.GESTURE_ZOOM, this.ZoomInOut);
+			if (!FeatureTuner.USE_ZOOM_IN_OUT) {
+				return;
 			}
+			this.mZoomActivated = true;
+			this.setZoomInOut(param1.scaleX);
+		}
+		private function getNearestZoomIndex(): int {
+			var levels:Array = GameState.mInstance.mZoomLevels;
+			if (!levels || levels.length == 0) {
+				return 0;
+			}
+			var bestIndex:int = 0;
+			var bestDistance:Number = Number.MAX_VALUE;
+			var i:int = 0;
+			var scale:Number = 1;
+			var distance:Number = 0;
+			while (i < levels.length) {
+				scale = Number(levels[levels.length - 1 - i]) / 100;
+				distance = Math.abs(scale - this.mContainer.scaleX);
+				if (distance < bestDistance) {
+					bestDistance = distance;
+					bestIndex = i;
+				}
+				i++;
+			}
+			return bestIndex;
 		}
 
 		private function setZoomInOut(param1: Number): void {
-			if (!PopUpManager.isModalPopupActive()) {
-				if (param1 < 1) {
-					GameState.mInstance.getHud().buttonZoomOutPressed(null);
-				} else if (param1 > 1) {
-					GameState.mInstance.getHud().buttonZoomInPressed(null);
-				}
+			if (PopUpManager.isModalPopupActive()) {
+				return;
+			}
+			var levels:Array = GameState.mInstance.mZoomLevels;
+			if (!levels || levels.length < 2) {
+				return;
+			}
+			var zoomIndex:int = this.getNearestZoomIndex();
+			if (param1 < 0.98 && zoomIndex < levels.length - 1) {
+				GameState.mInstance.setZoomIndex(zoomIndex + 1);
+			} else if (param1 > 1.02 && zoomIndex > 0) {
+				GameState.mInstance.setZoomIndex(zoomIndex - 1);
+			}
+		}
+		private function stopToolTipTimer(): void {
+			if (this.mAppearTimer) {
+				this.mAppearTimer.removeEventListener(TimerEvent.TIMER_COMPLETE, this.appearTimerComplete);
+				this.mAppearTimer.stop();
+				this.mAppearTimer = null;
 			}
 		}
 
 		public function startToolTipTimer(): void {
-			if (this.mAppearTimer) {
-				this.mAppearTimer.removeEventListener(TimerEvent.TIMER, this.appearTimerTick);
-				this.mAppearTimer.stop();
-				this.mAppearTimer = null;
-			}
-			this.mAppearTimer = new Timer(this.mAppearDelayMs);
-			this.mAppearTimer.addEventListener(TimerEvent.TIMER, this.appearTimerTick);
+			this.stopToolTipTimer();
+			this.mAppearTimer = new Timer(TOOLTIP_TIMEOUT_MS, 1);
+			this.mAppearTimer.addEventListener(TimerEvent.TIMER_COMPLETE, this.appearTimerComplete, false, 0, true);
 			this.mAppearTimer.start();
 		}
 
-		public function appearTimerTick(param1: TimerEvent): void {
-			if (this.mAppearTimer) {
-				if (this.mAppearTimer.currentCount > this.mAppearDelayMs) {
-					this.mAppearTimer.removeEventListener(TimerEvent.TIMER, this.appearTimerTick);
-					this.mAppearTimer.stop();
-					this.mAppearTimer = null;
-					this.hideObjectTooltip();
-				}
-			}
+		private function appearTimerComplete(param1: TimerEvent): void {
+			this.stopToolTipTimer();
+			this.hideObjectTooltip();
 		}
-
 		public function initTileMap(): void {
 			var _loc2_: Item = null;
 			var _loc3_: AreaItem = null;
@@ -400,8 +477,11 @@
 		}
 
 		public function setMousePos(param1: MouseEvent): void {
-			this.mMouseX = param1.stageX;
-			this.mMouseY = param1.stageY;
+			if (this.mMouseX != param1.stageX || this.mMouseY != param1.stageY) {
+				this.mMouseX = param1.stageX;
+				this.mMouseY = param1.stageY;
+				this.mMouseCellDirty = true;
+			}
 		}
 
 		public function setMouseScrolling(param1: Boolean): void {
@@ -425,6 +505,14 @@
 			this.mGame.mHUD.cancelTools();
 			this.setVisiblePlacementButton(false);
 			this.mPlacePressed = false;
+		}
+
+		private function shouldCommitPlacement():Boolean {
+			var pointerCommit:Boolean = FeatureTuner.USE_MOUSE_FOR_PLACE_ITEMS;
+			CONFIG::BUILD_FOR_MOBILE_AIR {
+				pointerCommit = false;
+			}
+			return this.mPlacePressed || pointerCommit;
 		}
 
 		public function mouseUp(param1: MouseEvent): void {
@@ -456,7 +544,7 @@
 								this.mPlacePressed = false;
 							}
 
-							if (_loc2_ && (this.mPlacePressed || FeatureTuner.USE_MOUSE_FOR_PLACE_ITEMS)) {
+							if (_loc2_ && this.shouldCommitPlacement()) {
 								this.mGame.objectPlaced(this.mObjectBeingMoved, this.mObjectBeingMovedStartX, this.mObjectBeingMovedStartY);
 								this.mGame.inventoryItemUsed();
 								this.exitMoveMode();
@@ -466,11 +554,11 @@
 							if (this.isInLegalPlacementArea(this.mObjectBeingMoved)) {
 								this.setVisiblePlacementButton(true);
 								if (this.mGame.mState == GameState.STATE_PLACE_ITEM && this.mObjectBeingMoved.mItem is ShopItem && ShopItem(this.mObjectBeingMoved.mItem).getCostPremium() > 0) {
-									if (this.mPlacePressed || FeatureTuner.USE_MOUSE_FOR_PLACE_ITEMS) {
+									if (this.shouldCommitPlacement()) {
 										this.mGame.externalCallBuyItem(this.mObjectBeingMoved.mItem as ShopItem);
 									}
 								} else if (this.mFlagDrag || this.mGame.mState != GameState.STATE_MOVE_ITEM) {
-									if (this.mPlacePressed || FeatureTuner.USE_MOUSE_FOR_PLACE_ITEMS) {
+									if (this.shouldCommitPlacement()) {
 										this.placeObjectBeingMoved();
 									}
 								}
@@ -514,6 +602,7 @@
 			this.mGame.objectPlaced(this.mObjectBeingMoved, this.mObjectBeingMovedStartX, this.mObjectBeingMovedStartY);
 			if (this.mGame.mState != GameState.STATE_PLACE_ITEM && this.mGame.mState != GameState.STATE_USE_INVENTORY_ITEM) {
 				this.exitMoveMode();
+				this.finishPlacementUi("placed_and_left_edit_mode");
 				if (this.mGame.mState == GameState.STATE_MOVE_ITEM) {
 					this.mMapGUIEffectsLayer.highlightMovableObjects();
 				}
@@ -721,7 +810,11 @@
 			var _loc2_: Array = null;
 			var _loc3_: int = 0;
 			var _loc4_: AreaItem = null;
-			if (GameState.mInstance.visitingTutor() || GameState.mInstance.mState == GameState.STATE_PVP) {
+			// PvP initMap() builds border/cloud bits before GameState switches to STATE_PVP.
+			// Use the target map identity as well as the FSM state so a freshly-created
+			// PvP battlefield is never classified as a locked campaign area and covered
+			// entirely by CLOUD_BIT_FULL tiles during that pre-state initialization window.
+			if (GameState.mInstance.visitingTutor() || GameState.mInstance.mState == GameState.STATE_PVP || (GameState.mInstance.mCurrentMapId && GameState.mInstance.mCurrentMapId.indexOf("pvp_") == 0)) {
 				return true;
 			}
 			if (param1) {
@@ -1101,6 +1194,14 @@
 
 		public function addObject(param1: Element): void {
 			this.mAllElements.push(param1);
+			this.mSortDirty = true;
+			this.mViewportDirty = true;
+			if (param1 is IsometricCharacter) {
+				this.mCharacterElements.push(param1);
+			}
+			if (param1 is StaticObject) {
+				this.mStaticElements.push(param1);
+			}
 			var _loc2_: Renderable = param1 as Renderable;
 			if (_loc2_) {
 				if (!this.isObjectInLegalPosition(_loc2_)) {
@@ -1118,7 +1219,7 @@
 		}
 
 		private function updateStaticObjects(param1: int): void {
-			var _loc2_: Element = null;
+			var perfStart:int = getTimer();
 			var _loc3_: StaticObject = null;
 			var _loc4_: Boolean = false;
 			var _loc5_: EnemyInstallationObject = null;
@@ -1129,20 +1230,21 @@
 			if (this.mInfoBoxBG) {
 				this.mInfoBoxBG.visible = false;
 			}
-			for each(_loc2_ in this.mAllElements) {
-				_loc3_ = _loc2_ as StaticObject;
-				if (_loc3_) {
-					_loc4_ = _loc3_.logicUpdate(param1);
-					if (_loc3_ is EnemyInstallationObject) {
-						(_loc5_ = _loc3_ as EnemyInstallationObject).updateActions(param1);
-					}
-					if (_loc3_ is PlayerInstallationObject) {
-						(_loc6_ = _loc3_ as PlayerInstallationObject).updateActions(param1);
-					}
-					if (_loc4_) {
-						mRemoveArray.push(_loc3_);
-					}
+			var staticCount:int = int(this.mStaticElements.length);
+			var staticIndex:int = 0;
+			while (staticIndex < staticCount) {
+				_loc3_ = this.mStaticElements[staticIndex] as StaticObject;
+				_loc4_ = _loc3_.logicUpdate(param1);
+				if (_loc3_ is EnemyInstallationObject) {
+					(_loc5_ = _loc3_ as EnemyInstallationObject).updateActions(param1);
 				}
+				if (_loc3_ is PlayerInstallationObject) {
+					(_loc6_ = _loc3_ as PlayerInstallationObject).updateActions(param1);
+				}
+				if (_loc4_) {
+					mRemoveArray.push(_loc3_);
+				}
+				staticIndex++;
 			}
 			if (mRemoveArray.length > 0) {
 				for each(_loc7_ in mRemoveArray) {
@@ -1154,10 +1256,11 @@
 					this.mGame.updateWalkableCellsForActiveCharacter();
 				}
 			}
+			this.reportSceneSubsystem("static",getTimer() - perfStart,staticCount);
 		}
 
 		private function updateCharacters(param1: int): void {
-			var _loc3_: Element = null;
+			var perfStart:int = getTimer();
 			var _loc6_: IsometricCharacter = null;
 			var _loc7_: IsometricCharacter = null;
 			var _loc8_: int = 0;
@@ -1172,18 +1275,17 @@
 			if (this.mInfoBoxBG) {
 				this.mInfoBoxBG.visible = false;
 			}
-			var _loc4_: int = int(this.mAllElements.length);
+			var _loc4_: int = int(this.mCharacterElements.length);
 			var _loc5_: int = 0;
 			while (_loc5_ < _loc4_) {
-				_loc3_ = this.mAllElements[_loc5_] as Element;
-				if (_loc3_ is IsometricCharacter) {
-					(_loc6_ = _loc3_ as IsometricCharacter).update(param1);
-					if (_loc6_.isReadyToBeRemoved()) {
-						this.mRemoveCharactersArray.push(_loc6_);
-					} else {
-						_loc6_.updateActions(param1);
-						_loc6_.updateMovement(param1);
-					}
+				_loc6_ = this.mCharacterElements[_loc5_] as IsometricCharacter;
+				_loc6_.update(param1);
+				if (_loc6_.isReadyToBeRemoved()) {
+					this.mRemoveCharactersArray.push(_loc6_);
+				} else {
+					// Preserve enemy/player logic cadence exactly.
+					_loc6_.updateActions(param1);
+					_loc6_.updateMovement(param1);
 				}
 				_loc5_++;
 			}
@@ -1208,33 +1310,28 @@
 					this.mGame.updateWalkableCellsForActiveCharacter();
 				}
 			}
+			this.reportSceneSubsystem("characters",getTimer() - perfStart,_loc4_);
 		}
 
 		public function startCharacterAnimations(): void {
-			var _loc1_: Element = null;
-			var _loc4_: IsometricCharacter = null;
-			var _loc2_: int = int(this.mAllElements.length);
-			var _loc3_: int = 0;
-			while (_loc3_ < _loc2_) {
-				_loc1_ = this.mAllElements[_loc3_] as Element;
-				if (_loc1_ is IsometricCharacter) {
-					(_loc4_ = _loc1_ as IsometricCharacter).startAction();
-				}
-				_loc3_++;
+			var character:IsometricCharacter = null;
+			var count:int = int(this.mCharacterElements.length);
+			var i:int = 0;
+			while (i < count) {
+				character = this.mCharacterElements[i] as IsometricCharacter;
+				character.startAction();
+				i++;
 			}
 		}
 
 		public function stopCharacterAnimations(): void {
-			var _loc1_: Element = null;
-			var _loc4_: IsometricCharacter = null;
-			var _loc2_: int = int(this.mAllElements.length);
-			var _loc3_: int = 0;
-			while (_loc3_ < _loc2_) {
-				_loc1_ = this.mAllElements[_loc3_] as Element;
-				if (_loc1_ is IsometricCharacter) {
-					(_loc4_ = _loc1_ as IsometricCharacter).stopAction();
-				}
-				_loc3_++;
+			var character:IsometricCharacter = null;
+			var count:int = int(this.mCharacterElements.length);
+			var i:int = 0;
+			while (i < count) {
+				character = this.mCharacterElements[i] as IsometricCharacter;
+				character.stopAction();
+				i++;
 			}
 		}
 
@@ -1393,6 +1490,129 @@
 					--_loc2_.mReactionStateCounter;
 				}
 				_loc4_++;
+			}
+		}
+
+		private function reportSceneSubsystem(param1:String, param2:int, param3:int):void {
+			if(param2 < 6) return;
+			var now:int = getTimer();
+			var last:int = int(this.mSubsystemProfileLastAt[param1]);
+			if(now - last < 1000) return;
+			this.mSubsystemProfileLastAt[param1] = now;
+			Utils.DiagEvent("SCENE_SUBSYSTEM_JANK","map=" + this.mGame.mCurrentMapId + ";state=" + this.mGame.mState + ";name=" + param1 + ";ms=" + param2 + ";count=" + param3);
+		}
+
+		private function emitSceneProfile():void {
+			var now:int = getTimer();
+			if(now - this.mLastSceneProfileAt < 5000) return;
+			this.mLastSceneProfileAt = now;
+			Utils.DiagEvent("SCENE_PROFILE","map=" + this.mGame.mCurrentMapId + ";state=" + this.mGame.mState + ";all=" + (this.mAllElements ? this.mAllElements.length : 0) + ";static=" + (this.mStaticElements ? this.mStaticElements.length : 0) + ";characters=" + (this.mCharacterElements ? this.mCharacterElements.length : 0) + ";visible=" + (this.mVisibleObjects ? this.mVisibleObjects.length : 0) + ";hud=" + (this.mSceneHud ? this.mSceneHud.numChildren : 0) + ";sounds=" + (this.mSoundMakers ? this.mSoundMakers.length : 0));
+		}
+
+		private function resolveAirdropPlaybackClip(param1:MovieClip):MovieClip {
+			if(!param1) return null;
+			if(param1.totalFrames > 1) return param1;
+			var current:MovieClip = param1;
+			var depth:int = 0;
+			var i:int = 0;
+			var child:MovieClip = null;
+			while(current && depth < 4) {
+				child = null;
+				i = 0;
+				while(i < current.numChildren) {
+					child = current.getChildAt(i) as MovieClip;
+					if(child && child.totalFrames > 1) return child;
+					i++;
+				}
+				if(current.numChildren > 0) current = current.getChildAt(0) as MovieClip;
+				else current = null;
+				depth++;
+			}
+			return param1;
+		}
+
+		public function playPvPPowerUpAirdrop(param1:GridCell, param2:Renderable, param3:String, param4:String, param5:String = ""):Boolean {
+			if(!param1 || !param2) {
+				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=missing_input;side=" + param4 + ";unit=" + param5 + ";source=" + param3);
+				return false;
+			}
+			var requested:String = param3 ? param3 : "";
+			var slash:int = requested.lastIndexOf("/");
+			var resource:String = slash >= 0 ? requested.substring(0,slash) : Config.SWF_EFFECTS_NAME;
+			var symbol:String = slash >= 0 ? requested.substring(slash + 1) : requested;
+			var resources:DCResourceManager = DCResourceManager.getInstance();
+			var cls:Class = null;
+			if(symbol.length > 0) {
+				try {
+					cls = resources.getSWFClass(resource,symbol);
+				} catch(preferredError:Error) {
+					Utils.DiagEvent("PVP_PARATROOPER_ASSET_FALLBACK","side=" + param4 + ";unit=" + param5 + ";requested=" + requested + ";error=" + preferredError.errorID);
+				}
+			}
+			if(!cls) {
+				resource = Config.SWF_EFFECTS_NAME;
+				if(param4 == "enemy" && (param5.indexOf("Commando") >= 0 || param5.indexOf("SpecialForces") >= 0)) {
+					symbol = "enemy_commando_airdrop";
+				} else if(param4 == "enemy") {
+					symbol = "enemy_infantry_airdrop";
+				} else {
+					symbol = "enemy_airdrop_01";
+				}
+				try {
+					cls = resources.getSWFClass(resource,symbol);
+				} catch(fallbackError:Error) {
+					Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=fallback_miss;side=" + param4 + ";unit=" + param5 + ";requested=" + requested + ";fallback=" + symbol + ";error=" + fallbackError.errorID);
+					return false;
+				}
+			}
+			if(!cls) {
+				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=class_miss;side=" + param4 + ";unit=" + param5 + ";resource=" + resource + ";symbol=" + symbol);
+				return false;
+			}
+			var clip:MovieClip = new cls() as MovieClip;
+			if(!clip) {
+				Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=not_movieclip;side=" + param4 + ";unit=" + param5 + ";resource=" + resource + ";symbol=" + symbol);
+				return false;
+			}
+			var playback:MovieClip = this.resolveAirdropPlaybackClip(clip);
+			param2.getContainer().visible = false;
+			param2.mVisible = false;
+			clip.x = this.getCenterPointXOfCell(param1);
+			clip.y = this.getCenterPointYOfCell(param1);
+			clip.mouseEnabled = false;
+			clip.mouseChildren = false;
+			this.mSceneHud.addChild(clip);
+			if(playback) playback.gotoAndPlay(1);
+			clip.gotoAndPlay(1);
+			this.mPowerUpAirdropEffects.push({clip:clip,playback:playback,spawned:param2,started:getTimer(),side:param4,resource:resource,symbol:symbol,unit:param5,requested:requested});
+			Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=start;side=" + param4 + ";unit=" + param5 + ";requested=" + requested + ";resource=" + resource + ";symbol=" + symbol + ";frames=" + (playback ? playback.totalFrames : clip.totalFrames));
+			return true;
+		}
+
+		private function updatePvPPowerUpAirdrops():void {
+			var now:int = getTimer();
+			var i:int = this.mPowerUpAirdropEffects.length - 1;
+			var entry:Object = null;
+			var clip:MovieClip = null;
+			var playback:MovieClip = null;
+			var spawned:Renderable = null;
+			var finished:Boolean = false;
+			while(i >= 0) {
+				entry = this.mPowerUpAirdropEffects[i];
+				clip = entry.clip as MovieClip;
+				playback = entry.playback as MovieClip;
+				spawned = entry.spawned as Renderable;
+				finished = !clip || !clip.parent || now - int(entry.started) >= 6000 || Boolean(playback && playback.totalFrames > 1 && playback.currentFrame >= playback.totalFrames);
+				if(finished) {
+					if(clip && clip.parent) clip.parent.removeChild(clip);
+					if(spawned && spawned.getContainer()) {
+						spawned.getContainer().visible = true;
+						spawned.mVisible = true;
+					}
+					Utils.DiagEvent("PVP_PARATROOPER_ANIMATION","result=end;side=" + entry.side + ";resource=" + entry.resource + ";symbol=" + entry.symbol + ";elapsed_ms=" + Math.max(0,now - int(entry.started)) + ";spawned=" + Boolean(spawned));
+					this.mPowerUpAirdropEffects.splice(i,1);
+				}
+				i--;
 			}
 		}
 
@@ -2202,15 +2422,17 @@
 		}
 
 		public function setVisiblePlacementButton(param1: Boolean): void {
-			if (!this.mTickCrossActive && param1) {
-				this.mTickCrossActive = true;
-			}
+			this.mTickCrossActive = param1;
 			if (this.mGame.mHUD) {
 				this.mGame.mHUD.mPlaceButton.setVisible(param1);
-			}
-			if (this.mGame.mHUD) {
 				this.mGame.mHUD.mPlaceCancelButton.setVisible(param1);
 			}
+		}
+
+		private function finishPlacementUi(param1:String):void {
+			this.mPlacePressed = false;
+			this.setVisiblePlacementButton(false);
+			Utils.DiagEvent("PLACEMENT_COMMIT_UI","reason=" + param1 + ";state=" + this.mGame.mState + ";moving=" + Boolean(this.mObjectBeingMoved));
 		}
 
 		private function moveButton(param1: GridCell): void {
@@ -2232,6 +2454,11 @@
 				_loc6_ = new Point(this.mObjectBeingMoved.mX, this.mObjectBeingMoved.mY);
 				_loc2_ = (_loc6_ = this.mSceneHud.localToGlobal(_loc6_)).x;
 				_loc3_ = _loc6_.y;
+				CONFIG::BUILD_FOR_MOBILE_AIR {
+					if (this.mGame.mHUD.positionPlacementButtonsMobile(_loc2_,_loc3_,_loc5_)) {
+						return;
+					}
+				}
 				_loc7_ = this.mObjectBeingMoved.getTileSize().x - 1;
 				_loc8_ = this.mObjectBeingMoved.getTileSize().y - 1;
 				_loc9_ = 0;
@@ -2262,6 +2489,11 @@
 				_loc12_ = this.mGridDimY * param1.mPosJ;
 				_loc13_ = new Point(_loc11_, _loc12_);
 				_loc13_ = this.mSceneHud.localToGlobal(_loc13_);
+				CONFIG::BUILD_FOR_MOBILE_AIR {
+					if (this.mGame.mHUD.positionPlacementButtonsMobile(_loc13_.x,_loc13_.y,0)) {
+						return;
+					}
+				}
 				this.mGame.mHUD.mPlaceButton.setX(_loc13_.x - 140);
 				this.mGame.mHUD.mPlaceButton.setY(_loc13_.y - 40);
 				this.mGame.mHUD.mPlaceCancelButton.setX(_loc13_.x - 60);
@@ -2540,6 +2772,125 @@
 			}
 		}
 
+
+		private function ensureOfflineFeatureButtons(): void {
+			var hud: Object = null;
+			var bottom: MovieClip = null;
+			var pvpButton: DisplayObject = null;
+			var mapButton: DisplayObject = null;
+			if (!Config.OFFLINE_MODE || !this.mGame || !this.mGame.getHud()) {
+				return;
+			}
+			hud = this.mGame.getHud() as Object;
+			try {
+				bottom = hud["getHUDClipBottom"]() as MovieClip;
+			} catch (error: Error) {
+				return;
+			}
+			if (!bottom) {
+				return;
+			}
+			if (this.mOfflineFeatureHudBottom != bottom) {
+				if (this.mOfflineFeatureHudBottom && this.mOfflineFeatureButtonsHooked) {
+					this.mOfflineFeatureHudBottom.removeEventListener(MouseEvent.MOUSE_DOWN, this.offlineFeatureMouseDown, true);
+				}
+				this.mOfflineFeatureHudBottom = bottom;
+				this.mOfflineFeatureButtonsHooked = false;
+			}
+			pvpButton = bottom.getChildByName("Button_Pvp");
+			mapButton = bottom.getChildByName("Button_Map");
+			if (pvpButton) {
+				pvpButton.visible = true;
+				pvpButton.mouseEnabled = true;
+			}
+			if (mapButton) {
+				mapButton.visible = true;
+				mapButton.mouseEnabled = true;
+			}
+			if (!this.mOfflineFeatureButtonsHooked && (pvpButton || mapButton)) {
+				bottom.addEventListener(MouseEvent.MOUSE_DOWN, this.offlineFeatureMouseDown, true, 1000, true);
+				this.mOfflineFeatureButtonsHooked = true;
+			}
+		}
+
+		private function getOfflineFeatureButton(param1: DisplayObject): DisplayObject {
+			var current: DisplayObject = param1;
+			while (current && current != this.mOfflineFeatureHudBottom) {
+				if (current.name == "Button_Pvp" || current.name == "Button_Map") {
+					return current;
+				}
+				current = current.parent;
+			}
+			return null;
+		}
+
+		private function offlineFeatureMouseDown(param1: MouseEvent): void {
+			var button: DisplayObject = this.getOfflineFeatureButton(param1.target as DisplayObject);
+			if (!button || !Config.OFFLINE_MODE) {
+				return;
+			}
+			param1.stopImmediatePropagation();
+			if (button.name == "Button_Pvp") {
+				// GameState performs the one-time offline bootstrap only when PvP data is absent.
+				// Do not reset score/wins/opponents on every button press.
+				this.mGame.openPvPMatchUpDialog();
+				return;
+			}
+			if (button.name == "Button_Map") {
+				this.openOfflineWorldMap();
+			}
+		}
+
+		private function openOfflineWorldMap(): void {
+			var resources: DCResourceManager = DCResourceManager.getInstance();
+			var eventName: String = null;
+			if (resources.isLoaded(OFFLINE_WORLD_MAP_RESOURCE)) {
+				this.showOfflineWorldMap();
+				return;
+			}
+			if (this.mOfflineWorldMapLoading) {
+				return;
+			}
+			this.mOfflineWorldMapLoading = true;
+			eventName = OFFLINE_WORLD_MAP_RESOURCE + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
+			resources.addEventListener(eventName, this.offlineWorldMapLoaded, false, 0, true);
+			if (!resources.isAddedToLoadingList(OFFLINE_WORLD_MAP_RESOURCE)) {
+				resources.load(Config.DIR_DATA + OFFLINE_WORLD_MAP_RESOURCE + ".swf", OFFLINE_WORLD_MAP_RESOURCE, null, false);
+			}
+		}
+
+		private function offlineWorldMapLoaded(param1: Event): void {
+			DCResourceManager.getInstance().removeEventListener(param1.type, this.offlineWorldMapLoaded);
+			this.mOfflineWorldMapLoading = false;
+			this.showOfflineWorldMap();
+		}
+
+		private function showOfflineWorldMap(): void {
+			var popup: WorldMapWindow = null;
+			if (!this.mGame || PopUpManager.isPopUpCreated(WorldMapWindow)) {
+				return;
+			}
+			popup = PopUpManager.getPopUp(WorldMapWindow) as WorldMapWindow;
+			if (!popup) {
+				return;
+			}
+			popup.open(this.mGame.getMainClip(), true);
+			popup.Activate(this.closeOfflineWorldMap);
+		}
+
+		private function closeOfflineWorldMap(param1: Class): void {
+			var popup: DCWindow = PopUpManager.getPopUp(param1) as DCWindow;
+			if (!popup) {
+				return;
+			}
+			popup.close();
+			if (!popup.isClosed()) {
+				popup.clean();
+			}
+			PopUpManager.releasePopUp(param1);
+			MissionManager.increaseCounter("Close", popup, 1);
+		}
+
 		public function update(param1: int): void {
 			var _loc2_: int = 0;
 			var _loc5_: GridCell = null;
@@ -2550,6 +2901,9 @@
 			var _loc11_: int = 0;
 			var _loc12_: int = 0;
 			var _loc13_: int = 0;
+			if (Config.OFFLINE_MODE && (!this.mOfflineFeatureButtonsHooked || this.mSwitch % 25 == 0)) {
+				this.ensureOfflineFeatureButtons();
+			}
 			if (PopUpManager.isModalPopupActive()) {
 				return;
 			}
@@ -2567,16 +2921,27 @@
 					}
 				}
 			}
+			var perfStart:int = getTimer();
 			EnvEffectManager.update(param1);
+			this.reportSceneSubsystem("environment",getTimer() - perfStart,0);
+			this.emitSceneProfile();
+			this.updatePvPPowerUpAirdrops();
 			this.mTimer += param1;
 			this.updateKeyScrolling();
 			this.updateCharacters(param1);
 			this.updateStaticObjects(param1);
 			this.updateHudObjects(param1);
+			perfStart = getTimer();
 			this.updatePatrols(param1);
+			this.reportSceneSubsystem("patrols",getTimer() - perfStart,this.mCharacterElements ? this.mCharacterElements.length : 0);
+			perfStart = getTimer();
 			this.updateDebrisSpawn(param1);
+			this.reportSceneSubsystem("debris_spawn",getTimer() - perfStart,this.mGame && this.mGame.mMapData && this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);
+			this.mPointerUiAccumulator += param1;
 			var _loc4_: GridCell = this.getTileUnderMouse();
-			if (this.mGame.mState == GameState.STATE_PLAY || this.mGame.mState == GameState.STATE_PVP || this.mGame.mState == GameState.STATE_VISITING_NEIGHBOUR) {
+			var pointerUiRefresh:Boolean = _loc4_ != this.mPreviousCell || this.mPointerUiAccumulator >= POINTER_UI_REFRESH_MS || mouseDownAction;
+			if (pointerUiRefresh && (this.mGame.mState == GameState.STATE_PLAY || this.mGame.mState == GameState.STATE_PVP || this.mGame.mState == GameState.STATE_VISITING_NEIGHBOUR)) {
+				this.mPointerUiAccumulator = 0;
 				this.highlightDebris(_loc4_);
 				this.highlightCell(_loc4_);
 				this.highlightCharacter(_loc4_, param1);
@@ -2592,13 +2957,19 @@
 				}
 			}
 			if (!Config.DISABLE_SORT) {
-				this.sortAll(_loc3_ || this.mMouseScrolling || Boolean(this.mObjectBeingMoved), _loc3_);
+				var viewportRefresh:Boolean = this.mSwitch % VIEWPORT_FALLBACK_INTERVAL_FRAMES == VIEWPORT_FALLBACK_INTERVAL_FRAMES - 1;
+				var recullViewport:Boolean = viewportRefresh || this.mViewportDirty || Boolean(this.mObjectBeingMoved);
+				this.sortAll(recullViewport, _loc3_ || this.mSortDirty || Boolean(this.mObjectBeingMoved));
+				if (recullViewport) {
+					this.mViewportDirty = false;
+				}
 			}
 			if (_loc4_ != this.mPreviousCell) {
 				this.mPreviousCell = _loc4_;
 				if (this.mGame.mActivatedPlayerUnit) {
 					_loc7_ = Math.floor(this.mGame.mActivatedPlayerUnit.mX / this.mGridDimX);
-					if (_loc5_ = this.getTileUnderMouse()) {
+					_loc5_ = _loc4_;
+					if (_loc5_) {
 						_loc8_ = _loc5_.mPosI;
 						if (_loc7_ < _loc8_) {
 							this.mGame.mActivatedPlayerUnit.setAnimationDirection(AnimationController.DIR_RIGHT);
@@ -2647,20 +3018,28 @@
 			var _loc6_: Boolean = false;
 			if (this.mFog.mUpdateRequired) {
 				_loc6_ = true;
+				perfStart = getTimer();
 				this.mFog.recalculateFogEdges();
+				this.reportSceneSubsystem("fog_edges",getTimer() - perfStart,this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);
 				this.mFog.mUpdateRequired = false;
 			}
 			if (this.mGame.mMapData.mUpdateRequired) {
 				_loc6_ = true;
 				this.mGame.mMapData.mUpdateRequired = false;
+				perfStart = getTimer();
 				this.mGame.mMapData.countFriendlyTiles();
 				this.mTilemapGraphic.recalculateBorderEdges();
+				this.reportSceneSubsystem("map_edges",getTimer() - perfStart,this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);
 				MissionManager.increaseCounter("Control", null, 1);
 			}
 			if (_loc6_) {
+				perfStart = getTimer();
 				this.mTilemapGraphic.updateTilemap();
+				this.reportSceneSubsystem("tilemap_redraw",getTimer() - perfStart,this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);
 			}
+			perfStart = getTimer();
 			this.mEffectController.update(param1);
+			this.reportSceneSubsystem("effects",getTimer() - perfStart,0);
 			if (this.mEffectPending) {
 				this.mEffectPending = !this.mEffectController.startEffect(this, this.mEffectPendingMC, this.mEffectPendingType, this.mEffectPendingX, this.mEffectPendingY, this.mEffectPendingClipName);
 			}
@@ -2690,6 +3069,9 @@
 			if (NeighborAvatar.smMouseOver) {
 				return null;
 			}
+			if (!this.mMouseCellDirty) {
+				return this.mCachedMouseCell;
+			}
 			this.mPointTmp.x = 0;
 			this.mPointTmp.y = 0;
 			var _loc1_: Point = this.mContainer.localToGlobal(this.mPointTmp);
@@ -2702,9 +3084,10 @@
 			this.mPointTmp.y = this.mGridDimY * Math.floor(this.mPointTmp.y / this.mGridDimY);
 			this.mMouseLocalX = _loc4_;
 			this.mMouseLocalY = _loc5_;
-			return this.getCellAtLocation(this.mPointTmp.x, this.mPointTmp.y);
+			this.mCachedMouseCell = this.getCellAtLocation(this.mPointTmp.x, this.mPointTmp.y);
+			this.mMouseCellDirty = false;
+			return this.mCachedMouseCell;
 		}
-
 		public function active(): Boolean {
 			return this.mSceneActive;
 		}
@@ -2715,7 +3098,9 @@
 			var _loc6_: int = 0;
 			var _loc2_: int = this.mContainer.scaleX * -this.mCamera.getCameraX() + this.mGame.getStageWidth() / 2;
 			var _loc3_: int = this.mContainer.scaleY * -this.mCamera.getCameraY() + this.mGame.getStageHeight() / 2;
-			if (this.mContainer.x != _loc2_) {
+			var cameraMoved:Boolean = this.mContainer.x != _loc2_ || this.mContainer.y != _loc3_;
+			this.mSoundTransformAccumulator = Math.min(SOUND_TRANSFORM_REFRESH_MS,this.mSoundTransformAccumulator + param1);
+			if (cameraMoved && this.mSoundTransformAccumulator >= SOUND_TRANSFORM_REFRESH_MS) {
 				_loc5_ = int(this.mSoundMakers.length);
 				_loc6_ = 0;
 				while (_loc6_ < _loc5_) {
@@ -2724,13 +3109,20 @@
 					}
 					_loc6_++;
 				}
+				this.mSoundTransformAccumulator = 0;
 			}
-			if (this.mContainer.x != _loc2_ || this.mContainer.y != _loc3_) {
+			if (cameraMoved) {
 				this.mContainer.x = _loc2_;
 				this.mContainer.y = _loc3_;
 				this.mSceneHud.x = _loc2_;
 				this.mSceneHud.y = _loc3_;
-				this.mTilemapGraphic.updateTilemap();
+				if (isNaN(this.mLastViewportCullX) || isNaN(this.mLastViewportCullY) ||
+					Math.abs(this.mContainer.x - this.mLastViewportCullX) >= VIEWPORT_CULL_RECHECK_DISTANCE ||
+					Math.abs(this.mContainer.y - this.mLastViewportCullY) >= VIEWPORT_CULL_RECHECK_DISTANCE) {
+					this.mViewportDirty = true;
+				}
+				this.mMouseCellDirty = true;
+				this.mTilemapGraphic.updateCameraViewport();
 			}
 			this.mCamera.update();
 		}
@@ -2867,71 +3259,91 @@
 			return true;
 		}
 
+		private function isRenderableInViewport(param1: Renderable): Boolean {
+			var clip: DisplayObjectContainer = param1.getContainer();
+			if (!clip) {
+				return false;
+			}
+			var screenX: Number = this.mContainer.x + clip.x * this.mContainer.scaleX;
+			var screenY: Number = this.mContainer.y + clip.y * this.mContainer.scaleY;
+			return screenX >= -VIEWPORT_CULL_MARGIN &&
+				screenX <= this.mGame.getStageWidth() + VIEWPORT_CULL_MARGIN &&
+				screenY >= -VIEWPORT_CULL_MARGIN &&
+				screenY <= this.mGame.getStageHeight() + VIEWPORT_CULL_MARGIN;
+		}
+
 		private function sortAll(param1: Boolean = true, param2: Boolean = true): void {
-			var _loc3_: * = false;
-			var _loc4_: Sprite = null;
-			var _loc5_: Boolean = false;
-			var _loc6_: Boolean = false;
-			var _loc7_: DisplayObjectContainer = null;
-			var _loc8_: int = 0;
-			var _loc9_: Renderable = null;
-			var _loc10_: int = 0;
-			var _loc11_: int = 0;
+			var perfStart:int = getTimer();
+			var changed:Boolean = false;
+			var container:Sprite = null;
+			var parent:DisplayObjectContainer = null;
+			var element:Renderable = null;
+			var ground:Boolean = false;
+			var shouldDisplay:Boolean = false;
+			var oldIndex:int = 0;
+			var i:int = 0;
 			if (param1) {
-				this.mRelativeVisibleArea.x = this.mCamera.getCameraX();
-				this.mRelativeVisibleArea.y = this.mCamera.getCameraY();
-				_loc5_ = false;
-				_loc6_ = false;
-				_loc10_ = 0;
-				while (_loc10_ < this.mAllElements.length) {
-					if (_loc7_ = (_loc4_ = (_loc9_ = this.mAllElements[_loc10_]).getContainer()).parent) {
-						_loc6_ = _loc4_.hitTestObject(this.mAbsoluteVisibleArea);
-					} else {
-						_loc6_ = _loc4_.hitTestObject(this.mRelativeVisibleArea);
-					}
-					if (_loc9_ is Renderable) {
-						_loc6_ &&= this.isInsideVisibleArea(_loc9_.getCell());
-					}
-					_loc3_ = _loc9_.getTileSize().z == 0;
-					_loc8_ = this.mVisibleObjects.indexOf(_loc9_);
-					if (!_loc4_.visible) {
-						if (_loc7_) {
-							_loc7_.removeChild(_loc4_);
+				i = 0;
+				while (i < this.mAllElements.length) {
+					element = this.mAllElements[i] as Renderable;
+					if (element) {
+						container = element.getContainer();
+						if (container) {
+							parent = container.parent;
+							ground = element.getTileSize().z == 0;
+							shouldDisplay = container.visible && (ground || this.isRenderableInViewport(element));
+							if (!shouldDisplay) {
+								if (parent) {
+									parent.removeChild(container);
+								}
+								if (this.mVisibleLookup[element]) {
+									oldIndex = this.mVisibleObjects.indexOf(element);
+									if (oldIndex != -1) {
+										this.mVisibleObjects.splice(oldIndex, 1);
+									}
+									delete this.mVisibleLookup[element];
+									changed = true;
+								}
+							} else if (ground) {
+								if (!parent) {
+									this.mContainer.addChildAt(container, 0);
+								}
+							} else if (!this.mVisibleLookup[element]) {
+								this.mVisibleObjects.push(element);
+								this.mVisibleLookup[element] = true;
+								changed = true;
+							}
 						}
-						if (_loc8_ != -1) {
-							this.mVisibleObjects.splice(_loc8_, 1);
-							_loc5_ = true;
-						}
-					} else if (_loc3_) {
-						if (!_loc7_) {
-							this.mContainer.addChildAt(_loc4_, 0);
-						}
-					} else if (_loc8_ == -1) {
-						this.mVisibleObjects.push(_loc9_);
-						_loc5_ = true;
 					}
-					_loc10_++;
+					i++;
 				}
 				this.mVisibleObjectCnt = this.mVisibleObjects.length;
+				this.mLastViewportCullX = this.mContainer.x;
+				this.mLastViewportCullY = this.mContainer.y;
 			}
-			if (param2) {
-				_loc5_ ||= this.armySortObjects(this.mVisibleObjects);
+			if (param2 || changed) {
+				if (this.armySortObjects(this.mVisibleObjects)) {
+					changed = true;
+				}
 			}
-			if (_loc5_) {
+			if (changed) {
 				this.mContainer.addChildAt(this.mMapGUIEffectsLayer.mGroundLayer, this.mContainer.numChildren);
-				_loc11_ = 0;
-				while (_loc11_ < this.mVisibleObjects.length) {
-					this.mContainer.addChildAt((this.mVisibleObjects[_loc11_] as Renderable).getContainer(), this.mContainer.numChildren);
-					_loc11_++;
+				i = 0;
+				while (i < this.mVisibleObjects.length) {
+					this.mContainer.addChildAt((this.mVisibleObjects[i] as Renderable).getContainer(), this.mContainer.numChildren);
+					i++;
 				}
 				this.mContainer.addChildAt(this.mMapGUIEffectsLayer.mTopLayer, this.mContainer.numChildren);
 				if (FeatureTuner.USE_SEA_WAVES_EFFECT) {
 					this.mContainer.addChildAt(this.mTilemapGraphic.mWaveContainer, this.mContainer.numChildren);
 				}
 			}
+			this.reportSceneSubsystem("sort",getTimer() - perfStart,this.mVisibleObjects ? this.mVisibleObjects.length : 0);
 		}
-
 		public function setScale(param1: Number): void {
+			if (Math.abs(this.mContainer.scaleX - param1) < 0.0001) {
+				return;
+			}
 			var _loc2_: Renderable = null;
 			var _loc3_: int = int(this.mAllElements.length);
 			var _loc4_: int = 0;
@@ -2951,6 +3363,8 @@
 			this.mRelativeVisibleArea.graphics.drawRect(-this.mGame.getStageWidth() / this.mContainer.scaleX / 2, -this.mGame.getStageHeight() / this.mContainer.scaleX / 2, this.mGame.getStageWidth() / this.mContainer.scaleX, this.mGame.getStageHeight() / this.mContainer.scaleX);
 			this.mTilemapGraphic.createBitmaps();
 			this.mTilemapGraphic.updateTilemap();
+			this.mViewportDirty = true;
+			this.mMouseCellDirty = true;
 			if (!Config.DISABLE_SORT) {
 				this.sortAll();
 			}
@@ -3008,14 +3422,28 @@
 			var _loc9_: int = 0;
 			var _loc2_: Boolean = false;
 			var _loc5_: int = 0;
+			var needsSort:Boolean = this.mSortDirty;
+			var lastX:Number = NaN;
+			var lastY:Number = NaN;
 			while (_loc5_ < param1.length) {
-				(_loc7_ = param1[_loc5_]).mSortIdx = _loc5_;
+				_loc7_ = param1[_loc5_] as Renderable;
+				lastX = Number(this.mLastSortX[_loc7_]);
+				lastY = Number(this.mLastSortY[_loc7_]);
+				if (isNaN(lastX) || isNaN(lastY) || lastX != _loc7_.mX || lastY != _loc7_.mY) {
+					needsSort = true;
+				}
+				_loc7_.mSortIdx = _loc5_;
 				_loc5_++;
+			}
+			if (!needsSort) {
+				return false;
 			}
 			param1.sort(this.ySort);
 			var _loc6_: int = 0;
 			while (_loc6_ < param1.length) {
 				if (!(_loc7_ = param1[_loc6_]).mScene) {
+					delete this.mLastSortX[_loc7_];
+					delete this.mLastSortY[_loc7_];
 					param1.splice(_loc6_, 1);
 					_loc2_ = true;
 					_loc6_--;
@@ -3032,12 +3460,20 @@
 							}
 						}
 					}
-					if (_loc7_.mSortIdx != _loc5_) {
+					if (_loc7_.mSortIdx != _loc6_) {
 						_loc2_ = true;
 					}
 				}
 				_loc6_++;
 			}
+			_loc6_ = 0;
+			while (_loc6_ < param1.length) {
+				_loc7_ = param1[_loc6_] as Renderable;
+				this.mLastSortX[_loc7_] = _loc7_.mX;
+				this.mLastSortY[_loc7_] = _loc7_.mY;
+				_loc6_++;
+			}
+			this.mSortDirty = false;
 			return _loc2_;
 		}
 
@@ -3106,9 +3542,26 @@
 			if ((_loc5_ = this.mAllElements.indexOf(param1)) >= 0) {
 				this.mAllElements.splice(_loc5_, 1);
 			}
+			this.mSortDirty = true;
+			this.mViewportDirty = true;
+			delete this.mLastSortX[param1];
+			delete this.mLastSortY[param1];
+			if (param1 is IsometricCharacter) {
+				_loc5_ = this.mCharacterElements.indexOf(param1);
+				if (_loc5_ >= 0) {
+					this.mCharacterElements.splice(_loc5_, 1);
+				}
+			}
+			if (param1 is StaticObject) {
+				_loc5_ = this.mStaticElements.indexOf(param1);
+				if (_loc5_ >= 0) {
+					this.mStaticElements.splice(_loc5_, 1);
+				}
+			}
 			if ((_loc5_ = this.mVisibleObjects.indexOf(param1)) >= 0) {
 				this.mVisibleObjects.splice(_loc5_, 1);
 			}
+			delete this.mVisibleLookup[param1];
 			if (_loc4_ != this.mObjectBeingMoved) {
 				if (param3) {
 					if (param1 is PlayerBuildingObject) {
@@ -3155,6 +3608,7 @@
 
 		public function setSelectedObject(param1: Renderable): void {
 			this.mObjectBeingMoved = param1;
+			this.mSortDirty = true;
 			this.mMapGUIEffectsLayer.highlightPlacingArea();
 		}
 
@@ -3170,7 +3624,10 @@
 		public function addLootReward(param1: Item, param2: int, param3: DisplayObject): void {
 			var _loc4_: int = 0;
 			var _loc5_: LootReward = null;
-			if (param1 != null) {
+			if(this.mGame && this.mGame.mState == GameState.STATE_PVP) {
+				Utils.DiagEvent("PVP_LOOT_SPAWN","item=" + (param1 ? param1.mId : "null") + ";amount=" + param2 + ";source=" + Boolean(param3));
+			}
+			if (param1 != null && param3 != null) {
 				_loc4_ = 50;
 				if (param1.mId == "Energy" || param1.mId == "SocialXP") {
 					_loc4_ = 5;
@@ -3223,6 +3680,8 @@
 		}
 
 		private function updateHudObjects(param1: int): void {
+			var perfStart:int = getTimer();
+			var hudCount:int = this.mSceneHud ? this.mSceneHud.numChildren : 0;
 			var _loc4_: DisplayObject = null;
 			var _loc5_: LootReward = null;
 			var _loc6_: NeighborAvatar = null;
@@ -3256,6 +3715,7 @@
 				this.mSceneHud.removeChild(_loc2_);
 				if (Config.DEBUG_MODE) {}
 			}
+			this.reportSceneSubsystem("hud",getTimer() - perfStart,hudCount);
 		}
 
 		public function getUncollectedSupplies(): int {
@@ -4076,13 +4536,27 @@
 		public function addPowerUpToMap(param1: String, param2: GridCell): PowerUpObject {
 			var _loc4_: PowerUpObject = null;
 			var _loc3_: MapItem = ItemManager.getItem(param1, "PowerUp") as MapItem;
-			if (_loc3_) {
-				return this.createObject(_loc3_, new Point(param2.mPosI, param2.mPosJ)) as PowerUpObject;
+			if (_loc3_ && param2) {
+				_loc4_ = this.createObject(_loc3_, new Point(param2.mPosI, param2.mPosJ)) as PowerUpObject;
+				Utils.DiagEvent("PVP_POWERUP_SPAWN","id=" + param1 + ";i=" + param2.mPosI + ";j=" + param2.mPosJ + ";created=" + Boolean(_loc4_));
+				return _loc4_;
 			}
+			Utils.DiagEvent("PVP_POWERUP_SPAWN_MISS","id=" + param1 + ";cell=" + Boolean(param2) + ";config=" + Boolean(_loc3_));
 			return null;
 		}
 
-		public function addRewardedPlayerUnit(param1: PlayerUnitItem, param2: GridCell): void {
+		public function refreshPlacedRenderable(param1:Renderable):void {
+			if(!param1) return;
+			var clip:DisplayObject = param1.getContainer();
+			if(clip) clip.visible = true;
+			param1.mVisible = true;
+			this.mViewportDirty = true;
+			this.mSortDirty = true;
+			if(!Config.DISABLE_SORT) this.sortAll(true,true);
+			Utils.DiagEvent("PLACEMENT_VISIBILITY_COMMIT","item=" + (param1.mItem ? param1.mItem.mId : "") + ";x=" + param1.mX + ";y=" + param1.mY + ";visible=" + Boolean(clip && clip.visible) + ";attached=" + Boolean(clip && clip.parent));
+		}
+
+		public function addRewardedPlayerUnit(param1: PlayerUnitItem, param2: GridCell): Renderable {
 			var _loc3_: int = this.getCenterPointXOfCell(param2);
 			var _loc4_: int = this.getCenterPointYOfCell(param2);
 			var _loc5_: Renderable;
@@ -4091,6 +4565,7 @@
 			_loc5_.mVisible = true;
 			param2.mOwner = MapData.TILE_OWNER_FRIENDLY;
 			this.mGame.mMapData.mUpdateRequired = true;
+			return _loc5_;
 		}
 
 		public function getObjectLoader(): ObjectLoader {
@@ -4116,6 +4591,32 @@
 			return null;
 		}
 
+		public function getPowerUpSpawnCell(param1:int, param2:int, param3:int = 3):GridCell {
+			var origin:GridCell = this.getCellAt(param1,param2);
+			var area:MapArea = null;
+			var cells:Array = null;
+			var cell:GridCell = null;
+			var radius:int = 1;
+			var i:int = 0;
+			if(!origin) return null;
+			while(radius <= param3) {
+				area = MapArea.getAreaAroundCell(this,origin,radius);
+				cells = area.getCells();
+				i = 0;
+				while(i < cells.length) {
+					cell = cells[i] as GridCell;
+					if(cell && cell.mWalkable && !cell.mCharacter && !cell.mObject && !cell.mCharacterComingToThisTile && !cell.mPowerUp) {
+						Utils.DiagEvent("PVP_POWERUP_SPAWN_CELL","origin=" + param1 + "," + param2 + ";radius=" + radius + ";result=" + cell.mPosI + "," + cell.mPosJ);
+						return cell;
+					}
+					i++;
+				}
+				radius++;
+			}
+			Utils.DiagEvent("PVP_POWERUP_SPAWN_CELL","origin=" + param1 + "," + param2 + ";radius=" + param3 + ";result=none");
+			return null;
+		}
+
 		public function isInAttackRange(param1: Renderable): Boolean {
 			var _loc2_: Array = this.mGame.searchUnitsInRange(param1);
 			if (_loc2_) {
@@ -4127,6 +4628,16 @@
 		}
 
 		public function destroy(): void {
+			this.stopToolTipTimer();
+			if (this.mOfflineFeatureHudBottom && this.mOfflineFeatureButtonsHooked) {
+				this.mOfflineFeatureHudBottom.removeEventListener(MouseEvent.MOUSE_DOWN, this.offlineFeatureMouseDown, true);
+			}
+			if (this.mOfflineWorldMapLoading) {
+				DCResourceManager.getInstance().removeEventListener(OFFLINE_WORLD_MAP_RESOURCE + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE, this.offlineWorldMapLoaded);
+			}
+			this.mOfflineFeatureHudBottom = null;
+			this.mOfflineFeatureButtonsHooked = false;
+			this.mOfflineWorldMapLoading = false;
 			var _loc1_: Renderable = null;
 			var _loc2_: String = null;
 			var _loc3_: String = null;
@@ -4159,6 +4670,16 @@
 				this.mAllElements[_loc2_] = null;
 			}
 			this.mAllElements = null;
+			this.mCharacterElements = null;
+			this.mStaticElements = null;
+			this.mLastSortX = null;
+			this.mLastSortY = null;
+			if (this.mVisibleObjects) {
+				this.mVisibleObjects.length = 0;
+			}
+			this.mVisibleObjects = null;
+			this.mVisibleLookup = null;
+			this.mCachedMouseCell = null;
 			for (_loc3_ in this.mSoundMakers) {
 				(this.mSoundMakers[_loc3_] as Renderable).destroy();
 				this.mSoundMakers[_loc3_] = null;
@@ -4188,6 +4709,7 @@
 				}
 			}
 			if (param2.mPowerUp) {
+				Utils.DiagEvent("PVP_POWERUP_PICKUP_CELL","id=" + (param2.mPowerUp.mItem ? param2.mPowerUp.mItem.mId : "") + ";unit=" + (param1.mItem ? param1.mItem.mId : "") + ";i=" + param2.mPosI + ";j=" + param2.mPosJ);
 				param2.mPowerUp.execute(param1);
 				this.removeObject(param2.mPowerUp, true, false);
 			}

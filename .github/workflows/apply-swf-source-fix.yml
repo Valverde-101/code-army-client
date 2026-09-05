@@ -1,0 +1,37 @@
+name: Verify SWF source transforms
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify transforms are integrated and idempotent
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $targets=@(
+            'src\game\isometric\IsometricScene.as',
+            'src\game\utils\OfflineSave.as',
+            'Tools\CI\Test-AndroidRuntimePatch.ps1'
+          )
+          $before=@{}
+          foreach($path in $targets){$before[$path]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
+          & '.\Tools\SWF\Apply-IsometricTooltipTimerFix.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE
+          & '.\Tools\SWF\Apply-OfflineActiveMapRestoreFix.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE
+          & '.\Tools\CI\Test-PowerShellSyntax.ps1' -RepositoryRoot $env:GITHUB_WORKSPACE
+          foreach($path in $targets){
+            $after=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+            if($after -ne $before[$path]){throw "SOURCE_TRANSFORM_DRIFT=FAIL path=$path"}
+          }
+          Write-Host 'SOURCE_TRANSFORM_DRIFT=PASS tooltip=true active_map=true'

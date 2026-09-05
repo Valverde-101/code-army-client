@@ -16,6 +16,7 @@
 		}
 
 		public static function resetAllPopup(): void {
+			Utils.DiagEvent("POPUP_RESET","total=" + mTotalOpenCount + ";modal=" + mModalOpenCount);
 			mPopups.splice(0, mPopups.length);
 			mPopups = null;
 			mPopups = new Array();
@@ -67,6 +68,7 @@
 
 		public static function releasePopUp(param1: Class): void {
 			var _loc2_: Class = getBaseType(param1);
+			Utils.DiagEvent("POPUP_RELEASE","class=" + String(param1) + ";tracked=" + Boolean(mPopups[_loc2_]) + ";total=" + mTotalOpenCount + ";modal=" + mModalOpenCount);
 			mPopups[_loc2_] = null;
 		}
 

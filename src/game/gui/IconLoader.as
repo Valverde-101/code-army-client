@@ -44,22 +44,35 @@ package game.gui
          param1.x = -param1.width / 2;
          param1.y = -param1.height / 2;
       }
+
+      private static function normalizePicture(param1:DisplayObject) : Sprite
+      {
+         if(!param1) return null;
+         var result:Sprite = param1 as Sprite;
+         if(!result) { result = new Sprite(); result.addChild(param1); }
+         result.visible = true;
+         result.alpha = 1;
+         fixSprite(result);
+         return result;
+      }
       
       public static function addIconPicture(param1:DisplayObjectContainer, param2:String, param3:Function = null, param4:Boolean = true) : MovieClip
       {
          var _loc6_:Sprite = null;
+         var pvpIcon:Boolean = param2 && param2.indexOf("pvp_ui_icons") >= 0;
          var _loc7_:Class = null;
          var _loc8_:MovieClip = null;
          var _loc9_:IconLoader = null;
          var _loc5_:DCResourceManager = DCResourceManager.getInstance();
+         if(pvpIcon) Utils.DiagEvent("ICON_REQUEST","path=" + param2 + ";cached=" + _loc5_.isLoaded(param2));
          if(param4)
          {
             Utils.removeAllChildren(param1);
          }
          if(_loc5_.isLoaded(param2))
          {
-            _loc6_ = _loc5_.get(param2);
-            fixSprite(_loc6_);
+            _loc6_ = normalizePicture(_loc5_.get(param2));
+            if(pvpIcon) Utils.DiagEvent("ICON_CACHE_HIT","path=" + param2 + ";sprite=" + Boolean(_loc6_));
             param1.addChild(_loc6_);
             if(param3 != null)
             {
@@ -78,6 +91,7 @@ package game.gui
          }
          if(!_loc5_.isAddedToLoadingList(param2))
          {
+            if(pvpIcon) Utils.DiagEvent("ICON_LOAD_BEGIN","path=" + param2);
             _loc5_.load(param2,param2,"Sprite",false);
          }
          _loc9_ = new IconLoader(_loc8_,null,param3);
@@ -152,16 +166,15 @@ package game.gui
             _loc3_.removeChild(this.mPlaceholder);
             if(_loc4_ = _loc2_.get(this.mPicURL))
             {
-               if(_loc4_ is Sprite)
+               var normalized:Sprite = normalizePicture(_loc4_);
+               if(normalized)
                {
-                  fixSprite(_loc4_);
-               }
-               _loc3_.addChild(_loc4_);
-               if(this.mCallback != null)
-               {
-                  this.mCallback(_loc4_);
+                  _loc3_.addChild(normalized);
+                  if(this.mPicURL && this.mPicURL.indexOf("pvp_ui_icons") >= 0) Utils.DiagEvent("ICON_LOADED","path=" + this.mPicURL + ";width=" + normalized.width + ";height=" + normalized.height);
+                  if(this.mCallback != null) this.mCallback(normalized);
                }
             }
+            else if(this.mPicURL && this.mPicURL.indexOf("pvp_ui_icons") >= 0) Utils.DiagEvent("ICON_LOAD_FAIL","path=" + this.mPicURL + ";reason=resource_null");
          }
          this.mCallback = null;
          this.mPlaceholder = null;

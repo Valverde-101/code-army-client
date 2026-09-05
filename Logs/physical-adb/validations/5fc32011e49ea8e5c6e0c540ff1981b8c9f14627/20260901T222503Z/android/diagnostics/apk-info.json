@@ -1,0 +1,48 @@
+﻿{
+    "tested_sha":  "5fc32011e49ea8e5c6e0c540ff1981b8c9f14627",
+    "apk_path":  "V:\\AndroidBuild\\Builds\\code-army-client\\5fc32011e49ea8e5c6e0c540ff1981b8c9f14627\\android\\ArmyAttack-android-arm64-gpu.apk",
+    "apk_size":  66909677,
+    "apk_sha256":  "9bc9a65a97906be559e4f9e71a9c4d531e58f9d70fd2cea5e081cc577ea7504f",
+    "package_name":  "air.army.attack",
+    "reference_package_name":  "air.army.attack",
+    "version_code":  "23002000",
+    "version_name":  "23.2-android-5fc32011",
+    "min_sdk":  "21",
+    "target_sdk":  "33",
+    "reference_target_sdk":  "33",
+    "launchable_activity":  "air.army.attack.AIRAppEntry",
+    "abis":  [
+                 "arm64-v8a"
+             ],
+    "reference_abis":  [
+                           "arm64-v8a"
+                       ],
+    "seed_swf_path":  "assets/iArmyAirOfflineSavingv23.swf",
+    "seed_swf_size":  24916942,
+    "seed_swf_sha256":  "e7f6816a95e148532849fc8597964f059d8ab482b8f8ac8ca5ec6c6148843b1a",
+    "expected_seed_swf_size":  24916942,
+    "expected_seed_swf_sha256":  "e7f6816a95e148532849fc8597964f059d8ab482b8f8ac8ca5ec6c6148843b1a",
+    "data_entries":  528,
+    "config_entries":  22,
+    "base_only":  true,
+    "profiles_entries":  0,
+    "selector_entries":  0,
+    "root_swf_count":  1,
+    "swf_source_original":  true,
+    "swf_performance_patched":  true,
+    "performance_patch_version":  "mobile-engine-v3.17-placement-hud-loot-firemission-pacing",
+    "performance_patch_class_count":  29,
+    "render_mode":  "gpu",
+    "native_performance_overlay":  true,
+    "native_performance_overlay_mode":  "always_on_low_overhead_v3",
+    "diagnostics_ane_sha256":  "4dbcd7adbe73580bcfdf90fa91300f5d336aefd9bbaf491ae458f35058b3fb87",
+    "signature":  "PASS",
+    "zipalign":  "PASS",
+    "build_tier":  "HARMAN_AIR50_ARM64",
+    "published_source_sha":  "306bccc7db5b1ce34dd68a3bc80093648c9224bd",
+    "game_version":  "23.2",
+    "failures":  [
+
+                 ]
+}
+

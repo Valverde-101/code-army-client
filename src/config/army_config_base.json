@@ -51,7 +51,10 @@
       "DefaultArea": "#MapArea.DesertS",
       "CenterCamOnArrowDelay": "1000",
       "TilemapFileName": "tile_map_desert.csv",
-      "SWFFile": "swf/new_backgroud_01",
+      "SWFFile": [
+        "swf/new_backgroud_01",
+        "swf/desert_backgroud_01"
+      ],
       "ParatroopersTriggerMission": "#Mission.AREA_D_M_C1",
       "Paratrooper": "#EnemyAppearanceSetup.Paratroop",
       "ParatrooperEnemyLimit": "6",
@@ -71,6 +74,7 @@
       "Width": "11",
       "Height": "11",
       "ZoomLevels": "40, 75, 100",
+      "ZoomLevelsMobile": "40, 75, 100",
       "MarginX": "186",
       "MarginY": "93",
       "DefaultCellX": "6",
@@ -20784,6 +20788,13 @@
       "ItemTable": "ShopBuycash",
       "Order": "9",
       "TabType": "normal"
+    },
+    "Boosters": {
+      "ID": "Boosters",
+      "Name": "#TID.SHOP_TAB_BOOSTERS",
+      "ItemTable": "ShopBoosters",
+      "Order": "10",
+      "TabType": "pvp"
     }
   },
   "ShopTabIPhone": {
@@ -21216,7 +21227,17 @@
       "Item": "#Deco.AmmoStorage"
     }
   },
-  "ShopBoosters": {},
+  "ShopBoosters": {
+    "0": { "ID": "0", "Item": "#Booster.Damage1" },
+    "1": { "ID": "1", "Item": "#Booster.Damage2" },
+    "2": { "ID": "2", "Item": "#Booster.Damage3" },
+    "3": { "ID": "3", "Item": "#Booster.Health5" },
+    "4": { "ID": "4", "Item": "#Booster.Health10" },
+    "5": { "ID": "5", "Item": "#Booster.Health15" },
+    "6": { "ID": "6", "Item": "#Booster.Range1" },
+    "7": { "ID": "7", "Item": "#Booster.Range2" },
+    "8": { "ID": "8", "Item": "#Booster.Range3" }
+  },
   "ShopBuycashgoldIPhone": {
     "0": {
       "ID": "0",

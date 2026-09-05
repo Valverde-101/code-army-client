@@ -402,17 +402,15 @@ package game.gameElements
                         {
                            _loc1_ = GameState.mInstance.mPlayerProfile;
                            _loc1_.addItem(this.mItem,this.mAmount);
-                           if(FeatureTuner.USE_COLLECTION_CARD)
+                           if(FeatureTuner.USE_COLLECTION_CARD && this.mItem is CollectibleItem)
                            {
-                              if(this.mItem is CollectibleItem)
+                              if(GameState.mInstance.mState == GameState.STATE_PVP)
                               {
-                                 if(!PopUpManager.isModalPopupActive())
-                                 {
-                                    if(GameState.mInstance.mHUD)
-                                    {
-                                       GameState.mInstance.mHUD.mCollectionCard.pickedUpItem(CollectibleItem(this.mItem));
-                                    }
-                                 }
+                                 trace("[PVP_LOOT_DEFER_UI] id=" + this.mItem.mId + " amount=" + this.mAmount);
+                              }
+                              else if(!PopUpManager.isModalPopupActive() && GameState.mInstance.mHUD && GameState.mInstance.mHUD.mCollectionCard)
+                              {
+                                 GameState.mInstance.mHUD.mCollectionCard.pickedUpItem(CollectibleItem(this.mItem));
                               }
                            }
                         }

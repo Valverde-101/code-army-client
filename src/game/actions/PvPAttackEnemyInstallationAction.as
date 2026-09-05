@@ -220,6 +220,7 @@
          {
             _loc1_ += _loc2_.getPower();
          }
+         if(GameState.mInstance.mPvPMatch) _loc1_ = GameState.mInstance.mPvPMatch.getBoostedDamage(_loc1_,mCharacterActors ? mCharacterActors.length : 1);
          return _loc1_;
       }
       
@@ -285,8 +286,10 @@
          {
             _loc12_ = _loc6_.getRandomItemDrop();
             _loc2_.addLootReward(_loc12_,1,mTarget.getContainer());
+            _loc1_.mPvPMatch.addIngameCollectible(_loc12_);
          }
          (mTarget as EnemyInstallationObject).reduceHealth(_loc4_);
+         if(_loc1_.mPvPMatch) _loc1_.mPvPMatch.consumeActionBooster("enemy_installation_attack");
          (mTarget as EnemyInstallationObject).resetReactionTimer();
          this.mNewState = STATE_OVER;
          if(mCounterAction)

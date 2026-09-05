@@ -1,0 +1,254 @@
+﻿{
+    "schema_version":  1,
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "5fc32011e49ea8e5c6e0c540ff1981b8c9f14627",
+    "patch_version":  "mobile-engine-v3.17-placement-hud-loot-firemission-pacing",
+    "source_swf":  {
+                       "path":  "V:\\AndroidBuild\\Repositories\\code-army-client\\vendor\\Test_army_attack\\armyattack\\assets\\iArmyAirOfflineSavingv23.swf",
+                       "size":  24871956,
+                       "sha256":  "99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4"
+                   },
+    "output_swf":  {
+                       "path":  "V:\\AndroidBuild\\Toolchains\\AIR50-API33-BT33.0.2\\Builds\\code-army-client\\5fc32011e49ea8e5c6e0c540ff1981b8c9f14627\\android\\stage\\iArmyAirOfflineSavingv23.swf",
+                       "size":  24916942,
+                       "sha256":  "e7f6816a95e148532849fc8597964f059d8ab482b8f8ac8ca5ec6c6148843b1a"
+                   },
+    "classes":  [
+                    {
+                        "name":  "game.battlefield.TileMapGraphic",
+                        "source":  "src/game/battlefield/TileMapGraphic.as",
+                        "sha256":  "5203c8cd55739d6fbb7d421f480de10e4142aac5e4ec5ca5aa3de4a2fc4ac7de"
+                    },
+                    {
+                        "name":  "game.isometric.IsometricScene",
+                        "source":  "src/game/isometric/IsometricScene.as",
+                        "sha256":  "23a464d6eb10288e7979050b9127dc19cd272672edf0598b23c18e7a3abec57b"
+                    },
+                    {
+                        "name":  "game.battlefield.MapData",
+                        "source":  "src/game/battlefield/MapData.as",
+                        "sha256":  "235a47632e38fd1d1d6abbf93541a3e34e659d08e340aaff46fa23c8c43df646"
+                    },
+                    {
+                        "name":  "game.isometric.characters.IsometricCharacter",
+                        "source":  "src/game/isometric/characters/IsometricCharacter.as",
+                        "sha256":  "72e4766e59bea96f8d6decd50c745f4d94e1dedc5045cf714b28294d2bdc172c"
+                    },
+                    {
+                        "name":  "game.characters.AnimationController",
+                        "source":  "src/game/characters/AnimationController.as",
+                        "sha256":  "5daccff9ad7943f997de144fb7c537dc6a705f45e5a399a8dd8ee9cb84cb45ea"
+                    },
+                    {
+                        "name":  "com.dchoc.graphics.DCResourceManager",
+                        "source":  "src/com/dchoc/graphics/DCResourceManager.as",
+                        "sha256":  "085f82229cbb7e4e978b6a02d38ec6f378546bfef62d6ebcc54cda3b4215378a"
+                    },
+                    {
+                        "name":  "com.dchoc.GUI.DCButton",
+                        "source":  "src/com/dchoc/GUI/DCButton.as",
+                        "sha256":  "80898b484de26f1337e723303ed8ba2c474ca5bf6d7a7694b6378e7f28577a67"
+                    },
+                    {
+                        "name":  "Utils",
+                        "source":  "src/Utils.as",
+                        "sha256":  "6ca4de42ae48198bc709eb8d56e289befc9c6a45038aa6407b0921725a63dc46"
+                    },
+                    {
+                        "name":  "game.characters.PvPEnemyUnit",
+                        "source":  "src/game/characters/PvPEnemyUnit.as",
+                        "sha256":  "f4942ec991ab273411e56b517ff5067e5cec0624248e0f34e69b097722e61a08"
+                    },
+                    {
+                        "name":  "game.utils.OfflineSave",
+                        "source":  "src/game/utils/OfflineSave.as",
+                        "sha256":  "939c722ad0ba647d2cebe9c00edf5c8c0d01e4c54791b653e2e76e1a9962879d"
+                    },
+                    {
+                        "name":  "game.net.PvPMatch",
+                        "source":  "src/game/net/PvPMatch.as",
+                        "sha256":  "9c5f461a9301f5efb522cab31292c28a17c0ce80c67b23f58ab5100f07bdc537"
+                    },
+                    {
+                        "name":  "game.states.GameState",
+                        "source":  "src/game/states/GameState.as",
+                        "sha256":  "82643bac873312eeb4d5bc70cee358be168ddb14ac86d94ab759e148b581772d"
+                    },
+                    {
+                        "name":  "game.gameElements.PlayerBuildingObject",
+                        "source":  "src/game/gameElements/PlayerBuildingObject.as",
+                        "sha256":  "a7fb3d730ce4d983c225c9ca935b3adfd79bc7a0fad0727aa84013e843ad7701"
+                    },
+                    {
+                        "name":  "game.gameElements.HFEObject",
+                        "source":  "src/game/gameElements/HFEObject.as",
+                        "sha256":  "6d81e16420bb58bde9f7dac2cd8fdbb2c82f2d463db0b7a4f535b315a1cf83dd"
+                    },
+                    {
+                        "name":  "game.items.PowerUpItem",
+                        "source":  "src/game/items/PowerUpItem.as",
+                        "sha256":  "3ef51839fdbf066fc20835e800688ec4f392215061a5d90a886e4db877112c90"
+                    },
+                    {
+                        "name":  "game.gameElements.PowerUpObject",
+                        "source":  "src/game/gameElements/PowerUpObject.as",
+                        "sha256":  "691b4ea37a96be9244333e8d68399459299fbf3c3ecc831c7e21d6bdd750fd81"
+                    },
+                    {
+                        "name":  "game.gameElements.FireMissionObject",
+                        "source":  "src/game/gameElements/FireMissionObject.as",
+                        "sha256":  "0c9834b269d228d379784103fd8a672069a62fdf0798fc0aeece0d3dcfee9787"
+                    },
+                    {
+                        "name":  "game.gameElements.LootReward",
+                        "source":  "src/game/gameElements/LootReward.as",
+                        "sha256":  "562dae0a4e75aeb2abccd3420da494d27128682778ff3e269cbd80e2070977c0"
+                    },
+                    {
+                        "name":  "game.actions.PvPAttackEnemyAction",
+                        "source":  "src/game/actions/PvPAttackEnemyAction.as",
+                        "sha256":  "0d7e3de92f3e84cebd16e23b52af89042c62eec08c462f5bbebab5c0b60f93f3"
+                    },
+                    {
+                        "name":  "game.actions.PvPAttackEnemyInstallationAction",
+                        "source":  "src/game/actions/PvPAttackEnemyInstallationAction.as",
+                        "sha256":  "f7918d9c66c627fa05a1285aa8b8ef391b9561e612bd1372f7232c85256c638e"
+                    },
+                    {
+                        "name":  "game.actions.PvPFireMissionAction",
+                        "source":  "src/game/actions/PvPFireMissionAction.as",
+                        "sha256":  "182ce3e97129317839bfb6d18a581b831f265fe9a32863694c0f0b76e36175e6"
+                    },
+                    {
+                        "name":  "game.gui.GameHUD",
+                        "source":  "src/game/gui/GameHUD.as",
+                        "sha256":  "4c1dbd22bdcbc75f16978c4f262d0a049a677f7b63ea0038de7d3762643d59b7"
+                    },
+                    {
+                        "name":  "game.gui.pvp.PvPDebriefingDialog",
+                        "source":  "src/game/gui/pvp/PvPDebriefingDialog.as",
+                        "sha256":  "ef91ca7371d76cffd4adf942870fbdd6e4386c415443bc7cc7a0fe3812a65074"
+                    },
+                    {
+                        "name":  "game.gui.GiveFilePermissionDialog",
+                        "source":  "src/game/gui/GiveFilePermissionDialog.as",
+                        "sha256":  "6ebb2bebdece083b36f23710a15dc166ac5c682f153866b4f7dcc319113dceed"
+                    },
+                    {
+                        "name":  "game.gui.popups.WorldMapWindow",
+                        "source":  "src/game/gui/popups/WorldMapWindow.as",
+                        "sha256":  "aac427c2b8e309133d546b1eba6b79487f6ef1f9a8178ec2dbb2544c62fc5fbd"
+                    },
+                    {
+                        "name":  "game.gui.pvp.PvPMatchUpDialog",
+                        "source":  "src/game/gui/pvp/PvPMatchUpDialog.as",
+                        "sha256":  "328ec266c22b918bee0305cf192d3f809697973b664ae680e9898c201bbc4876"
+                    },
+                    {
+                        "name":  "game.gui.pvp.PvPCombatSetupDialog",
+                        "source":  "src/game/gui/pvp/PvPCombatSetupDialog.as",
+                        "sha256":  "831ddd790f2d3834e759c4fb747e66b12834af7337fefd1192b3063085390931"
+                    },
+                    {
+                        "name":  "game.gui.pvp.PvPBoosterBar",
+                        "source":  "src/game/gui/pvp/PvPBoosterBar.as",
+                        "sha256":  "dc8f45999d3f5403827823a3574392fe73d013b32e01b356859dcf4e37ec1dd0"
+                    },
+                    {
+                        "name":  "game.gui.pvp.PvPHUD",
+                        "source":  "src/game/gui/pvp/PvPHUD.as",
+                        "sha256":  "011ced58f27d53b74151368fc7659920406ceab9533a22e3eda57d936e9df3e7"
+                    }
+                ],
+    "guarantees":  [
+                       "enemy_character_update_cadence_unchanged",
+                       "enemy_actions_update_cadence_unchanged",
+                       "enemy_movement_update_cadence_unchanged",
+                       "visual_assets_preserved_from_source_swf",
+                       "audio_assets_preserved_from_source_swf",
+                       "animate_linkage_preserved_from_source_swf"
+                   ],
+    "feature_patch_version":  "offline-systems-v5-root-recovery",
+    "optimizations":  [
+                          "padded_tilemap_camera_cache_256px",
+                          "deterministic_tile_bitmap_cache_disposal_before_zoom_rebuild",
+                          "tilemap_rebuild_threshold_72pct",
+                          "remove_unused_sort_hit_tests",
+                          "fix_sort_order_change_index_comparison",
+                          "indexed_character_hot_loop",
+                          "indexed_static_object_hot_loop",
+                          "skip_global_membership_scan_while_camera_pans",
+                          "skip_sort_when_object_positions_are_unchanged",
+                          "reuse_existing_mouse_cell_result",
+                          "viewport_cull_offscreen_renderables_384px",
+                          "persistent_visible_membership_dictionary",
+                          "android_pinch_zoom_enabled",
+                          "pinch_zoom_bypasses_tutorial_gate",
+                          "offline_pvp_button_visible_without_level_gate",
+                          "offline_pvp_bootstrap_before_match_dialog",
+                          "offline_world_map_button_visible",
+                          "offline_world_map_home_desert_enabled",
+                          "offline_world_map_single_canonical_switch_path",
+                          "offline_saved_map_id_normalization",
+                          "pvp_transient_map_single_build",
+                          "pvp_returns_to_origin_map",
+                          "pvp_three_visible_opponent_slots_owned",
+                          "pvp_chance_bounded_percentage",
+                          "pvp_enemy_randomization_bounded_attempts",
+                          "mobile_save_onboarding_v22_gate_removed",
+                          "mobile_save_dialog_fits_viewport",
+                          "mobile_save_choice_nonblocking",
+                          "offline_pvp_state_not_reset_on_button_press",
+                          "offline_pvp_dialog_excludes_global_recent_data",
+                          "offline_pvp_opponents_bounded_to_valid_ranks",
+                          "offline_pvp_booster_store_populated",
+                          "canonical_config_bytecode_preserved",
+                          "canonical_gamehud_bytecode_preserved",
+                          "canonical_armybutton_bytecode_preserved",
+                          "canonical_animationcontroller_bytecode_preserved",
+                          "canonical_enveffectmanager_bytecode_preserved",
+                          "canonical_menu_button_lifecycle_preserved",
+                          "canonical_audio_lifecycle_preserved",
+                          "pvp_enemy_exact_config_swf_paths",
+                          "pvp_enemy_full_graphics_provenance",
+                          "swf_resource_symbol_provenance",
+                          "pvp_static_buy_fight_buttons",
+                          "pvp_static_button_root_state_preserves_nested_icons",
+                          "pvp_cancel_standard_binding",
+                          "mobile_hud_reference_canvas_parent_scale",
+                          "hfe_native_timeline_playback",
+                          "hfe_timeline_progress_diagnostics",
+                          "mainmap_player_building_passive_10hz",
+                          "mainmap_viewport_recull_128px_threshold",
+                          "mainmap_viewport_fallback_recull_20_frames",
+                          "mainmap_spatial_audio_refresh_10hz",
+                          "mobile_hud_pullout_visible_bounds_clamp",
+                          "placement_immediate_visibility_commit",
+                          "pvp_move_visual_runtime_trace",
+                          "pvp_loot_runtime_trace",
+                          "pvp_powerup_spawn_runtime_trace",
+                          "perf_overlay_always_on_no_start_stop",
+                          "pvp_weighted_spawn_scalar_amount",
+                          "pvp_firemission_null_drop_guard",
+                          "perf_event_hot_path_no_json",
+                          "perf_sample_2s_flush_15s",
+                          "runtime_trace_pvp_outcomes",
+                          "native_perf_provenance_exact_controls",
+                          "mobile_explicit_placement_check_required",
+                          "right_hud_close_uses_authored_timeline",
+                          "pvp_powerup_item_bytecode_applied",
+                          "pvp_powerup_object_bytecode_applied",
+                          "pvp_firemission_object_bytecode_applied",
+                          "pvp_firemission_null_visual_safe",
+                          "pvp_firemission_single_destroy_lifecycle",
+                          "hfe_wallclock_resync_30fps",
+                          "hfe_missing_graphics_safe",
+                          "pvp_powerup_exception_containment",
+                          "pvp_firemission_missing_debris_safe",
+                          "pvp_enemy_materialized_class_trace",
+                          "swf_resolved_class_identity_trace",
+                          "hfe_progress_not_mirrored_to_logcat"
+                      ],
+    "generated_utc":  "2026-09-01T22:23:05.9283166Z"
+}
+

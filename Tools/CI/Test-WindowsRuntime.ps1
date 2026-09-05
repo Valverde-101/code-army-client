@@ -1,0 +1,353 @@
+param(
+  [Parameter(Mandatory=$true)][string]$ExePath,
+  [Parameter(Mandatory=$true)][string]$WorkingDirectory,
+  [Parameter(Mandatory=$true)][string]$EvidenceRoot,
+  [Parameter(Mandatory=$true)][string]$Label,
+  [int]$StabilitySeconds = 30
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+if (-not (Test-Path -LiteralPath $ExePath)) {
+  throw "WINDOW_RUNTIME_PRECHECK=FAIL label=$Label missing_exe=$ExePath"
+}
+if (-not (Test-Path -LiteralPath $WorkingDirectory)) {
+  throw "WINDOW_RUNTIME_PRECHECK=FAIL label=$Label missing_workdir=$WorkingDirectory"
+}
+New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
+
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+
+if (-not ('ArmyAttackWindowProbe' -as [type])) {
+  Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+
+public static class ArmyAttackWindowProbe
+{
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsHungAppWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    public static IntPtr FindVisibleWindow(int processId)
+    {
+        IntPtr found = IntPtr.Zero;
+        long bestArea = 0;
+        EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
+        {
+            uint pid;
+            GetWindowThreadProcessId(hWnd, out pid);
+            if (pid != (uint)processId || !IsWindowVisible(hWnd))
+                return true;
+
+            RECT r;
+            if (!GetWindowRect(hWnd, out r))
+                return true;
+
+            int width = r.Right - r.Left;
+            int height = r.Bottom - r.Top;
+            if (width < 200 || height < 150)
+                return true;
+
+            long area = (long)width * (long)height;
+            if (area > bestArea)
+            {
+                bestArea = area;
+                found = hWnd;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    public static string WindowTitle(IntPtr hWnd)
+    {
+        StringBuilder sb = new StringBuilder(512);
+        GetWindowText(hWnd, sb, sb.Capacity);
+        return sb.ToString();
+    }
+}
+"@
+}
+
+function Get-WindowRectObject([IntPtr]$Handle) {
+  $rect = New-Object ArmyAttackWindowProbe+RECT
+  if (-not [ArmyAttackWindowProbe]::GetWindowRect($Handle, [ref]$rect)) {
+    throw "WINDOW_RECT=FAIL label=$Label handle=$Handle"
+  }
+  $width = $rect.Right - $rect.Left
+  $height = $rect.Bottom - $rect.Top
+  [pscustomobject]@{
+    Left = $rect.Left
+    Top = $rect.Top
+    Right = $rect.Right
+    Bottom = $rect.Bottom
+    Width = $width
+    Height = $height
+  }
+}
+
+function Wait-VisibleWindow([int]$ProcessId,[int]$TimeoutMilliseconds = 4000,[string]$Phase = 'reacquire') {
+  $deadline=(Get-Date).AddMilliseconds($TimeoutMilliseconds)
+  $attempt=0
+  do {
+    $attempt++
+    $candidate=[ArmyAttackWindowProbe]::FindVisibleWindow($ProcessId)
+    if($candidate -ne [IntPtr]::Zero){
+      try{
+        $rect=Get-WindowRectObject $candidate
+        if($rect.Width -ge 640 -and $rect.Height -ge 480){
+          if($attempt -gt 1){
+            Write-Host "WINDOW_REACQUIRE=PASS label=$Label phase=$Phase attempts=$attempt handle=$candidate width=$($rect.Width) height=$($rect.Height)"
+          }
+          return $candidate
+        }
+      }catch{}
+    }
+    Start-Sleep -Milliseconds 250
+  } while((Get-Date) -lt $deadline)
+  Write-Host "WINDOW_REACQUIRE=FAIL label=$Label phase=$Phase attempts=$attempt timeout_ms=$TimeoutMilliseconds"
+  return [IntPtr]::Zero
+}
+
+function Capture-WindowEvidence([IntPtr]$Handle, [string]$Suffix) {
+  $rect = Get-WindowRectObject $Handle
+  if ($rect.Width -lt 640 -or $rect.Height -lt 480) {
+    throw "WINDOW_RECT=FAIL label=$Label width=$($rect.Width) height=$($rect.Height)"
+  }
+
+  $virtual = [System.Windows.Forms.SystemInformation]::VirtualScreen
+  $left = [Math]::Max($rect.Left, $virtual.Left)
+  $top = [Math]::Max($rect.Top, $virtual.Top)
+  $right = [Math]::Min($rect.Right, $virtual.Right)
+  $bottom = [Math]::Min($rect.Bottom, $virtual.Bottom)
+  $width = $right - $left
+  $height = $bottom - $top
+  if ($width -lt 320 -or $height -lt 240) {
+    throw "SCREENSHOT=FAIL label=$Label clipped_width=$width clipped_height=$height"
+  }
+
+  $safeLabel = ($Label -replace '[^A-Za-z0-9_.-]', '_')
+  $shotPath = Join-Path $EvidenceRoot ("$safeLabel-$Suffix.png")
+  $bmp = New-Object System.Drawing.Bitmap($width, $height)
+  $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+  try {
+    $gfx.CopyFromScreen($left, $top, 0, 0, (New-Object System.Drawing.Size($width, $height)))
+
+    $unique = New-Object 'System.Collections.Generic.HashSet[int]'
+    $values = New-Object 'System.Collections.Generic.List[double]'
+    $sampleX = 32
+    $sampleY = 18
+    for ($yi = 0; $yi -lt $sampleY; $yi++) {
+      $y = [Math]::Min($height - 1, [Math]::Floor(($yi + 0.5) * $height / $sampleY))
+      for ($xi = 0; $xi -lt $sampleX; $xi++) {
+        $x = [Math]::Min($width - 1, [Math]::Floor(($xi + 0.5) * $width / $sampleX))
+        $color = $bmp.GetPixel([int]$x, [int]$y)
+        [void]$unique.Add($color.ToArgb())
+        $brightness = 0.2126 * $color.R + 0.7152 * $color.G + 0.0722 * $color.B
+        $values.Add([double]$brightness)
+      }
+    }
+
+    $mean = ($values | Measure-Object -Average).Average
+    $sumSq = 0.0
+    foreach ($v in $values) {
+      $delta = $v - $mean
+      $sumSq += $delta * $delta
+    }
+    $stddev = [Math]::Sqrt($sumSq / [Math]::Max(1, $values.Count))
+    $bmp.Save($shotPath, [System.Drawing.Imaging.ImageFormat]::Png)
+  }
+  finally {
+    $gfx.Dispose()
+    $bmp.Dispose()
+  }
+
+  $shot = Get-Item -LiteralPath $shotPath
+  $shotHash = (Get-FileHash -LiteralPath $shotPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $complexity = [Math]::Round($unique.Count * $stddev, 2)
+
+  Write-Host "SCREENSHOT=PASS label=$Label phase=$Suffix path=$shotPath"
+  Write-Host "SCREENSHOT_SIZE=$($shot.Length) label=$Label phase=$Suffix"
+  Write-Host "SCREENSHOT_SHA256=$shotHash label=$Label phase=$Suffix"
+  Write-Host "VISUAL_UNIQUE_COLORS=$($unique.Count) label=$Label phase=$Suffix"
+  Write-Host ("VISUAL_BRIGHTNESS_STDDEV={0:N3} label={1} phase={2}" -f $stddev,$Label,$Suffix)
+  Write-Host ("VISUAL_COMPLEXITY={0:N2} label={1} phase={2}" -f $complexity,$Label,$Suffix)
+
+  if ($shot.Length -lt 4096 -or $unique.Count -lt 6 -or $stddev -lt 1.5) {
+    throw "VISUAL_SMOKE=FAIL label=$Label phase=$Suffix size=$($shot.Length) unique=$($unique.Count) stddev=$stddev"
+  }
+  Write-Host "VISUAL_SMOKE=PASS label=$Label phase=$Suffix"
+
+  [pscustomobject]@{
+    Path = $shotPath
+    Sha256 = $shotHash
+    Size = $shot.Length
+    UniqueColors = $unique.Count
+    StdDev = $stddev
+    Complexity = $complexity
+    Width = $rect.Width
+    Height = $rect.Height
+  }
+}
+
+$launchTime = Get-Date
+$proc = $null
+$trackedPid = $null
+$handle = [IntPtr]::Zero
+try {
+  $proc = Start-Process -FilePath $ExePath -WorkingDirectory $WorkingDirectory -PassThru
+  $trackedPid = $proc.Id
+  Write-Host "START_ATTEMPT=PASS label=$Label pid=$trackedPid exe=$ExePath"
+
+  $deadline = (Get-Date).AddSeconds(20)
+  $rect = $null
+  do {
+    Start-Sleep -Milliseconds 500
+    $proc.Refresh()
+    if ($proc.HasExited) {
+      throw "START=FAIL label=$Label pid=$trackedPid exit=$($proc.ExitCode)"
+    }
+    $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
+    if ($handle -ne [IntPtr]::Zero) {
+      try {
+        $candidateRect = Get-WindowRectObject $handle
+        if ($candidateRect.Width -ge 640 -and $candidateRect.Height -ge 480) {
+          $rect = $candidateRect
+          break
+        }
+        Write-Host "WINDOW_TRANSIENT=OBSERVED label=$Label handle=$handle width=$($candidateRect.Width) height=$($candidateRect.Height) title=$([ArmyAttackWindowProbe]::WindowTitle($handle))"
+      } catch {}
+    }
+  } while ((Get-Date) -lt $deadline)
+
+  if ($handle -eq [IntPtr]::Zero -or $null -eq $rect) {
+    throw "WINDOW_HANDLE=FAIL label=$Label pid=$trackedPid no_game_sized_window_after_20s"
+  }
+
+  $title = [ArmyAttackWindowProbe]::WindowTitle($handle)
+  Write-Host "START=PASS label=$Label pid=$trackedPid"
+  Write-Host "WINDOW_HANDLE=PASS label=$Label handle=$handle title=$title"
+  Write-Host "WINDOW_RECT=PASS label=$Label left=$($rect.Left) top=$($rect.Top) width=$($rect.Width) height=$($rect.Height)"
+
+  if ([ArmyAttackWindowProbe]::IsHungAppWindow($handle)) {
+    throw "WINDOW_RESPONDING=FAIL label=$Label phase=initial"
+  }
+  Write-Host "WINDOW_RESPONDING=PASS label=$Label phase=initial"
+
+  Start-Sleep -Seconds 3
+  $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
+  if ($handle -eq [IntPtr]::Zero) { throw "WINDOW_HANDLE=FAIL label=$Label phase=initial_capture" }
+  $initial = Capture-WindowEvidence $handle 'initial'
+
+  $foreground = [ArmyAttackWindowProbe]::SetForegroundWindow($handle)
+  Start-Sleep -Milliseconds 300
+  [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+  Start-Sleep -Milliseconds 800
+  $proc.Refresh()
+  if ($proc.HasExited) { throw "INPUT_SMOKE=FAIL label=$Label action=escape process_exited=$($proc.ExitCode)" }
+  $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
+  if ($handle -eq [IntPtr]::Zero) { throw "INPUT_SMOKE=FAIL label=$Label action=escape no_visible_window" }
+  if ([ArmyAttackWindowProbe]::IsHungAppWindow($handle)) { throw "INPUT_SMOKE=FAIL label=$Label action=escape hung" }
+  [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+  Start-Sleep -Milliseconds 800
+  $postInput = Capture-WindowEvidence $handle 'post-input'
+  $inputChanged = $initial.Sha256 -ne $postInput.Sha256
+  Write-Host "INPUT_SMOKE=PASS label=$Label foreground=$foreground screenshot_changed=$inputChanged action=escape_roundtrip"
+
+  $elapsed = 0
+  while ($elapsed -lt $StabilitySeconds) {
+    Start-Sleep -Seconds 5
+    $elapsed += 5
+    $proc.Refresh()
+    if ($proc.HasExited) {
+      throw "RUNTIME_STABILITY=FAIL label=$Label elapsed=$elapsed exit=$($proc.ExitCode)"
+    }
+    $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
+    if ($handle -eq [IntPtr]::Zero) {
+      Write-Host "WINDOW_TRANSIENT=OBSERVED label=$Label elapsed=$elapsed reason=no_visible_window"
+      $handle = Wait-VisibleWindow -ProcessId $trackedPid -TimeoutMilliseconds 4000 -Phase ("stability-"+$elapsed)
+      if ($handle -eq [IntPtr]::Zero) {
+        throw "WINDOW_HANDLE=FAIL label=$Label elapsed=$elapsed no_visible_window_after_reacquire"
+      }
+    }
+    $sampleRect = Get-WindowRectObject $handle
+    if ($sampleRect.Width -lt 640 -or $sampleRect.Height -lt 480) {
+      throw "WINDOW_RECT=FAIL label=$Label elapsed=$elapsed width=$($sampleRect.Width) height=$($sampleRect.Height)"
+    }
+    if ([ArmyAttackWindowProbe]::IsHungAppWindow($handle)) {
+      throw "WINDOW_RESPONDING=FAIL label=$Label elapsed=$elapsed"
+    }
+    Write-Host "RUNTIME_SAMPLE=PASS label=$Label elapsed=$elapsed window=$($sampleRect.Width)x$($sampleRect.Height) working_set=$($proc.WorkingSet64) cpu=$($proc.TotalProcessorTime.TotalMilliseconds)"
+  }
+
+  $handle = [ArmyAttackWindowProbe]::FindVisibleWindow($trackedPid)
+  if ($handle -eq [IntPtr]::Zero) {
+    Write-Host "WINDOW_TRANSIENT=OBSERVED label=$Label phase=final_capture reason=no_visible_window"
+    $handle = Wait-VisibleWindow -ProcessId $trackedPid -TimeoutMilliseconds 4000 -Phase 'final_capture'
+  }
+  if ($handle -eq [IntPtr]::Zero) { throw "WINDOW_HANDLE=FAIL label=$Label phase=final_capture after_reacquire" }
+  $final = Capture-WindowEvidence $handle 'final'
+  $changed = $initial.Sha256 -ne $final.Sha256
+  Write-Host "SCREENSHOT_CHANGED=$changed label=$Label"
+  Write-Host "RUNTIME_STABILITY=PASS label=$Label seconds=$StabilitySeconds"
+  Write-Host "WINDOW_RESPONDING=PASS label=$Label phase=final"
+
+  try {
+    $exeName = [regex]::Escape([System.IO.Path]::GetFileName($ExePath))
+    $events = @(Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=$launchTime } -ErrorAction SilentlyContinue)
+    $crashes = @($events | Where-Object {
+      $_.ProviderName -in @('Application Error','Windows Error Reporting','Application Hang') -and
+      $_.Message -match $exeName
+    })
+    if ($crashes.Count -gt 0) {
+      foreach ($event in $crashes | Select-Object -First 10) {
+        Write-Host "WINDOW_EVENT=$($event.ProviderName) id=$($event.Id) time=$($event.TimeCreated)"
+      }
+      throw "CRASH_CHECK=FAIL label=$Label events=$($crashes.Count)"
+    }
+    Write-Host "CRASH_CHECK=PASS label=$Label events=0"
+  }
+  catch {
+    if ($_.Exception.Message -like 'CRASH_CHECK=FAIL*') { throw }
+    Write-Host "CRASH_CHECK=SKIPPED_WITH_REASON label=$Label reason=event_log_access message=$($_.Exception.Message)"
+  }
+
+  Write-Host "WINDOW_RUNTIME_VALIDATION=PASS label=$Label"
+}
+finally {
+  if ($trackedPid) {
+    try { Stop-Process -Id $trackedPid -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}

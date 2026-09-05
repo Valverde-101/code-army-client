@@ -255,6 +255,32 @@
 
 		public var mCurrentPlayerMapId: String;
 
+		private var mPvPReturnMapId: String = "Home";
+
+		private var mLoadingActive: Boolean = false;
+
+		private var mLoadingTargetMapId: String;
+
+		private var mPendingMapTargetId: String;
+
+		private var mPendingMapReadyCallback: Function;
+
+		private var mPendingMapFailureCallback: Function;
+
+		private var mPendingMapResourceTimer: Timer;
+
+		private var mPendingOfflineSwitchMapId: String;
+
+		private var mPendingOfflineOriginMapId: String;
+
+		private var mPendingOfflineSwitchCompletion: Function;
+
+		private var mPendingPvPReturnZoomIndex: int = -1;
+
+		private var mPendingPvPMapId: String;
+
+		private var mPendingPvPStartData: Object;
+
 		public var mServer: MyServer;
 
 		private var mItemToBePlaced: MapItem;
@@ -827,13 +853,15 @@
 				}
 			}
 			if (_loc2_) {
-				this.updateActions(smGlobalDeltaTime);
-				if (this.mState == STATE_PVP) {
-					if (FeatureTuner.USE_PVP_MATCH) {
-						if (this.mCurrentAction == null) {
-							if (this.mMainActionQueue.mActions.length == 0) {
-								this.mPvPMatch.updateTurn(param1);
-							}
+				var pvpTerminal:Boolean = this.mState == STATE_PVP && FeatureTuner.USE_PVP_MATCH && this.mPvPMatch && this.mPvPMatch.checkTerminalState();
+				if (pvpTerminal) {
+					this.resetActions();
+					this.mActionWaitingConfirmation = null;
+				} else {
+					this.updateActions(smGlobalDeltaTime);
+					if (this.mState == STATE_PVP && FeatureTuner.USE_PVP_MATCH) {
+						if (this.mCurrentAction == null && this.mMainActionQueue.mActions.length == 0) {
+							this.mPvPMatch.updateTurn(param1);
 						}
 					}
 				}
@@ -1251,60 +1279,31 @@
 		}
 
 		public function openPvPMatchUpDialog(): void {
-			if (FeatureTuner.USE_PVP_MATCH) {
+			if (!FeatureTuner.USE_PVP_MATCH || !this.mPlayerProfile || !this.mPvPMatch) {
+				return;
+			}
+			if (Config.OFFLINE_MODE) {
+				OfflineSave.ensureOfflinePvPBoosters();
 				if (this.mPlayerProfile.mGlobalUnitCounts == null) {
-					this.startLoading();
-					//this.mServer.serverCallService(ServiceIDs.GET_PVP_DATA, true);
-					/*
-					var fakedata:* = {};
-				
-					var pvp_data:* = {};
-					pvp_data["score"] = 0;
-					pvp_data["wins"] = 0;
-					fakedata["pvp_data"] = pvp_data;
-
-					fakedata["allies"] = new Array();
-				
-				
-					var possible_opponents:Array = [];
-				    var test_opponent:* = {};
-					test_opponent["facebook_id"] = "1";
-				    test_opponent["player_name"] = "Scary Chris";
-					test_opponent["score"] = 0;
-					test_opponent["level"] = 1;
-					test_opponent["wins"] = 0;
-				    test_opponent["avatar"] = "scary_chris.png"; // Loads from the data/avatars folder, empty string = default avatar
-					possible_opponents.push(test_opponent)
-					fakedata["possible_opponents"] = possible_opponents
-				
-					fakedata["recent_attacks"] = new Array();
-				
-					var player_unit_count:Array = [];
-				    var player_unit:* = {};
-					player_unit["item_id"] = "Infantry";
-					player_unit["item_count"] = 4;
-					player_unit_count.push(player_unit)
-					fakedata["player_unit_count"] = player_unit_count;
-					*/
-
-					//this.mPlayerProfile.setupPvPData(fakedata);
-					//this.mPlayerProfile.setupGlobalUnitCounts(fakedata);
-
-					this.openPvPMatchUpDialog();
-				} else if (this.getHud()) {
-					if (this.mPvPMatch.mOpponent) {
-						this.openPvPCombatSetupDialog();
-					} else {
-						this.getHud().openPvPMatchUpDialog();
-					}
+					OfflineSave.startEmptyPvPProgress();
 				}
 			}
+			if (this.mPlayerProfile.mGlobalUnitCounts == null || !this.getHud()) {
+				return;
+			}
+			if (this.mPvPMatch.mOpponent) {
+				this.openPvPCombatSetupDialog();
+			} else {
+				this.getHud().openPvPMatchUpDialog();
+			}
 		}
-
 		public function openPvPDebriefing(param1: Boolean): void {
 			var _loc2_: String = null;
 			var _loc3_: Object = null;
 			if (FeatureTuner.USE_PVP_MATCH) {
+				trace("[PVP_DEBRIEF_COMMIT] win=" + param1 + " map=" + this.mCurrentMapId);
+				this.resetActions();
+				this.mActionWaitingConfirmation = null;
 				this.mPvPMatch.setResult(param1);
 				this.mPlayerProfile.addBaddassXp(this.mPvPMatch.mWinRewardBadassXp);
 				this.mPlayerProfile.addMoney(this.mPvPMatch.mWinRewardMoney);
@@ -1315,7 +1314,9 @@
 					"badass_points": this.mPvPMatch.mIngameBadassXp,
 					"pvp_reward_items": _loc2_
 				};
-				this.mServer.serverCallServiceWithParameters(ServiceIDs.END_PVP_MATCH, _loc3_, false);
+				if (!Config.OFFLINE_MODE) {
+					this.mServer.serverCallServiceWithParameters(ServiceIDs.END_PVP_MATCH, _loc3_, false);
+				}
 				if (Config.DEBUG_MODE) {}
 				if (this.getHud()) {
 					this.getHud().openPvPDebriefingDialog();
@@ -1712,6 +1713,12 @@
 			if (Config.DEBUG_MODE) {}
 		}
 
+		public function getEffectivePlayerAttackRange(param1: PlayerUnit): int {
+			var result: int = param1 ? param1.getAttackRange() : 0;
+			if (param1 && this.mState == STATE_PVP && this.mPvPMatch) result += this.mPvPMatch.getActiveRangeBoost();
+			return result;
+		}
+
 		public function searchNearbyPlayerUnits(param1: Renderable): Array {
 			var _loc2_: Array = null;
 			var _loc6_: int = 0;
@@ -1720,13 +1727,14 @@
 			var _loc9_: int = 0;
 			var _loc3_: int = param1.getTileSize().x - 1;
 			var _loc4_: int = param1.getTileSize().y - 1;
-			var _loc5_: int = -PlayerUnit.smLongestAttackRange;
-			while (_loc5_ <= PlayerUnit.smLongestAttackRange + _loc3_) {
-				_loc6_ = -PlayerUnit.smLongestAttackRange;
-				while (_loc6_ <= PlayerUnit.smLongestAttackRange + _loc4_) {
+			var pvpRangeBonus: int = this.mState == STATE_PVP && this.mPvPMatch ? this.mPvPMatch.getActiveRangeBoost() : 0;
+			var _loc5_: int = -(PlayerUnit.smLongestAttackRange + pvpRangeBonus);
+			while (_loc5_ <= PlayerUnit.smLongestAttackRange + pvpRangeBonus + _loc3_) {
+				_loc6_ = -(PlayerUnit.smLongestAttackRange + pvpRangeBonus);
+				while (_loc6_ <= PlayerUnit.smLongestAttackRange + pvpRangeBonus + _loc4_) {
 					if (Boolean(_loc7_ = this.mScene.getCellAtLocation(param1.mX + _loc5_ * this.mScene.mGridDimX, param1.mY + _loc6_ * this.mScene.mGridDimY)) && _loc7_.mCharacter is PlayerUnit) {
 						if ((_loc8_ = _loc7_.mCharacter as PlayerUnit).isAlive()) {
-							_loc9_ = _loc8_.getAttackRange();
+							_loc9_ = this.getEffectivePlayerAttackRange(_loc8_);
 							if (Math.abs(_loc5_) <= _loc9_ || _loc5_ > 0 && _loc5_ - _loc3_ <= _loc9_ && Math.abs(_loc6_) <= _loc9_ || _loc6_ > 0 && _loc6_ - _loc4_ <= _loc9_) {
 								if (!_loc2_) {
 									_loc2_ = new Array();
@@ -1755,10 +1763,11 @@
 			var _loc10_: int = 0;
 			while (_loc10_ < _loc9_) {
 				_loc8_ = _loc7_[_loc10_] as PlayerUnit;
-				_loc3_ = param1.getCell().mPosI - _loc8_.getAttackRange();
-				_loc4_ = param1.getCell().mPosI + (param1.getTileSize().x - 1) + _loc8_.getAttackRange();
-				_loc5_ = param1.getCell().mPosJ - _loc8_.getAttackRange();
-				_loc6_ = param1.getCell().mPosJ + (param1.getTileSize().y - 1) + _loc8_.getAttackRange();
+				var effectiveRange:int = this.getEffectivePlayerAttackRange(_loc8_);
+				_loc3_ = param1.getCell().mPosI - effectiveRange;
+				_loc4_ = param1.getCell().mPosI + (param1.getTileSize().x - 1) + effectiveRange;
+				_loc5_ = param1.getCell().mPosJ - effectiveRange;
+				_loc6_ = param1.getCell().mPosJ + (param1.getTileSize().y - 1) + effectiveRange;
 				if (_loc8_.isStill() && _loc8_.getCell().mPosI >= _loc3_ && _loc8_.getCell().mPosI <= _loc4_ && _loc8_.getCell().mPosJ >= _loc5_ && _loc8_.getCell().mPosJ <= _loc6_) {
 					_loc2_.push(_loc8_);
 				} else if (_loc11_ = _loc8_.getMovementTargetCell()) {
@@ -1832,7 +1841,9 @@
 			var _loc3_: int = param1.getTileSize().x;
 			var _loc4_: int = param1.getTileSize().y;
 			var _loc5_: GridCell = this.mScene.getCellAtLocation(param1.mX, param1.mY);
-			var _loc6_: Array = MapArea.getArea(this.mScene, _loc5_.mPosI - PlayerUnit.smLongestAttackRange, _loc5_.mPosJ - PlayerUnit.smLongestAttackRange, PlayerUnit.smLongestAttackRange * 2 + _loc3_, PlayerUnit.smLongestAttackRange * 2 + _loc4_).getCells();
+			var pvpSearchBonus:int = this.mState == STATE_PVP && this.mPvPMatch ? this.mPvPMatch.getActiveRangeBoost() : 0;
+			var pvpSearchRange:int = PlayerUnit.smLongestAttackRange + pvpSearchBonus;
+			var _loc6_: Array = MapArea.getArea(this.mScene, _loc5_.mPosI - pvpSearchRange, _loc5_.mPosJ - pvpSearchRange, pvpSearchRange * 2 + _loc3_, pvpSearchRange * 2 + _loc4_).getCells();
 			var _loc7_: int = 0;
 			while (_loc7_ < _loc6_.length) {
 				if (!_loc6_[_loc7_] || !(_loc6_[_loc7_] as GridCell).mCharacter || !(_loc6_[_loc7_].mCharacter is PlayerUnit) || !((_loc6_[_loc7_] as GridCell).mCharacter as PlayerUnit).isAlive()) {
@@ -1847,7 +1858,7 @@
 			var _loc8_: Array = this.mScene.getTilesUnderObject(param1);
 			var _loc9_: int = 0;
 			while (_loc9_ < _loc6_.length) {
-				_loc11_ = (_loc10_ = _loc6_[_loc9_]).mCharacter.mAttackRange;
+				_loc11_ = this.getEffectivePlayerAttackRange((_loc10_ = _loc6_[_loc9_]).mCharacter as PlayerUnit);
 				_loc12_ = 0;
 				while (_loc12_ < _loc8_.length) {
 					_loc13_ = _loc10_.mPosI - (_loc8_[_loc12_] as GridCell).mPosI;
@@ -2425,13 +2436,16 @@
 			}
 			this.mScene = SceneLoader.loadFromLevelFactor(this, param1);
 			CONFIG::BUILD_FOR_MOBILE_AIR {
-				this.mZoomLevels = this.mMapData.mMapSetupData.ZoomLevelsMobile;
+				this.mZoomLevels = this.mMapData.mMapSetupData.ZoomLevelsMobile ? this.mMapData.mMapSetupData.ZoomLevelsMobile : this.mMapData.mMapSetupData.ZoomLevels;
 			}
 			CONFIG::BUILD_FOR_AIR {
 				this.mZoomLevels = this.mMapData.mMapSetupData.ZoomLevels;
 			}
 			CONFIG::NOT_BUILD_FOR_AIR {
 				this.mZoomLevels = this.mMapData.mMapSetupData.ZoomLevels;
+			}
+			if (!this.mZoomLevels || this.mZoomLevels.length == 0) {
+				throw new Error("MAP_ZOOM_LEVELS_MISSING map=" + this.mCurrentMapId);
 			}
 			this.adjustZoomSteps();
 			this.mZoomIndex = 0;
@@ -2563,18 +2577,24 @@
 					}
 					CONFIG::BUILD_FOR_MOBILE_AIR {
 						var file:File = File.applicationStorageDirectory.resolvePath("savesettings.txt");
-						if (file.exists) {
-							var first_time_since_v22: Boolean = false;
-						} else {
-							var first_time_since_v22: Boolean = true;
-						}
-						if (first_time_since_v22) {
-							// First time opening the game since v22, show permission window
-							this.mHUD.openGiveFilePermissionScreen();
+						if (!file.exists) {
+							// Modern Android default: app-internal storage is always available and
+							// avoids the obsolete v22 first-run permission dialog.
+							this.mSaveLocation = "legacy";
+							try {
+								var defaultSettings:Object = {};
+								defaultSettings["savelocation"] = this.mSaveLocation;
+								var defaultSettingsStream:FileStream = new FileStream();
+								defaultSettingsStream.open(file, FileMode.WRITE);
+								defaultSettingsStream.writeUTFBytes(JSON.stringify(defaultSettings));
+								defaultSettingsStream.close();
+							} catch (saveSettingsError:Error) {
+								// Keep the in-memory legacy default and continue into the game.
+							}
 						} else {
 							this.saveSettingsLoad();
-							this.mHUD.openPauseScreen();
 						}
+						this.mHUD.openPauseScreen();
 					}
 					CONFIG::BUILD_FOR_AIR {
 						this.mHUD.openPauseScreen();
@@ -2749,6 +2769,7 @@
 		}
 
 		public function initObjects(param1: ServerCall): void {
+			var initObjectsStarted: int = getTimer();
 			var _loc5_: Renderable = null;
 			var _loc8_: HFEPlotObject = null;
 			var _loc11_: Array = null;
@@ -2796,27 +2817,24 @@
 			}
 			var _loc3_: Array = this.mScene.mAllElements;
 			var _loc4_: Array = new Array();
+			var occupiedByObject: Object = {};
+			var cellKey: String = null;
 			var _loc6_: int = int(_loc3_.length);
 			var _loc7_: int = 0;
 			while (_loc7_ < _loc6_) {
-				if ((_loc5_ = _loc3_[_loc7_] as Renderable) is HFEPlotObject) {
-					_loc20_ = int(_loc3_.length);
-					_loc21_ = 0;
-					while (_loc21_ < _loc20_) {
-						if ((_loc19_ = _loc3_[_loc21_] as Renderable) is HFEObject) {
-							if (_loc5_.mX == _loc19_.mX) {
-								if (_loc5_.mY == _loc19_.mY) {
-									_loc4_.push(_loc5_);
-									break;
-								}
-							}
-						}
-						_loc21_++;
-					}
-				}
+				_loc19_ = _loc3_[_loc7_] as Renderable;
+				if (_loc19_ is HFEObject) occupiedByObject[String(_loc19_.mX) + "|" + String(_loc19_.mY)] = true;
 				_loc7_++;
 			}
-			var _loc9_: int = int(_loc4_.length);
+			_loc7_ = 0;
+			while (_loc7_ < _loc6_) {
+				_loc5_ = _loc3_[_loc7_] as Renderable;
+				if (_loc5_ is HFEPlotObject) {
+					cellKey = String(_loc5_.mX) + "|" + String(_loc5_.mY);
+					if (occupiedByObject[cellKey]) _loc4_.push(_loc5_);
+				}
+				_loc7_++;
+			}			var _loc9_: int = int(_loc4_.length);
 			var _loc10_: int = 0;
 			while (_loc10_ < _loc9_) {
 				_loc8_ = _loc4_[_loc10_] as HFEPlotObject;
@@ -2827,6 +2845,7 @@
 			this.mPlayerProfile.updateUnitCaps();
 			this.mPlayerProfile.mSuppliesCap = _loc2_;
 			this.mScene.findSpawningBeacon();
+			Utils.DiagEvent("INIT_OBJECTS_TIMING","map=" + this.mCurrentMapId + ";ms=" + (getTimer() - initObjectsStarted) + ";elements=" + (this.mScene && this.mScene.mAllElements ? this.mScene.mAllElements.length : 0) + ";plots_removed=" + _loc4_.length);
 		}
 
 		private function fakeNeighborActions(): void {
@@ -2903,58 +2922,88 @@
 			var _loc2_: String = null;
 			var _loc3_: String = null;
 			var _loc4_: Object = null;
-			if (FeatureTuner.USE_PVP_MATCH) {
-				_loc1_ = this.mPvPMatch.randomizeMap();
+			if (!FeatureTuner.USE_PVP_MATCH || !this.mPvPMatch || !this.mPvPMatch.mOpponent) {
+				return;
+			}
+			this.mPvPReturnMapId = this.mCurrentMapId && this.mCurrentMapId.indexOf("pvp_") == -1 ? this.mCurrentMapId : "Home";
+			_loc1_ = this.mPvPMatch.randomizeMap();
+			if (!_loc1_ || _loc1_.length == 0) {
+				return;
+			}
+			_loc2_ = this.mPvPMatch.getAttackUnitsString();
+			_loc3_ = this.mPvPMatch.getDefensiveUnitsString();
+			if (_loc2_ == null || _loc2_.length == 0) {
+				return;
+			}
+			_loc4_ = {"opponent_user_id": this.mPvPMatch.mOpponent.mFacebookID,"attack_units": _loc2_,"defensive_units": _loc3_};
+			if (Config.OFFLINE_MODE) {
+				OfflineSave.saveOldMap();
+				this.mPendingPvPMapId = _loc1_;
+				this.mPendingPvPStartData = {"timestamp": new Date().valueOf()} as Object;
+				this.startLoading(_loc1_);
+				this.waitForMapTilemap(_loc1_, this.completeOfflinePvPStart, this.failOfflinePvPStart);
+			} else {
 				this.executeSwitchMap(_loc1_, null, true);
 				this.startLoading();
-				_loc2_ = this.mPvPMatch.getAttackUnitsString();
-				_loc3_ = this.mPvPMatch.getDefensiveUnitsString();
-				if (_loc2_ != null) {
-					_loc4_ = {
-						"opponent_user_id": this.mPvPMatch.mOpponent.mFacebookID,
-						"attack_units": _loc2_,
-						"defensive_units": _loc3_
-					};
-					// Modified for offline game
-					//this.mServer.serverCallServiceWithParameters(ServiceIDs.START_PVP_MATCH, _loc4_, true);
-					var fakeservercall: * = new ServerCall(ServiceIDs.START_PVP_MATCH, null, null, null);
-					fakeservercall["mData"] = {
-						"timestamp": 0
-					}
-					as Object;
-					this.mPlayerProfile.addEnergy(-this.mPvPMatch.mEnergyCost, false);
-					this.mPlayerProfile.addSupplies(-this.mPvPMatch.mSupplyCost);
-					this.handleStartPvPMatch(fakeservercall);
-				}
+				this.mServer.serverCallServiceWithParameters(ServiceIDs.START_PVP_MATCH, _loc4_, true);
 			}
 		}
 
-		public function endPvP(): void {
-			var _loc1_: int = 0;
-			if (FeatureTuner.USE_PVP_MATCH) {
-				if (this.mPvPHUD) {
-					this.changeFromPvPHUD();
-				}
-				_loc1_ = this.mZoomIndex;
-				this.executeSwitchMap("Home");
-				this.setZoomIndex(_loc1_);
-				this.mPvPMatch.mAI = null;
+		public function endPvP(param1: Function = null): void {
+			var _loc1_: String = null;
+			if (!FeatureTuner.USE_PVP_MATCH || !this.mPvPMatch) {
+				if (param1 != null) param1();
+				return;
 			}
+			_loc1_ = this.mPvPReturnMapId;
+			if (!_loc1_ || _loc1_.length == 0 || _loc1_.indexOf("pvp_") == 0) _loc1_ = "Home";
+			Utils.DiagEvent("PVP_END_BEGIN","from=" + this.mCurrentMapId + ";return=" + _loc1_ + ";replay=" + Boolean(param1));
+			this.resetActions();
+			this.mActionWaitingConfirmation = null;
+			this.mActivatedPlayerUnit = null;
+			this.mActivatedEnemyUnit = null;
+			if (this.mPvPHUD) this.changeFromPvPHUD();
+			this.mPendingPvPReturnZoomIndex = 0;
+			this.mPvPMatch.mAI = null;
+			this.mPvPMatch.mOpponent = null;
+			this.mPvPMatch.mPlayerUnits = null;
+			this.mPvPMatch.mOpponentUnits = null;
+			this.mPvPMatch.mActivatedBooster = null;
+			this.mPvPReturnMapId = "Home";
+			if (this.mCurrentMapId != _loc1_) {
+				Utils.DiagEvent("PVP_END_RETURN_MAP","from=" + this.mCurrentMapId + ";to=" + _loc1_);
+				this.executeSwitchMap(_loc1_, null, false, param1);
+				return;
+			}
+			this.changeState(STATE_PLAY);
+			this.restoreGameplayInputAfterPopup();
+			if (this.mZoomLevels && this.mZoomLevels.length > 0) this.setZoomIndex(0);
+			this.mPendingPvPReturnZoomIndex = -1;
+			Utils.DiagEvent("PVP_END_COMMIT","map=" + this.mCurrentMapId + ";replay=" + Boolean(param1));
+			if (param1 != null) param1();
 		}
-
 		private function handleStartPvPMatch(param1: ServerCall): void {
 			var _loc2_: int = 0;
-			if (FeatureTuner.USE_PVP_MATCH) {
-				this.changeState(GameState.STATE_PVP);
-				_loc2_ = this.mZoomIndex;
-				this.mScene.reCalculateCameraMargins();
+			if (!FeatureTuner.USE_PVP_MATCH) {
+				return;
+			}
+			_loc2_ = this.mZoomIndex;
+			try {
 				this.initMap(null, this.mCurrentMapId);
 				this.mScene.updateGridInformation();
+				this.changeState(GameState.STATE_PVP);
 				this.mPvPMatch.initMatch(param1.mData);
 				this.updateGrid();
 				this.mScene.mFog.init(false);
 				this.stopLoading();
 				this.setZoomIndex(_loc2_);
+			} catch (error: Error) {
+				trace("[PVP_TRANSITION_FAIL] map=" + this.mCurrentMapId + " error=" + error.message);
+				if (Config.OFFLINE_MODE) {
+					this.recoverOfflineTransition(this.mPvPReturnMapId, "pvp:" + error.message);
+				} else {
+					this.stopLoading();
+				}
 			}
 		}
 
@@ -2973,12 +3022,19 @@
 			}
 		}
 
-		public function getMapMusic(): String {
-			var _loc1_: Object = mConfig.MapSetup[this.mCurrentMapId];
-			if (_loc1_.MusicFile) {
+		private function getMapMusicForId(param1: String): String {
+			var _loc1_: Object = null;
+			if (mConfig && mConfig.MapSetup) {
+				_loc1_ = mConfig.MapSetup[param1];
+			}
+			if (_loc1_ && _loc1_.MusicFile) {
 				return _loc1_.MusicFile;
 			}
 			return ArmySoundManager.MUSIC_HOME;
+		}
+
+		public function getMapMusic(): String {
+			return this.getMapMusicForId(this.mCurrentMapId);
 		}
 
 		public function getMapParatroopers(): EnemyAppearanceSetupItem {
@@ -3186,6 +3242,7 @@
 			}
 			this.mMapData.mUpdateRequired = true;
 			this.updateGrid();
+			this.mScene.refreshPlacedRenderable(param1);
 		}
 
 		public function inventoryItemUsed(): void {
@@ -3236,68 +3293,374 @@
 			this.mServer = new MyServer(this);
 		}
 
-		public function executeSwitchMap(param1: String, param2: Friend = null, param3: Boolean = false): void {
-			OfflineSave.saveOldMap();
+		public function restoreGameplayInputAfterPopup(): void {
+			var modal:Boolean = PopUpManager.isModalPopupActive();
+			if (!modal) {
+				getMainClip().mouseChildren = true;
+				if (this.mHUD) this.mHUD.enableMouse(true);
+				if (this.mState == STATE_PLAY) disableMapPanning = false;
+			}
+			Utils.DiagEvent("GAMEPLAY_INPUT","map=" + this.mCurrentMapId + ";state=" + this.mState + ";modal=" + modal + ";mouseChildren=" + getMainClip().mouseChildren);
+		}
+
+		public function requestWorldMapSwitch(param1:String): void {
+			Utils.DiagEvent("WORLD_MAP_SWITCH_REQUEST","from=" + this.mCurrentMapId + ";to=" + param1);
+			if (!param1 || param1.length == 0 || GRAPHICS_MAP_ID_LIST.indexOf(param1) < 0) {
+				Utils.DiagEvent("WORLD_MAP_SWITCH_REJECT","target=" + param1 + ";reason=invalid_target");
+				this.restoreGameplayInputAfterPopup();
+				return;
+			}
+			if (param1 == this.mCurrentMapId) {
+				this.restoreGameplayInputAfterPopup();
+				return;
+			}
+			this.executeSwitchMap(param1, null);
+		}
+
+		public function executeSwitchMap(param1: String, param2: Friend = null, param3: Boolean = false, param4: Function = null): void {
 			var _loc4_: Object = null;
+			if (!param1 || param1.length == 0) {
+				Utils.DiagEvent("MAP_SWITCH_REJECT","reason=empty_target");
+				return;
+			}
 			if ((this.mVisitingFriend == param2 || this.mVisitingFriend == null && param2 == null) && param1 == this.mCurrentMapId) {
 				return;
 			}
-			if (param2) {
-				if (this.mVisitingFriend == null) {
-					this.mCurrentPlayerMapId = this.mCurrentMapId;
+			if (Config.OFFLINE_MODE && !param2 && !param3) {
+				if (this.mPendingOfflineSwitchMapId) {
+					Utils.DiagEvent("MAP_SWITCH_REJECT","from=" + this.mCurrentMapId + ";to=" + param1 + ";reason=transition_busy;pending=" + this.mPendingOfflineSwitchMapId);
+					return;
 				}
+				if (!mConfig || !mConfig.MapSetup || !mConfig.MapSetup[param1]) {
+					trace("[MAP_SWITCH_REJECT] reason=missing_config target=" + param1);
+					Utils.DiagEvent("MAP_SWITCH_REJECT","target=" + param1 + ";reason=missing_config");
+					return;
+				}
+				this.mPendingOfflineOriginMapId = this.mCurrentMapId;
+				OfflineSave.saveOldMap();
+				this.mPendingOfflineSwitchMapId = param1;
+				this.mPendingOfflineSwitchCompletion = param4;
+				trace("[MAP_SWITCH_BEGIN] from=" + this.mPendingOfflineOriginMapId + " to=" + param1);
+				Utils.DiagEvent("MAP_SWITCH_BEGIN","from=" + this.mPendingOfflineOriginMapId + ";to=" + param1 + ";callback=" + Boolean(param4));
+				this.startLoading(param1);
+				this.waitForMapTilemap(param1, this.completeOfflineMapSwitch, this.failOfflineMapSwitch);
+				return;
+			}
+			OfflineSave.saveOldMap();
+			if (param2 && this.mVisitingFriend == null) {
+				this.mCurrentPlayerMapId = this.mCurrentMapId;
 			}
 			this.mCurrentMapId = param1;
 			this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(param1), 0);
-
 			if (Boolean(param2) && !param3) {
 				this.mPlayerProfile.setNeighborActions(0);
 			}
-			if (!param3) {
-				if (Config.OFFLINE_MODE) {
-					if (param2) {
-						this.mVisitingFriend = param2;
-						this.mPlayerProfile.setNeighborActions(5);
-						this.changeState(STATE_VISITING_NEIGHBOUR);
-						MissionManager.increaseCounter("VisitNeighbor", null, 1);
-						this.mHUD.openVisitingRewardTextBox();
-						this.addVisitNeighborRewards();
-					} else {
-						this.startLoading();
-						this.mScene.reCalculateCameraMargins();
-						this.initMap(null, param1);
-						this.initObjects(null);
-						this.updateGrid();
-						this.addNeighborAvatars();
-						this.mScene.mFog.init();
-						EnvEffectManager.init();
-						this.changeState(STATE_PLAY);
-						this.stopLoading();
+			if (param3) {
+				this.mVisitingFriend = param2;
+				return;
+			}
+			if (Config.OFFLINE_MODE) {
+				if (param2) {
+					this.mVisitingFriend = param2;
+					this.mPlayerProfile.setNeighborActions(5);
+					this.changeState(STATE_VISITING_NEIGHBOUR);
+					MissionManager.increaseCounter("VisitNeighbor", null, 1);
+					this.mHUD.openVisitingRewardTextBox();
+					this.addVisitNeighborRewards();
+					OfflineSave.switchMap();
+				}
+				return;
+			}
+			this.startLoading();
+			this.changeState(STATE_LOADING_NEIGHBOUR);
+			if (param2) {
+				if (param2.mIsTutor) {
+					this.mServer.serverCallService(ServiceIDs.GET_TUTOR_DATA, true);
+				} else {
+					_loc4_ = {"neighbor_user_id": param2.mUserID};
+					this.mServer.serverCallServiceWithParameters(ServiceIDs.GET_NEIGHBOR_DATA, _loc4_, true);
+				}
+			} else {
+				this.mNeighborActionQueues = null;
+				_loc4_ = {"map_id": param1};
+				this.mServer.serverCallServiceWithParameters(ServiceIDs.GET_MAP_DATA, _loc4_, true);
+			}
+			this.mVisitingFriend = param2;
+		}
+
+		private function completeOfflineMapSwitch(): void {
+			var _loc1_: String = this.mPendingOfflineSwitchMapId;
+			var _loc2_: String = this.mPendingOfflineOriginMapId;
+			var _loc3_: Function = this.mPendingOfflineSwitchCompletion;
+			trace("[MAP_SWITCH_APPLY_BEGIN] from=" + _loc2_ + " to=" + _loc1_);
+			Utils.DiagEvent("MAP_SWITCH_APPLY_BEGIN","from=" + _loc2_ + ";to=" + _loc1_);
+			this.mPendingOfflineSwitchMapId = null;
+			this.mPendingOfflineOriginMapId = null;
+			this.mPendingOfflineSwitchCompletion = null;
+			if (!_loc1_ || _loc1_.length == 0) {
+				this.stopLoading();
+				this.restoreGameplayInputAfterPopup();
+				return;
+			}
+			try {
+				this.mCurrentMapId = _loc1_;
+				this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(_loc1_), 0);
+				this.mVisitingFriend = null;
+				try { EnvEffectManager.destroy(); } catch (envDestroyError:Error) { Utils.DiagEvent("MAP_OPTIONAL_FAIL","phase=env_destroy;error=" + envDestroyError.message); }
+				Utils.DiagEvent("MAP_SWITCH_PHASE","phase=offline_save_begin;target=" + _loc1_);
+				OfflineSave.switchMap();
+				Utils.DiagEvent("MAP_SWITCH_PHASE","phase=offline_save_end;target=" + _loc1_ + ";grid=" + (this.mMapData && this.mMapData.mGrid ? this.mMapData.mGrid.length : 0));
+				this.changeState(STATE_PLAY);
+				this.stopLoading();
+				this.restoreGameplayInputAfterPopup();
+				if (this.mPendingPvPReturnZoomIndex >= 0 && this.mZoomLevels && this.mZoomLevels.length > 0) {
+					this.setZoomIndex(Math.min(this.mPendingPvPReturnZoomIndex,this.mZoomLevels.length - 1));
+				}
+				this.mPendingPvPReturnZoomIndex = -1;
+				trace("[MAP_SWITCH_COMMIT] from=" + _loc2_ + " to=" + _loc1_ + " graphics=" + this.mCurrentMapGraphicsId);
+				Utils.DiagEvent("MAP_SWITCH_COMMIT","from=" + _loc2_ + ";to=" + _loc1_ + ";graphics=" + this.mCurrentMapGraphicsId + ";state=" + this.mState);
+			} catch (error: Error) {
+				trace("[MAP_TRANSITION_FAIL] from=" + _loc2_ + " to=" + _loc1_ + " error=" + error.message);
+				Utils.DiagEvent("MAP_TRANSITION_FAIL","from=" + _loc2_ + ";to=" + _loc1_ + ";error=" + error.message);
+				this.mPendingPvPReturnZoomIndex = -1;
+				this.recoverOfflineTransition(_loc2_, "map:" + error.message);
+				return;
+			}
+			try { this.addNeighborAvatars(); } catch (neighborError:Error) { Utils.DiagEvent("MAP_OPTIONAL_FAIL","phase=neighbors;error=" + neighborError.message); }
+			try { EnvEffectManager.init(); } catch (envInitError:Error) { Utils.DiagEvent("MAP_OPTIONAL_FAIL","phase=env_init;error=" + envInitError.message); }
+			try {
+				this.mCurrentMusic = this.getMapMusic();
+				ArmySoundManager.loadMusic(this.mCurrentMusic);
+				this.startMusic();
+				Utils.DiagEvent("MAP_MUSIC_COMMIT","map=" + this.mCurrentMapId + ";music=" + this.mCurrentMusic);
+			} catch (musicError:Error) { Utils.DiagEvent("MAP_OPTIONAL_FAIL","phase=music;error=" + musicError.message); }
+			if (_loc3_ != null) {
+				Utils.DiagEvent("MAP_SWITCH_CALLBACK","map=" + this.mCurrentMapId);
+				_loc3_();
+			}
+		}
+		private function failOfflineMapSwitch(): void {
+			trace("[MAP_SWITCH_FAIL] from=" + this.mPendingOfflineOriginMapId + " to=" + this.mPendingOfflineSwitchMapId + " reason=resource_timeout");
+			this.mPendingOfflineSwitchMapId = null;
+			this.mPendingOfflineOriginMapId = null;
+			this.mPendingOfflineSwitchCompletion = null;
+			this.mPendingPvPReturnZoomIndex = -1;
+			Utils.DiagEvent("MAP_SWITCH_FAIL","reason=resource_timeout");
+			this.stopLoading();
+			this.restoreGameplayInputAfterPopup();
+			this.mCurrentMusic = this.getMapMusic();
+			ArmySoundManager.loadMusic(this.mCurrentMusic);
+			this.startMusic();
+		}
+
+		private function completeOfflinePvPStart(): void {
+			var _loc1_: String = this.mPendingPvPMapId;
+			var _loc2_: Object = this.mPendingPvPStartData;
+			this.mPendingPvPMapId = null;
+			this.mPendingPvPStartData = null;
+			if (!_loc1_ || !_loc2_) {
+				this.stopLoading();
+				return;
+			}
+			this.mCurrentMapId = _loc1_;
+			this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(_loc1_), 0);
+			this.mVisitingFriend = null;
+			var fakeservercall: * = new ServerCall(ServiceIDs.START_PVP_MATCH, null, null, null);
+			fakeservercall["mData"] = _loc2_;
+			this.handleStartPvPMatch(fakeservercall);
+			if (this.mState == GameState.STATE_PVP && this.mCurrentMapId == _loc1_) {
+				this.mPlayerProfile.addEnergy(-this.mPvPMatch.mEnergyCost, false);
+				this.mPlayerProfile.addSupplies(-this.mPvPMatch.mSupplyCost);
+			}
+		}
+
+		private function failOfflinePvPStart(): void {
+			this.mPendingPvPMapId = null;
+			this.mPendingPvPStartData = null;
+			this.stopLoading();
+			this.mCurrentMusic = this.getMapMusic();
+			ArmySoundManager.loadMusic(this.mCurrentMusic);
+			this.startMusic();
+		}
+
+		private function getRequiredMapSwfs(param1: String): Array {
+			var _loc1_: Array = new Array();
+			var _loc2_: Object = null;
+			var _loc3_: Object = null;
+			var _loc4_: String = null;
+			if (mConfig && mConfig.MapSetup) {
+				_loc2_ = mConfig.MapSetup[param1];
+			}
+			if (_loc2_ && _loc2_.SWFFile) {
+				if (_loc2_.SWFFile is Array) {
+					for each (_loc3_ in _loc2_.SWFFile) {
+						_loc4_ = String(_loc3_);
+						if (_loc4_ && _loc1_.indexOf(_loc4_) < 0) {
+							_loc1_.push(_loc4_);
+						}
 					}
 				} else {
-					this.startLoading();
-					this.changeState(STATE_LOADING_NEIGHBOUR);
-					if (param2) {
-						if (param2.mIsTutor) {
-							this.mServer.serverCallService(ServiceIDs.GET_TUTOR_DATA, true);
-							if (Config.DEBUG_MODE) {}
-						} else {
-							_loc4_ = {
-								"neighbor_user_id": param2.mUserID
-							};
-							this.mServer.serverCallServiceWithParameters(ServiceIDs.GET_NEIGHBOR_DATA, _loc4_, true);
-						}
-					} else {
-						this.mNeighborActionQueues = null;
-						_loc4_ = {
-							"map_id": param1
-						};
-						this.mServer.serverCallServiceWithParameters(ServiceIDs.GET_MAP_DATA, _loc4_, true);
+					_loc4_ = String(_loc2_.SWFFile);
+					if (_loc4_) {
+						_loc1_.push(_loc4_);
 					}
 				}
 			}
-			this.mVisitingFriend = param2;
-			OfflineSave.switchMap();
+			if (_loc1_.indexOf("swf/tiles_common") < 0) {
+				_loc1_.push("swf/tiles_common");
+			}
+			if (param1 == "Desert" && _loc1_.indexOf("swf/desert_backgroud_01") < 0) {
+				_loc1_.push("swf/desert_backgroud_01");
+			}
+			return _loc1_;
+		}
+
+		private function queueMapResources(param1: String): void {
+			var _loc1_: Object = mConfig && mConfig.MapSetup ? mConfig.MapSetup[param1] : null;
+			var _loc2_: DCResourceManager = DCResourceManager.getInstance();
+			var _loc3_: String = null;
+			var _loc4_: int = 0;
+			var _loc5_: Array = null;
+			if (!_loc1_ || !_loc1_.TilemapFileName) {
+				return;
+			}
+			_loc3_ = String(_loc1_.TilemapFileName);
+			_loc4_ = _loc3_.lastIndexOf(".");
+			if (_loc4_ > 0) {
+				_loc3_ = _loc3_.substring(0, _loc4_);
+			}
+			if (!_loc2_.isLoaded(_loc3_) && !_loc2_.isAddedToLoadingList(_loc3_)) {
+				_loc2_.load(Config.DIR_CONFIG + _loc3_ + ".csv", _loc3_, null, true);
+			}
+			trace("[MAP_RESOURCE_QUEUE] map=" + param1 + " tilemap=" + _loc3_ + " offline=" + Config.OFFLINE_MODE);
+			if (Config.OFFLINE_MODE) return;
+			_loc5_ = this.getRequiredMapSwfs(param1);
+			for each (_loc3_ in _loc5_) {
+				if (!_loc2_.isLoaded(_loc3_) && !_loc2_.isAddedToLoadingList(_loc3_)) {
+					_loc2_.load(Config.DIR_DATA + _loc3_ + ".swf", _loc3_, null, false);
+				}
+			}
+		}
+
+		private function areMapResourcesReady(param1: String): Boolean {
+			var _loc1_: Object = mConfig && mConfig.MapSetup ? mConfig.MapSetup[param1] : null;
+			var _loc2_: DCResourceManager = DCResourceManager.getInstance();
+			var _loc3_: String = null;
+			var _loc4_: int = 0;
+			var _loc5_: Array = null;
+			if (!_loc1_ || !_loc1_.TilemapFileName) {
+				return false;
+			}
+			_loc3_ = String(_loc1_.TilemapFileName);
+			_loc4_ = _loc3_.lastIndexOf(".");
+			if (_loc4_ > 0) {
+				_loc3_ = _loc3_.substring(0, _loc4_);
+			}
+			if (!_loc2_.isLoaded(_loc3_) || _loc2_.get(_loc3_) == null) {
+				return false;
+			}
+			if (Config.OFFLINE_MODE) return true;
+			_loc5_ = this.getRequiredMapSwfs(param1);
+			for each (_loc3_ in _loc5_) {
+				if (!_loc2_.isLoaded(_loc3_)) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		private function waitForMapTilemap(param1: String, param2: Function, param3: Function): void {
+			this.cancelPendingMapResourceWait();
+			if (!mConfig || !mConfig.MapSetup || !mConfig.MapSetup[param1]) {
+				if (param3 != null) {
+					param3();
+				}
+				return;
+			}
+			this.mPendingMapTargetId = param1;
+			this.mPendingMapReadyCallback = param2;
+			this.mPendingMapFailureCallback = param3;
+			this.queueMapResources(param1);
+			this.mPendingMapResourceTimer = new Timer(100, 100);
+			this.mPendingMapResourceTimer.addEventListener(TimerEvent.TIMER, this.mapResourcePoll, false, 0, true);
+			this.mPendingMapResourceTimer.addEventListener(TimerEvent.TIMER_COMPLETE, this.mapTilemapTimeout, false, 0, true);
+			this.mapResourcePoll(null);
+			if (this.mPendingMapResourceTimer) {
+				this.mPendingMapResourceTimer.start();
+			}
+		}
+
+		private function mapResourcePoll(param1: TimerEvent): void {
+			if (this.mPendingMapTargetId && this.areMapResourcesReady(this.mPendingMapTargetId)) {
+				this.completePendingMapResourceWait(true);
+			}
+		}
+
+		private function mapTilemapTimeout(param1: TimerEvent): void {
+			trace("[MAP_RESOURCE_TIMEOUT] map=" + this.mPendingMapTargetId);
+			this.completePendingMapResourceWait(false);
+		}
+
+		private function completePendingMapResourceWait(param1: Boolean): void {
+			var _loc1_: Function = this.mPendingMapReadyCallback;
+			var _loc2_: Function = this.mPendingMapFailureCallback;
+			var completedTarget: String = this.mPendingMapTargetId;
+			this.cancelPendingMapResourceWait();
+			trace("[MAP_RESOURCE_RESULT] map=" + completedTarget + " ready=" + param1);
+			if (param1) {
+				if (_loc1_ != null) {
+					_loc1_();
+				}
+			} else if (_loc2_ != null) {
+				_loc2_();
+			}
+		}
+
+		private function cancelPendingMapResourceWait(): void {
+			if (this.mPendingMapResourceTimer) {
+				this.mPendingMapResourceTimer.stop();
+				this.mPendingMapResourceTimer.removeEventListener(TimerEvent.TIMER, this.mapResourcePoll);
+				this.mPendingMapResourceTimer.removeEventListener(TimerEvent.TIMER_COMPLETE, this.mapTilemapTimeout);
+			}
+			this.mPendingMapTargetId = null;
+			this.mPendingMapReadyCallback = null;
+			this.mPendingMapFailureCallback = null;
+			this.mPendingMapResourceTimer = null;
+		}
+
+		private function recoverOfflineTransition(param1: String, param2: String): void {
+			var _loc1_: String = param1;
+			if (!_loc1_ || _loc1_.length == 0 || _loc1_.indexOf("pvp_") == 0) {
+				_loc1_ = "Home";
+			}
+			trace("[MAP_TRANSITION_RECOVER] target=" + _loc1_ + " reason=" + param2);
+			Utils.DiagEvent("MAP_TRANSITION_RECOVER","target=" + _loc1_ + ";reason=" + param2);
+			this.cancelPendingMapResourceWait();
+			this.mPendingOfflineSwitchMapId = null;
+			this.mPendingOfflineOriginMapId = null;
+			this.mPendingOfflineSwitchCompletion = null;
+			this.mPendingPvPReturnZoomIndex = -1;
+			this.mPendingPvPMapId = null;
+			this.mPendingPvPStartData = null;
+			if (this.mPvPHUD) {
+				this.changeFromPvPHUD();
+			}
+			try {
+				this.mCurrentMapId = _loc1_;
+				this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(_loc1_), 0);
+				this.mVisitingFriend = null;
+				OfflineSave.switchMap();
+				this.addNeighborAvatars();
+				this.changeState(STATE_PLAY);
+				this.mCurrentMusic = this.getMapMusic();
+				ArmySoundManager.loadMusic(this.mCurrentMusic);
+				this.startMusic();
+				EnvEffectManager.init();
+			} catch (recoveryError: Error) {
+				trace("[MAP_TRANSITION_RECOVERY_FAIL] error=" + recoveryError.message);
+			}
+			this.stopLoading();
+			this.restoreGameplayInputAfterPopup();
 		}
 
 		public function executeReturnHome(): void {
@@ -3308,8 +3671,11 @@
 			this.executeSwitchMap(param1.mActiveMapID, param1);
 		}
 
-		private function startLoading(): void {
+		private function startLoading(param1: String = null): void {
 			var _loc3_: String = null;
+			this.mLoadingActive = true;
+			this.mLoadingTargetMapId = param1 && param1.length > 0 ? param1 : this.mCurrentMapId;
+			Utils.DiagEvent("LOADING_BEGIN","current=" + this.mCurrentMapId + ";target=" + this.mLoadingTargetMapId + ";state=" + this.mState);
 			getMainClip().mouseChildren = false;
 			this.cancelAllActions();
 			this.cancelTools();
@@ -3321,6 +3687,7 @@
 				this.addLoadingClip();
 			} else {
 				_loc3_ = _loc2_ + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
+				_loc1_.removeEventListener(_loc3_, this.LoadingFinished);
 				_loc1_.addEventListener(_loc3_, this.LoadingFinished, false, 0, true);
 				if (!_loc1_.isAddedToLoadingList(_loc2_)) {
 					_loc1_.load(Config.DIR_DATA + _loc2_ + ".swf", _loc2_, null, false);
@@ -3330,13 +3697,21 @@
 
 		protected function LoadingFinished(param1: Event): void {
 			DCResourceManager.getInstance().removeEventListener(param1.type, this.LoadingFinished);
-			this.addLoadingClip();
+			if (this.mLoadingActive) {
+				this.addLoadingClip();
+			}
 		}
 
 		private function addLoadingClip(): void {
+			var _loc1_: Object = null;
 			var _loc2_: Array = null;
 			var _loc3_: Class = null;
 			var _loc4_: TextField = null;
+			var _loc5_: String = this.mLoadingTargetMapId && this.mLoadingTargetMapId.length > 0 ? this.mLoadingTargetMapId : this.mCurrentMapId;
+			var _loc6_: Object = null;
+			if (!this.mLoadingActive) {
+				return;
+			}
 			if (this.mLoadingClip == null) {
 				_loc3_ = DCResourceManager.getInstance().getSWFClass(Config.SWF_POPUPS_START_NAME, "popup_loading");
 				this.mLoadingClip = new _loc3_();
@@ -3345,24 +3720,36 @@
 			}
 			this.mLoadingClip.x = this.getStageWidth() / 2;
 			this.mLoadingClip.y = this.getStageHeight() / 2;
-			this.mRootNode.addChild(this.mLoadingClip);
-			this.mCurrentMusic = this.getMapMusic()
-			ArmySoundManager.loadMusic(this.mCurrentMusic);
-			this.startMusic();
-			var _loc1_: Object = (mConfig.MapSetup[this.mCurrentMapId] as Object).SWFFile;
-			if (_loc1_ is Array) {
-				_loc2_ = _loc1_ as Array;
-			} else {
-				_loc2_ = [_loc1_];
+			if (!this.mRootNode.contains(this.mLoadingClip)) {
+				this.mRootNode.addChild(this.mLoadingClip);
 			}
-			Utils.addSwfToResourceManager(_loc2_);
+			if (Config.OFFLINE_MODE) {
+				trace("[MAP_LOADING_OVERLAY] target=" + _loc5_ + " music_commit=deferred embedded_swfs=true");
+			} else {
+				this.mCurrentMusic = this.getMapMusicForId(_loc5_);
+				ArmySoundManager.loadMusic(this.mCurrentMusic);
+				this.startMusic();
+				if (mConfig && mConfig.MapSetup) _loc6_ = mConfig.MapSetup[_loc5_];
+				if (_loc6_ && _loc6_.SWFFile) {
+					_loc1_ = _loc6_.SWFFile;
+					_loc2_ = _loc1_ is Array ? _loc1_ as Array : [_loc1_];
+					Utils.addSwfToResourceManager(_loc2_);
+				}
+			}
 		}
 
 		private function stopLoading(): void {
+			var _loc1_: DCResourceManager = DCResourceManager.getInstance();
+			var _loc2_: String = Config.SWF_POPUPS_START_NAME + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
+			this.mLoadingActive = false;
+			this.mLoadingTargetMapId = null;
+			_loc1_.removeEventListener(_loc2_, this.LoadingFinished);
 			if (Boolean(this.mLoadingClip) && this.mRootNode.contains(this.mLoadingClip)) {
 				this.mRootNode.removeChild(this.mLoadingClip);
 			}
 			getMainClip().mouseChildren = true;
+			trace("[MAP_INPUT_RESTORED] current=" + this.mCurrentMapId + " state=" + this.mState);
+			Utils.DiagEvent("LOADING_END","current=" + this.mCurrentMapId + ";state=" + this.mState + ";mouseChildren=" + getMainClip().mouseChildren);
 		}
 
 		public function addToWorld(param1: MapItem): void {

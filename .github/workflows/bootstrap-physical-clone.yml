@@ -1,0 +1,120 @@
+name: Army Attack Windows full candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: army-attack-windows-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-candidate:
+    name: Core-synced Windows full candidate
+    runs-on: [windows-build, android-parallel, pc-willthom, general]
+    timeout-minutes: 30
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.sha }}
+      SOURCE_BRANCH: ${{ github.ref_name }}
+
+    steps:
+      - name: Enable AndroidBuild Core repository sync
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=@($env:ANDROIDBUILD_ROOT,'V:\AndroidBuild','D:\AndroidBuild','C:\AndroidBuild')|Where-Object{$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -First 1
+          if(-not $root){throw 'CORE_PRECHECK=FAIL androidbuild_root_not_found'}
+          $root=(Resolve-Path -LiteralPath $root).Path
+          Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $core=[version](Get-AndroidBuildCoreVersion)
+          if($core -lt [version]'3.0.9'){throw "CORE_PRECHECK=FAIL version=$core minimum=3.0.9"}
+          foreach($name in @('Sync-AndroidBuildRepositoryExactHead','Test-AndroidBuildExactHead','Get-AndroidBuildGitPath')){if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "CORE_PRECHECK=FAIL capability=$name"}}
+          Enable-AndroidBuildPortableTools -AndroidBuildRoot $root|Out-Null
+          $git=Get-AndroidBuildGitPath $root
+          (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "CORE_REPOSITORY_SYNC_PRECHECK=PASS version=$core git=$git"
+
+      - name: Checkout exact workflow HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Synchronize canonical repository through Core
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $checkout=$PWD.Path
+          $checkoutSha=(& $git -C $checkout rev-parse HEAD).Trim()
+          if($checkoutSha -ne $env:EXPECTED_SOURCE_SHA){throw "EXACT_ACTIONS_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$checkoutSha"}
+          $repo=Join-Path $env:ANDROIDBUILD_ROOT 'Repositories\code-army-client'
+          $sync=Sync-AndroidBuildRepositoryExactHead -RepoRoot $repo -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -AllowTrackedReset -CleanUntracked -SourceRemote $checkout
+          if([string]$sync.status -ne 'PASS' -or [string]$sync.actual_sha -ne $env:EXPECTED_SOURCE_SHA){throw "REPOSITORY_SYNC=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$($sync.actual_sha)"}
+          "PHYSICAL_REPO_ROOT=$repo"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "PRECHECK_GITHUB=PASS"
+          Write-Host "BROKER=PASS runner=$env:RUNNER_NAME"
+          Write-Host "RUNNER_ASSIGNMENT=PASS runner=$env:RUNNER_NAME"
+          Write-Host "EXACT_ACTIONS_HEAD=PASS sha=$checkoutSha"
+          Write-Host "CORE_REPOSITORY_SYNC=PASS sha=$($sync.actual_sha) repo=$repo"
+          Write-Host "REPOSITORY=$env:GITHUB_REPOSITORY"
+          Write-Host "BRANCH=$env:SOURCE_BRANCH"
+          Write-Host "RUN=$env:GITHUB_RUN_ID"
+          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
+
+      - name: Validate exact-source upstream Windows reference
+        id: upstream_reference
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Validate-UpstreamWindowsRelease.ps1' `
+            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT `
+            -ExpectedSha $env:EXPECTED_SOURCE_SHA
+
+      - name: Diagnostic source-only recompilation
+        id: source_rebuild
+        continue-on-error: true
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Build-Windows.ps1' `
+            -RepoRoot $env:PHYSICAL_REPO_ROOT `
+            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
+            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
+
+      - name: Assemble and validate full Windows candidate
+        id: full_candidate
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Build-WindowsFullCandidate.ps1' `
+            -RepoRoot $env:PHYSICAL_REPO_ROOT `
+            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
+            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
+
+      - name: Measure full candidate performance
+        id: performance
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Measure-WindowsPerformance.ps1' `
+            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT `
+            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
+            -DurationSeconds 20 `
+            -SampleSeconds 2
+
+      - name: Final gate
+        if: always()
+        shell: powershell
+        run: |
+          Write-Host "SOURCE_REBUILD_OUTCOME=${{ steps.source_rebuild.outcome }}"
+          Write-Host "UPSTREAM_REFERENCE_OUTCOME=${{ steps.upstream_reference.outcome }}"
+          Write-Host "FULL_CANDIDATE_OUTCOME=${{ steps.full_candidate.outcome }}"
+          Write-Host "PERFORMANCE_OUTCOME=${{ steps.performance.outcome }}"
+          Write-Host "APK_GENERATED=NOT_RUN"
+          Write-Host "PHYSICAL_ANDROID_VALIDATION=NOT_RUN"
+          if ('${{ steps.upstream_reference.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL upstream_reference' }
+          if ('${{ steps.full_candidate.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL full_candidate' }
+          if ('${{ steps.performance.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL performance' }
+          Write-Host "FINAL_VALIDATION=PASS windows_full_candidate"

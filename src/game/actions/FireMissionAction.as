@@ -46,17 +46,20 @@
       
       protected var mItem:FireMissionItem;
       
+      protected var mGraphicsOverride:String;
+      
       protected var mTargets:Array;
       
       protected var mKilledEnemyCount:int;
       
       private var mLastAttackDamageInstallations:Array;
       
-      public function FireMissionAction(param1:GridCell, param2:FireMissionItem)
+      public function FireMissionAction(param1:GridCell, param2:FireMissionItem, param3:String = null)
       {
          super("FireMission");
          this.mGC = param1;
          this.mItem = param2;
+         this.mGraphicsOverride = param3;
          this.mLastAttackDamageInstallations = new Array();
       }
       
@@ -118,7 +121,7 @@
          }
          _loc1_ = GameState.mInstance;
          var _loc2_:Array = MapArea.getArea(_loc1_.mScene,this.mGC.mPosI,this.mGC.mPosJ,this.mItem.mSize.x,this.mItem.mSize.y).getCells();
-         this.mObject = new FireMissionObject(this.mItem,_loc2_);
+         this.mObject = new FireMissionObject(this.mItem,_loc2_,this.mGraphicsOverride);
          this.mTargets = new Array();
          var _loc3_:int = 0;
          while(_loc3_ < _loc2_.length)

@@ -1,0 +1,115 @@
+name: Army Attack Android physical validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: army-attack-physical-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_SOURCE_SHA: ${{ github.sha }}
+  SOURCE_BRANCH: ${{ github.ref_name }}
+
+jobs:
+  physical-adb:
+    name: 5. Physical ADB validation
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    timeout-minutes: 25
+    steps:
+      - name: Bootstrap portable Git
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $candidates=@()
+          $g=Get-Command git.exe -ErrorAction SilentlyContinue
+          if($g){$candidates+=$g.Source}
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){
+              $candidates+=@(
+                (Join-Path $drive.Root 'AndroidBuild\Tools\Git\cmd\git.exe'),
+                (Join-Path $drive.Root 'AndroidBuild\PortableGit\cmd\git.exe')
+              )
+            }
+          }
+          $git=$candidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          if(-not $git){throw 'PRECHECK_GIT=FAIL component=TOOLCHAIN operation=resolve_portable_git expected=AndroidBuild portable Git actual=missing'}
+          (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH="$(Split-Path -Parent $git);$env:PATH"
+          Write-Host "PRECHECK_GIT=PASS path=$git"
+
+      - name: Checkout exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate exact checkout and portable ADB
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & '.\Tools\CI\Precheck-AndroidPhysical.ps1' -ExpectedSha $env:EXPECTED_SOURCE_SHA
+          if($LASTEXITCODE -ne 0){throw "PHYSICAL_PRECHECK=FAIL exit=$LASTEXITCODE"}
+
+      - name: Wait for exact validated APK
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $deadline=(Get-Date).AddMinutes(18)
+          $apk=$null
+          do {
+            $candidate=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\candidate\ArmyAttack-23.2-$env:EXPECTED_SOURCE_SHA.apk"
+            if(Test-Path -LiteralPath $candidate){$apk=Get-Item -LiteralPath $candidate;break}
+            Start-Sleep -Seconds 10
+          } while((Get-Date) -lt $deadline)
+          if(-not $apk){throw "APK_VALIDATE=FAIL component=APK operation=wait_exact_candidate expected_sha=$env:EXPECTED_SOURCE_SHA actual=not_found timeout_minutes=18"}
+          $sha=(Get-FileHash -LiteralPath $apk.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "ANDROID_APK_PATH=$($apk.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "ANDROID_APK_SHA256=$sha"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "APK_EXACT=PASS tested_sha=$env:EXPECTED_SOURCE_SHA path=$($apk.FullName) size=$($apk.Length) sha256=$sha"
+
+      - name: Test exact APK on physical device when available
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & '.\Tools\CI\Test-AndroidDevice.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+          if($LASTEXITCODE -ne 0){throw "PHYSICAL_VALIDATION=FAIL exit=$LASTEXITCODE"}
+
+      - name: Validate always-on runtime and SWF traces
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $evidence=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\physical"
+          & '.\Tools\CI\Analyze-AndroidRuntimeDiagnostics.ps1' -EvidenceRoot $evidence -ExpectedSha $env:EXPECTED_SOURCE_SHA -ExpectedApkSha256 $env:ANDROID_APK_SHA256
+          if($LASTEXITCODE -ne 0){throw "RUNTIME_DIAGNOSTICS=FAIL exit=$LASTEXITCODE"}
+
+      - name: Publish APK-FINAL after physical PASS
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if(-not $env:ANDROID_APK_PATH){throw 'APK_FINAL_COPY=FAIL candidate_path_missing'}
+          $actual=(Get-FileHash -LiteralPath $env:ANDROID_APK_PATH -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -ne ([string]$env:ANDROID_APK_SHA256).ToLowerInvariant()){throw "APK_FINAL_COPY=FAIL candidate_hash expected=$env:ANDROID_APK_SHA256 actual=$actual"}
+          & '.\Tools\CI\Publish-ApkFinal.ps1' -SourceApk $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -RelativePath 'ArmyAttack-23.2.apk' -Kind 'base-23.2' -PhysicalValidated
+          Write-Host 'FINAL_VALIDATION=PASS physical_validation=PASS'
+
+      - name: Physical validation summary
+        if: always()
+        shell: powershell
+        run: |
+          Write-Host "REPOSITORY=$env:GITHUB_REPOSITORY"
+          Write-Host "BRANCH=$env:SOURCE_BRANCH"
+          Write-Host "TESTED_SHA=$env:EXPECTED_SOURCE_SHA"
+          Write-Host "RUN=$env:GITHUB_RUN_ID"
+          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
+          if($env:ANDROID_APK_PATH){Write-Host "APK_PATH=$env:ANDROID_APK_PATH"}
+          if($env:ANDROID_APK_SHA256){Write-Host "APK_SHA256=$env:ANDROID_APK_SHA256"}
+          if($env:ANDROIDBUILD_ROOT){
+            Write-Host "PHYSICAL_EVIDENCE_ROOT=$(Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\physical")"
+          } else {
+            Write-Host "PHYSICAL_EVIDENCE_ROOT=UNAVAILABLE precheck_failed"
+          }

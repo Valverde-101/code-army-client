@@ -140,11 +140,11 @@ package game.environment
             {
                if(GameState.mInstance.mCurrentMapId == "Desert")
                {
-                  mTile.push(new DesertCloud());
+                  mClouds.push(new DesertCloud());
                }
                else
                {
-                  mTile.push(new DriftingCloud());
+                  mClouds.push(new DriftingCloud());
                }
                mCloudClock = Math.random() * (EFFECTS_DELAY_CLOUD / 100 * RANDOM_PRC);
             }

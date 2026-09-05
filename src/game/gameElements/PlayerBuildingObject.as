@@ -65,6 +65,9 @@
 
 		public static var gc: GridCell;
 
+		private static const PASSIVE_UI_REFRESH_MS: int = 100;
+
+		private var mPassiveUiAccumulator: int = PASSIVE_UI_REFRESH_MS;
 
 		public var mState: int;
 
@@ -277,9 +280,16 @@
 		override public function logicUpdate(param1: int): Boolean {
 			var _loc4_: TextEffect = null;
 			var _loc5_: MovieClip = null;
+			var passiveRefresh: Boolean = false;
 			if (this.mOldState != this.mState) {
 				this.mProgressIconSet = false;
 				this.mOldState = this.mState;
+				passiveRefresh = true;
+			}
+			this.mPassiveUiAccumulator += param1;
+			if (this.mPassiveUiAccumulator >= PASSIVE_UI_REFRESH_MS) {
+				this.mPassiveUiAccumulator = 0;
+				passiveRefresh = true;
 			}
 			if (this.mUnderAttack) {
 				return false;
@@ -301,7 +311,9 @@
 					this.mTextFXTimer = 350;
 				}
 			}
-			this.updateProductionIcon();
+			if (passiveRefresh) {
+				this.updateProductionIcon();
+			}
 			var _loc2_: Boolean = this.mEffectController.update(param1);
 			if (_loc2_) {
 				if (this.mDestroyedPermanently) {
@@ -335,16 +347,18 @@
 				case STATE_READY:
 				case STATE_PRODUCING:
 				case STATE_PRODUCTION_READY:
-					if (!getCell().hasFog() && this.mHealth < this.mMaxHealth) {
-						if (!isLoadingBarVisible()) {
-							showHealthWarning(true);
+					if (passiveRefresh) {
+						if (!getCell().hasFog() && this.mHealth < this.mMaxHealth) {
+							if (!isLoadingBarVisible()) {
+								showHealthWarning(true);
+							}
+						} else {
+							showHealthWarning(false);
 						}
-					} else {
-						showHealthWarning(false);
-					}
-					if (this.mState == STATE_PRODUCING) {
-						if (this.mProduction.isReady()) {
-							this.handleProductionComplete();
+						if (this.mState == STATE_PRODUCING) {
+							if (this.mProduction.isReady()) {
+								this.handleProductionComplete();
+							}
 						}
 					}
 					break;

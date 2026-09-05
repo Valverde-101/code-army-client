@@ -2,6 +2,7 @@
 	import com.dchoc.GUI.DCButton;
 	import com.dchoc.graphics.DCResourceManager;
 	import flash.display.DisplayObject;
+	import flash.display.DisplayObjectContainer;
 	import flash.display.MovieClip;
 	import flash.display.Sprite;
 	import flash.events.Event;
@@ -107,6 +108,8 @@
 		private var mStatusFrame: MovieClip;
 
 		private var mButtonRetreat: ArmyButton;
+
+		private var mButtonCancelAction: ArmyButton;
 
 		private var mButtonRetreatText: TextField;
 
@@ -235,6 +238,12 @@
 			this.mTurnNumberText = new AutoTextField(this.mStatusFrame.getChildByName("Text_Turn_Value") as TextField);
 			this.mActionsLeftText = new AutoTextField(this.mStatusFrame.getChildByName("Text_Actions_Value") as TextField);
 			this.mButtonRetreat = this.addButton(this.mStatusFrame, "Button_Quit", this.buttonRetreatPressed);
+			var cancelClip:MovieClip = this.findMovieClipByName(this.mIngameHUDClip,"Button_Cancel");
+			if(cancelClip != null && cancelClip.parent is DisplayObjectContainer)
+			{
+				this.mButtonCancelAction = Utils.createBasicButton(cancelClip.parent as DisplayObjectContainer,cancelClip.name,this.buttonCancelActionPressed);
+			}
+			this.showCancelButton(true);
 			this.updateStatusTexts();
 			this.mBoosterBar = new PvPBoosterBar(this.mBottomFrame);
 			
@@ -242,7 +251,7 @@
 			var meAsPvpOpponent:PvPOpponent = new PvPOpponent("random_facebook_id",player_profile.mBadassXp,player_profile.mBadassLevel,player_profile.mBadassWins,"Me","")
 			
 			this.mPlayerPanel = new PvPFighterPanel(this.mIngameHUDClip.getChildByName("Player_Card") as Sprite, meAsPvpOpponent, GameState.getText("PVP_PLAYER_TURN"));
-			this.mEnemyPanel = new PvPFighterPanel(this.mIngameHUDClip.getChildByName("Opponent_Card") as Sprite, PvPOpponentCollection.smCollection.getOpponent("1"), GameState.getText("PVPV_ENEMY_TURN"));
+			this.mEnemyPanel = new PvPFighterPanel(this.mIngameHUDClip.getChildByName("Opponent_Card") as Sprite, this.mGame.mPvPMatch.mOpponent, GameState.getText("PVPV_ENEMY_TURN"));
 			this.mButtonToggleMusic = this.addButton(this.mSettingsButtonsBar, "Button_Music", this.ToggleMusicClicked);
 			this.mButtonToggleMusicDisabled = this.addButton(this.mSettingsButtonsBar, "Button_Music_Disabled", this.ToggleMusicClicked);
 			this.mButtonToggleSound = this.addButton(this.mSettingsButtonsBar, "Button_Sounds", this.ToggleSndFxClicked);
@@ -292,6 +301,7 @@
 			this.mIngameHUDClip.addChild(this.mTurnChangeClip);
 			this.mTurnChangeClip.y = this.mIngameHUDClip.height / 2;
 			new DisplayObjectTransition(DisplayObjectTransition.ATTENTION_UP, this.mTurnChangeClip, DisplayObjectTransition.TYPE_DISAPPEAR);
+			this.showCancelButton(true);
 			this.mTextUpdateRequired = true;
 		}
 
@@ -357,7 +367,32 @@
 			}
 		}
 
-		public function showCancelButton(param1: Boolean): void {}
+		public function showCancelButton(param1: Boolean): void {
+			if(this.mButtonCancelAction)
+			{
+				this.mButtonCancelAction.setVisible(param1);
+				this.mButtonCancelAction.setEnabled(param1 && this.mGame && this.mGame.mPvPMatch && this.mGame.mPvPMatch.mPlayerTurn);
+			}
+		}
+
+		private function findMovieClipByName(param1:DisplayObjectContainer,param2:String):MovieClip {
+			var direct:MovieClip = null;
+			var child:DisplayObject = null;
+			var found:MovieClip = null;
+			var i:int = 0;
+			if(param1 == null) return null;
+			direct = param1.getChildByName(param2) as MovieClip;
+			if(direct != null) return direct;
+			while(i < param1.numChildren) {
+				child = param1.getChildAt(i);
+				if(child is DisplayObjectContainer) {
+					found = this.findMovieClipByName(child as DisplayObjectContainer,param2);
+					if(found != null) return found;
+				}
+				i++;
+			}
+			return null;
+		}
 
 		private function addButton(param1: MovieClip, param2: String, param3: Function): ArmyButton {
 			var _loc4_: MovieClip;
@@ -372,12 +407,21 @@
 			GameState.mInstance.openPvPDebriefing(false);
 		}
 
+		private function buttonCancelActionPressed(param1:MouseEvent):void {
+			if(!this.mGame || !this.mGame.mPvPMatch) return;
+			Utils.DiagEvent("PVP_PASS_TURN_BUTTON","turn=" + this.mGame.mPvPMatch.mTurnCounter + ";actions=" + this.mGame.mPvPMatch.mActionsLeft + ";player_turn=" + this.mGame.mPvPMatch.mPlayerTurn);
+			this.cancelTools();
+			var passed:Boolean = this.mGame.mPvPMatch.passPlayerTurn();
+			Utils.DiagEvent("PVP_PASS_TURN_BUTTON_RESULT","passed=" + passed + ";turn=" + this.mGame.mPvPMatch.mTurnCounter + ";actions=" + this.mGame.mPvPMatch.mActionsLeft + ";player_turn=" + this.mGame.mPvPMatch.mPlayerTurn);
+			this.showCancelButton(true);
+		}
+
 		public function cancelTools(): void {
 			this.mGame.cancelTools();
 			this.mGame.cancelDecoPurchase();
 			CursorManager.getInstance().hideCursorImages();
 			this.mGame.mScene.mMapGUIEffectsLayer.clearHighlights();
-			this.showCancelButton(false);
+			this.showCancelButton(true);
 		}
 
 		public function setZoomIndicator(param1: int): void {
@@ -763,6 +807,20 @@
 		}
 
 		public function openPvPDebriefingDialog(): void {
+			if (Config.OFFLINE_MODE) {
+				try {
+					var debriefClass:Class = DCResourceManager.getInstance().getSWFClass("swf/popups_pvp", "popup_pvp_loot");
+					if (debriefClass != null) {
+						trace("[PVP_DEBRIEF_OPEN] mode=embedded symbol=popup_pvp_loot");
+						this.openDialog(PvPDebriefingDialog, [this.closeDialog, this.mGame.openPvPMatchUpDialog], null, true);
+						this.cancelTools();
+						return;
+					}
+				} catch (error:Error) {
+					trace("[PVP_DEBRIEF_EMBEDDED_FAIL] error=" + error.message);
+				}
+			}
+			trace("[PVP_DEBRIEF_OPEN] mode=resource");
 			this.openDialogIfResourceLoaded("swf/popups_pvp", PvPDebriefingDialog, [this.closeDialog, this.mGame.openPvPMatchUpDialog]);
 			this.cancelTools();
 		}

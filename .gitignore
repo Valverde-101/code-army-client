@@ -6,3 +6,6 @@
 *.zip
 AA21_release/
 AA21_1_release/
+
+# Local Army Attack extraction/build workspace. Never commit RAW/generated content.
+.work/

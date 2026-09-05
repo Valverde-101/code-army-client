@@ -355,7 +355,7 @@
       
       private function buyObjectiveButtonPressed(param1:Event) : void
       {
-         var _loc3_:ResizingButton = null;
+         var _loc3_:ResizingIconButton = null;
          var _loc4_:int = 0;
          var _loc5_:Objective = null;
          var _loc2_:GameState = GameState.mInstance;
@@ -404,7 +404,7 @@
       
       private function shopObjectiveButtonPressed(param1:Event) : void
       {
-         var _loc2_:ResizingButton = null;
+         var _loc2_:ResizingIconButton = null;
          var _loc3_:int = 0;
          var _loc4_:Objective = null;
          var _loc5_:Object = null;

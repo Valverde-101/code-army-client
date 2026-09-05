@@ -1,5 +1,8 @@
 package game.characters
 {
+   import flash.display.DisplayObject;
+   import flash.display.MovieClip;
+   import flash.utils.getQualifiedClassName;
    import game.actions.Action;
    import game.actions.ActionQueue;
    import game.actions.PvPEnemyMovingAction;
@@ -50,6 +53,10 @@ package game.characters
       
       public var mKillRewardBadassXP:int;
       
+      private var mResolvedGraphicsArray:Array;
+      
+      private var mLastVisualSource:String;
+      
       public function PvPEnemyUnit(param1:int, param2:IsometricScene, param3:EnemyUnitItem)
       {
          var _loc4_:Object = null;
@@ -91,7 +98,23 @@ package game.characters
          mSpeed = 300;
          mContainer.mouseChildren = false;
          mContainer.mouseEnabled = false;
-         initAnimations(param3.mGraphicsArray);
+         this.mResolvedGraphicsArray = param3.mGraphicsArray ? param3.mGraphicsArray.concat() : new Array();
+         var graphicsIndex:int = 0;
+         var graphicsSource:String = null;
+         var graphicsSlash:int = 0;
+         var graphicsResource:String = null;
+         var graphicsSymbol:String = null;
+         while(graphicsIndex < this.mResolvedGraphicsArray.length)
+         {
+            graphicsSource = this.mResolvedGraphicsArray[graphicsIndex] == null ? "" : String(this.mResolvedGraphicsArray[graphicsIndex]);
+            graphicsSlash = graphicsSource.lastIndexOf("/");
+            graphicsResource = graphicsSlash >= 0 ? graphicsSource.slice(0,graphicsSlash) : "";
+            graphicsSymbol = graphicsSlash >= 0 ? graphicsSource.slice(graphicsSlash + 1) : graphicsSource;
+            Utils.DiagEvent("PVP_ENEMY_GRAPHICS_ENTRY","unit=" + this.mUnitId + ";animation=" + graphicsIndex + ";source=" + graphicsSource + ";resource=" + graphicsResource + ";symbol=" + graphicsSymbol + ";expected_opfor=" + (graphicsResource == "swf/units_opfor"));
+            graphicsIndex++;
+         }
+         initAnimations(this.mResolvedGraphicsArray);
+         Utils.DiagEvent("PVP_ENEMY_GRAPHICS_RESOLVED","unit=" + this.mUnitId + ";entries=" + this.mResolvedGraphicsArray.length + ";mode=config_exact");
          setPos(500,500,0);
          updateAnimation(true,false);
          mVisible = false;
@@ -163,6 +186,35 @@ package game.characters
          mMoveSounds.load();
       }
       
+      override protected function updateAnimation(param1:Boolean, param2:Boolean) : void
+      {
+         super.updateAnimation(param1,param2);
+         var animationIndex:int = getCurrentAnimationIndex();
+         if(animationIndex == AnimationController.CHARACTER_ANIMATION_MOVE || animationIndex == AnimationController.CHARACTER_ANIMATION_MOVE_UP)
+         {
+            var source:String = this.mResolvedGraphicsArray && animationIndex < this.mResolvedGraphicsArray.length ? String(this.mResolvedGraphicsArray[animationIndex]) : "";
+            if(source != this.mLastVisualSource)
+            {
+               var slash:int = source.lastIndexOf("/");
+               var symbol:String = slash >= 0 ? source.substr(slash + 1) : source;
+               var mode:String = source.indexOf("swf/units_opfor/") == 0 ? "opfor_config_exact" : "opfor_external";
+               var canonicalException:Boolean = this.mUnitId == UNIT_ID_PVP_ELITE_SNIPER;
+               var darkMovement:Boolean = canonicalException || symbol.indexOf("pvp_") == 0;
+               var currentAnimation:MovieClip = mAnimationController ? mAnimationController.getCurrentAnimation() : null;
+               var materialized:DisplayObject = currentAnimation && currentAnimation.numChildren > 0 ? currentAnimation.getChildAt(currentAnimation.numChildren - 1) : null;
+               var materializedClass:String = materialized ? getQualifiedClassName(materialized) : "none";
+               var materializedName:String = materialized ? materialized.name : "none";
+               Utils.DiagEvent("PVP_ENEMY_SYMBOL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";source=" + source + ";symbol=" + symbol + ";mode=" + mode);
+               Utils.DiagEvent("PVP_ENEMY_MOVE_MATERIALIZED","unit=" + this.mUnitId + ";animation=" + animationIndex + ";symbol=" + symbol + ";class=" + materializedClass + ";name=" + materializedName + ";children=" + (currentAnimation ? currentAnimation.numChildren : 0));
+               Utils.DiagEvent("PVP_ENEMY_MOVE_VISUAL","unit=" + this.mUnitId + ";animation=" + animationIndex + ";source=" + source + ";symbol=" + symbol + ";opfor=" + (mode == "opfor_config_exact") + ";dark=" + darkMovement + ";canonical_exception=" + canonicalException + ";materialized_class=" + materializedClass);
+               if(mode != "opfor_config_exact" || !darkMovement)
+               {
+                  Utils.DiagEvent("PVP_ENEMY_MOVE_VISUAL_MISMATCH","unit=" + this.mUnitId + ";source=" + source + ";symbol=" + symbol + ";reason=" + (mode != "opfor_config_exact" ? "wrong_resource" : "non_dark_symbol"));
+               }
+               this.mLastVisualSource = source;
+            }
+         }
+      }
       override public function update(param1:int) : void
       {
          super.update(param1);
@@ -261,33 +313,37 @@ package game.characters
       {
          var _loc7_:PlayerUnit = null;
          var _loc9_:GridCell = null;
+         var _loc10_:GridCell = getCell();
          var _loc1_:Array = new Array();
-         var _loc2_:int = getCell().mPosI - getAttackRange();
-         var _loc3_:int = getCell().mPosI + getAttackRange();
-         var _loc4_:int = getCell().mPosJ - getAttackRange();
-         var _loc5_:int = getCell().mPosJ + getAttackRange();
+         if(_loc10_ == null || mScene == null)
+         {
+            return null;
+         }
+         var _loc2_:int = _loc10_.mPosI - getAttackRange();
+         var _loc3_:int = _loc10_.mPosI + getAttackRange();
+         var _loc4_:int = _loc10_.mPosJ - getAttackRange();
+         var _loc5_:int = _loc10_.mPosJ + getAttackRange();
          var _loc6_:Array = mScene.getPlayerAliveUnits();
+         if(_loc6_ == null)
+         {
+            return null;
+         }
          var _loc8_:int = 0;
          while(_loc8_ < _loc6_.length)
          {
-            if((_loc9_ = _loc7_.getCell()).mPosI >= _loc2_)
+            _loc7_ = _loc6_[_loc8_] as PlayerUnit;
+            if(_loc7_ != null && (_loc9_ = _loc7_.getCell()) != null)
             {
-               if(_loc9_.mPosI <= _loc3_)
+               if(_loc9_.mPosI >= _loc2_ && _loc9_.mPosI <= _loc3_ && _loc9_.mPosJ >= _loc4_ && _loc9_.mPosJ <= _loc5_)
                {
-                  if(_loc9_.mPosJ >= _loc4_)
-                  {
-                     if(_loc9_.mPosJ <= _loc5_)
-                     {
-                        _loc1_.push(_loc7_);
-                     }
-                  }
+                  _loc1_.push(_loc7_);
                }
             }
             _loc8_++;
          }
-         if(Boolean(_loc1_) && _loc1_.length > 0)
+         if(_loc1_.length > 0)
          {
-            return _loc1_[Math.floor(Math.random() * _loc1_.length)];
+            return _loc1_[Math.floor(Math.random() * _loc1_.length)] as PlayerUnit;
          }
          return null;
       }

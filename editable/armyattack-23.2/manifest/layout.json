@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "game": "Army Attack",
+  "content_version": "23.2",
+  "raw_workspace": ".work/swf-extracted/23.2",
+  "editable_root": "editable/armyattack-23.2",
+  "tracked_categories": [
+    "units",
+    "enemies",
+    "buildings",
+    "effects",
+    "terrain",
+    "ui",
+    "config",
+    "sounds",
+    "manifest"
+  ],
+  "raw_categories": [
+    "images",
+    "shapes",
+    "sprites",
+    "frames",
+    "scripts",
+    "raw"
+  ],
+  "policy": {
+    "commit_raw_exports": false,
+    "commit_generated_builds": false,
+    "commit_reviewed_assets": true,
+    "preserve_source_hashes": true,
+    "preserve_symbol_linkage": true,
+    "preserve_frame_metadata": true,
+    "preserve_pivots": true
+  }
+}

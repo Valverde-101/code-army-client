@@ -11,7 +11,7 @@
    import game.gui.button.ResizingButton;
    import game.gui.button.ResizingButtonSelected;
    import game.gui.popups.PopUpWindow;
-   import game.items.CollectibleItem;
+   import game.items.Item;
    import game.net.GameFeedPublisher;
    import game.net.PvPOpponent;
    import game.states.GameState;
@@ -97,17 +97,31 @@
       
       private function setLootItems(param1:Array) : void
       {
-         var _loc3_:CollectibleItem = null;
+         var _loc3_:Item = null;
          var _loc4_:MovieClip = null;
+         var _loc5_:MovieClip = null;
          if(param1 == null)
          {
+            Utils.DiagEvent("PVP_DEBRIEF_LOOT_RENDER","count=0;reason=null_array");
             return;
          }
+         Utils.DiagEvent("PVP_DEBRIEF_LOOT_RENDER","count=" + param1.length);
          var _loc2_:int = 1;
          for each(_loc3_ in param1)
          {
+            if(_loc3_ == null) continue;
             _loc4_ = this.mLoot.getChildByName("Item_0" + _loc2_) as MovieClip;
-            IconLoader.addIcon(_loc4_,_loc3_,this.iconLoaded);
+            if(!_loc4_)
+            {
+               Utils.DiagEvent("PVP_DEBRIEF_LOOT_SLOT_MISS","slot=" + _loc2_ + ";id=" + _loc3_.mId + ";type=" + _loc3_.mType);
+               _loc2_++;
+               if(_loc2_ > 4) break;
+               continue;
+            }
+            _loc4_.visible = true;
+            _loc4_.alpha = 1;
+            _loc5_ = IconLoader.addIcon(_loc4_,_loc3_,this.iconLoaded);
+            Utils.DiagEvent("PVP_DEBRIEF_LOOT_SLOT","slot=" + _loc2_ + ";id=" + _loc3_.mId + ";type=" + _loc3_.mType + ";icon_request=" + Boolean(_loc5_));
             _loc2_++;
             if(_loc2_ > 4)
             {
@@ -119,8 +133,11 @@
       public function iconLoaded(param1:Sprite) : void
       {
          Utils.scaleIcon(param1,85,85);
+         param1.visible = true;
+         param1.alpha = 1;
          param1.mouseChildren = false;
          param1.mouseEnabled = false;
+         Utils.DiagEvent("PVP_DEBRIEF_LOOT_ICON","width=" + param1.width + ";height=" + param1.height);
       }
       
       private function setCard(param1:MovieClip, param2:PvPOpponent) : void
@@ -149,6 +166,7 @@
       
       private function closeClicked(param1:MouseEvent) : void
       {
+         Utils.DiagEvent("PVP_DEBRIEF_CLOSE","win=" + GameState.mInstance.mPvPMatch.mWin + ";map=" + GameState.mInstance.mCurrentMapId);
          this.closeDialog();
          GameState.mInstance.endPvP();
       }
@@ -181,8 +199,9 @@
       
       private function newMach(param1:MouseEvent) : void
       {
-         GameState.mInstance.getHud().openPvPMatchUpDialog();
+         Utils.DiagEvent("PVP_DEBRIEF_PLAY_AGAIN","win=" + GameState.mInstance.mPvPMatch.mWin + ";map=" + GameState.mInstance.mCurrentMapId);
          this.closeDialog();
+         GameState.mInstance.endPvP(GameState.mInstance.openPvPMatchUpDialog);
       }
       
       protected function mouseDown(param1:MouseEvent) : void

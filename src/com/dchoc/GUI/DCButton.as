@@ -223,6 +223,14 @@ package com.dchoc.GUI
       {
          if(param1 == this.mEnabled)
          {
+            if(!this.USE_BUTTON_STATES_ANIM)
+            {
+               this.playAnim(param1 ? BUTTON_FRAME_NAME_UP : BUTTON_FRAME_NAME_DISABLED_UP);
+               if(!param1)
+               {
+                  this.hideHelper();
+               }
+            }
             return;
          }
          this.mEnabled = param1;
@@ -450,15 +458,16 @@ package com.dchoc.GUI
       
       public function enterFrame(param1:Event) : void
       {
-         if(this.mButton.currentLabel != this.mCurrentPlayedLabel || this.mButton.currentFrame == this.mButton.totalFrames)
+         var completedLabel:String = this.mCurrentPlayedLabel;
+         if(this.mButton.currentLabel != completedLabel || this.mButton.currentFrame == this.mButton.totalFrames)
          {
-            if(this.mButton.currentLabel != this.mCurrentPlayedLabel)
+            if(this.mButton.currentLabel != completedLabel)
             {
                this.mButton.prevFrame();
                this.setText(this.buttonText,this.buttonTextFieldName);
             }
             this.terminateAnimations();
-            if(this.mCurrentPlayedLabel == BUTTON_FRAME_NAME_OUT)
+            if(completedLabel == BUTTON_FRAME_NAME_OUT)
             {
                this.playAnim(BUTTON_FRAME_NAME_UP);
             }

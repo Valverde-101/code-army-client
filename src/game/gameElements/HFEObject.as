@@ -5,6 +5,7 @@
 	import flash.display.Sprite;
 	import flash.events.Event;
 	import flash.geom.Point;
+	import flash.utils.getTimer;
 	import game.isometric.IsometricScene;
 	import game.items.HFEItem;
 	import game.items.ItemManager;
@@ -18,6 +19,8 @@
 	public class HFEObject extends PlayerBuildingObject {
 
 		protected static const MAX_HFEOBJECTS_ANIMATED: int = 10;
+		private static const HARVEST_TARGET_FPS:Number = 30;
+		private static const HARVEST_DIAGNOSTIC_INTERVAL_MS:int = 2000;
 
 		protected static var smAnimationsOn: Boolean = true;
 
@@ -27,6 +30,11 @@
 		private var mHarvestSound: SoundCollection;
 
 		private var mHarvestAnimation: MovieClip;
+
+		private var mHarvestAnimationStartMs:int = 0;
+
+		private var mHarvestAnimationLastDiagMs:int = 0;
+
 
 		public function HFEObject(param1: int, param2: IsometricScene, param3: MapItem, param4: Point, param5: DisplayObject = null, param6: String = null) {
 			super(param1, param2, param3, param4, param5, param6);
@@ -206,6 +214,14 @@
 			var _loc1_: Class = null;
 			if (FeatureTuner.USE_HARVEST_ANIMATION && GameState.mInstance.isAnimationsOn()) {
 				_loc1_ = DCResourceManager.getInstance().getSWFClass(Config.SWF_EFFECTS_NAME, HFEItem(mItem).mHarvestAnimation);
+				if (!_loc1_) {
+					Utils.DiagEvent("HFE_HARVEST_GRAPHICS_MISS","item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";resource=" + Config.SWF_EFFECTS_NAME);
+					this.mHarvestAnimation = null;
+					mState = STATE_PRODUCTION_READY;
+					super.handleProductionComplete();
+					this.updateGraphics();
+					return;
+				}
 				this.mHarvestAnimation = new _loc1_();
 				this.mHarvestAnimation.addEventListener(Event.ENTER_FRAME, this.checkHarvestFrame);
 				this.mHarvestAnimation.x = mX;
@@ -213,6 +229,11 @@
 				this.mHarvestAnimation.mouseChildren = false;
 				this.mHarvestAnimation.mouseEnabled = false;
 				mScene.mSceneHud.addChild(this.mHarvestAnimation);
+				this.mHarvestAnimationStartMs = getTimer();
+				this.mHarvestAnimationLastDiagMs = this.mHarvestAnimationStartMs;
+				var timelineFps:Number = this.mHarvestAnimation.stage && this.mHarvestAnimation.stage.frameRate > 0 ? this.mHarvestAnimation.stage.frameRate : 0;
+				this.mHarvestAnimation.gotoAndPlay(1);
+				Utils.DiagEvent("HFE_HARVEST_ANIMATION","phase=start;item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";frames=" + this.mHarvestAnimation.totalFrames + ";stage_fps=" + timelineFps + ";mode=native_timeline");
 				playCollectionSound(this.mHarvestSound);
 				mState = STATE_PLAY_HARVEST_ANIMATION;
 			} else {
@@ -224,19 +245,43 @@
 
 		private function checkHarvestFrame(param1: Event): void {
 			var _loc2_: MovieClip = param1.target as MovieClip;
-			if (_loc2_.totalFrames == _loc2_.currentFrame) {
+			if (!_loc2_ || this.mHarvestAnimationStartMs <= 0) {
+				return;
+			}
+			var nowMs:int = getTimer();
+			var elapsedMs:int = Math.max(1,nowMs - this.mHarvestAnimationStartMs);
+			var expectedFrame:int = Math.min(_loc2_.totalFrames,1 + int(elapsedMs * HARVEST_TARGET_FPS / 1000));
+			var lagFrames:int = expectedFrame - _loc2_.currentFrame;
+			if (lagFrames > 1 && _loc2_.currentFrame < _loc2_.totalFrames) {
+				var beforeCatchup:int = _loc2_.currentFrame;
+				var catchupTarget:int = Math.min(_loc2_.totalFrames,expectedFrame);
+				if (catchupTarget > beforeCatchup) {
+					_loc2_.gotoAndPlay(catchupTarget);
+					if (catchupTarget - beforeCatchup >= 3) {
+						Utils.DiagEvent("HFE_HARVEST_CATCHUP","item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";from=" + beforeCatchup + ";to=" + catchupTarget + ";skipped=" + (catchupTarget - beforeCatchup) + ";elapsed_ms=" + elapsedMs);
+					}
+				}
+			}
+			if (nowMs - this.mHarvestAnimationLastDiagMs >= HARVEST_DIAGNOSTIC_INTERVAL_MS) {
+				this.mHarvestAnimationLastDiagMs = nowMs;
+				var effectiveFps:Number = _loc2_.currentFrame * 1000 / elapsedMs;
+				Utils.DiagEvent("HFE_HARVEST_PROGRESS","item=" + mItem.mId + ";symbol=" + HFEItem(mItem).mHarvestAnimation + ";frame=" + _loc2_.currentFrame + "/" + _loc2_.totalFrames + ";expected_frame=" + expectedFrame + ";lag_frames=" + Math.max(0,lagFrames) + ";elapsed_ms=" + elapsedMs + ";effective_fps=" + effectiveFps.toFixed(2) + ";stage_fps=" + (_loc2_.stage ? _loc2_.stage.frameRate : 0));
+			}
+			if (_loc2_.currentFrame >= _loc2_.totalFrames) {
 				this.removeHarvestClip();
 			}
 		}
 
 		private function removeHarvestClip(): void {
 			if (this.mHarvestAnimation) {
+				Utils.DiagEvent("HFE_HARVEST_ANIMATION","phase=end;item=" + mItem.mId + ";elapsed_ms=" + Math.max(0,getTimer() - this.mHarvestAnimationStartMs) + ";frames=" + this.mHarvestAnimation.totalFrames);
 				this.mHarvestAnimation.removeEventListener(Event.ENTER_FRAME, this.checkHarvestFrame);
 				this.mHarvestAnimation.stop();
 				if (this.mHarvestAnimation.parent) {
 					this.mHarvestAnimation.parent.removeChild(this.mHarvestAnimation);
 				}
 				this.mHarvestAnimation = null;
+				this.mHarvestAnimationStartMs = 0;
 			}
 			super.handleProductionComplete();
 			this.updateGraphics();

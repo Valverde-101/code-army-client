@@ -1,0 +1,151 @@
+name: Army Attack SWF extraction workspace
+
+on:
+  push:
+    branches:
+      - chore/local-army-bootstrap-20260827
+    paths:
+      - 'Tools/SWF/**'
+      - 'editable/armyattack-23.2/manifest/**'
+      - '.github/workflows/swf-extract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: army-attack-swf-extract-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_SOURCE_SHA: ${{ github.sha }}
+  SOURCE_BRANCH: ${{ github.ref_name }}
+
+jobs:
+  extract:
+    name: Extract SWF 23.2 into repo-local .work
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    timeout-minutes: 120
+    steps:
+      - name: Bootstrap portable Git
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $candidates=@()
+          $g=Get-Command git.exe -ErrorAction SilentlyContinue
+          if($g){$candidates+=$g.Source}
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if($drive.Root){$candidates+=@((Join-Path $drive.Root 'AndroidBuild\Tools\Git\cmd\git.exe'),(Join-Path $drive.Root 'AndroidBuild\PortableGit\cmd\git.exe'))}
+          }
+          $git=$candidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
+          if(-not $git){throw 'PRECHECK_GIT=FAIL'}
+          (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH="$(Split-Path -Parent $git);$env:PATH"
+          Write-Host "PRECHECK_GIT=PASS path=$git"
+
+      - name: Checkout exact workflow HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SOURCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate exact checkout
+        shell: powershell
+        run: |
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual -ne $env:EXPECTED_SOURCE_SHA){throw "EXACT_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$actual"}
+          Write-Host "EXACT_HEAD=PASS sha=$actual"
+          Write-Host "REPOSITORY=$env:GITHUB_REPOSITORY"
+          Write-Host "BRANCH=$env:SOURCE_BRANCH"
+          Write-Host "RUN=$env:GITHUB_RUN_ID"
+          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
+
+      - name: Synchronize canonical physical repository
+        shell: powershell
+        run: |
+          & '.\Tools\CI\Bootstrap-PhysicalClone.ps1' -Repository $env:GITHUB_REPOSITORY -ExpectedSha $env:EXPECTED_SOURCE_SHA -SourceBranch $env:SOURCE_BRANCH
+
+      - name: Resolve physical repository
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $repo=$null
+          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
+            if(-not $drive.Root){continue}
+            $candidate=Join-Path $drive.Root 'AndroidBuild\Repositories\code-army-client'
+            if(Test-Path -LiteralPath (Join-Path $candidate '.git')){$repo=$candidate;break}
+          }
+          if(-not $repo){throw 'PHYSICAL_REPO=FAIL not_found'}
+          "PHYSICAL_REPO_ROOT=$repo"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "PHYSICAL_REPO=PASS path=$repo"
+
+      - name: Detect reusable RAW extraction
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $raw=Join-Path $env:PHYSICAL_REPO_ROOT '.work\swf-extracted\23.2'
+          $manifestPath=Join-Path $raw 'manifest.json'
+          $hashCsv=Join-Path $raw 'files.sha256.csv'
+          $reuse=$false
+          if((Test-Path -LiteralPath $manifestPath) -and (Test-Path -LiteralPath $hashCsv)){
+            try{
+              $manifest=Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json
+              $from=[string]$manifest.repository_head
+              $source=[string]$manifest.source.sha256
+              if($manifest.extraction_status -eq 'PASS' -and $source -eq '99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4' -and $from){
+                $sensitive=@(
+                  'vendor/Test_army_attack',
+                  'Tools/SWF/Extract-ArmyAttack.ps1',
+                  'Tools/SWF/Ensure-FFDec.ps1',
+                  'editable/armyattack-23.2/manifest/source-swf.json'
+                )
+                $changed=@(git -C $env:PHYSICAL_REPO_ROOT diff --name-only $from $env:EXPECTED_SOURCE_SHA -- $sensitive)
+                if($LASTEXITCODE -eq 0 -and $changed.Count -eq 0){
+                  $reuse=$true
+                  Write-Host "RAW_REUSE=PASS extracted_from_sha=$from validated_sha=$env:EXPECTED_SOURCE_SHA"
+                } else {
+                  $changed|ForEach-Object{Write-Host "RAW_REUSE_CHANGED_INPUT=$_"}
+                }
+              }
+            }catch{
+              Write-Host "RAW_REUSE=MISS reason=$($_.Exception.Message)"
+            }
+          }
+          $value=if($reuse){'true'}else{'false'}
+          "RAW_REUSE=$value"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          if(-not $reuse){Write-Host 'RAW_REUSE=MISS extraction_required=true'}
+
+      - name: Provision pinned JPEXS FFDec
+        if: env.RAW_REUSE != 'true'
+        shell: powershell
+        run: |
+          & "$env:PHYSICAL_REPO_ROOT\Tools\SWF\Ensure-FFDec.ps1" -RepositoryRoot $env:PHYSICAL_REPO_ROOT
+
+      - name: Extract SWF 23.2
+        if: env.RAW_REUSE != 'true'
+        shell: powershell
+        run: |
+          & "$env:PHYSICAL_REPO_ROOT\Tools\SWF\Extract-ArmyAttack.ps1" -RepositoryRoot $env:PHYSICAL_REPO_ROOT -Version '23.2' -ExpectedSha $env:EXPECTED_SOURCE_SHA -Clean
+
+      - name: Validate raw extraction
+        shell: powershell
+        run: |
+          & "$env:PHYSICAL_REPO_ROOT\Tools\SWF\Validate-ArmyAttackAssets.ps1" -RepositoryRoot $env:PHYSICAL_REPO_ROOT -Version '23.2' -ExpectedSha $env:EXPECTED_SOURCE_SHA
+
+      - name: Final extraction gate
+        shell: powershell
+        run: |
+          $raw=Join-Path $env:PHYSICAL_REPO_ROOT '.work\swf-extracted\23.2'
+          $manifest=Join-Path $raw 'manifest.json'
+          $validation=Join-Path $env:PHYSICAL_REPO_ROOT '.work\reports\23.2\validation.json'
+          if(-not (Test-Path -LiteralPath $manifest)){throw 'SWF_FINAL=FAIL manifest_missing'}
+          if(-not (Test-Path -LiteralPath $validation)){throw 'SWF_FINAL=FAIL validation_missing'}
+          $result=Get-Content -LiteralPath $validation -Raw|ConvertFrom-Json
+          if($result.status -ne 'PASS'){throw "SWF_FINAL=FAIL validation_status=$($result.status)"}
+          Write-Host "RAW_ROOT=$raw"
+          Write-Host "MANIFEST=$manifest"
+          Write-Host "VALIDATION_REPORT=$validation"
+          Write-Host "RAW_REUSE=$env:RAW_REUSE"
+          Write-Host "HASHED_FILES=$($result.checked_files)"
+          Write-Host 'SWF_FINAL=PASS'

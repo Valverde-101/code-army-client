@@ -116,7 +116,7 @@ package com.dchoc.GUI
          }
          var _loc4_:Number = param1 - _loc3_;
          var _loc5_:int = this.mBarMC.totalFrames * _loc4_ / (_loc2_ - _loc3_);
-         return int(Math.max(0,Math.min(_loc5_,this.mBarMC.totalFrames)));
+         return int(Math.max(1,Math.min(_loc5_,this.mBarMC.totalFrames)));
       }
       
       private function setFrameForGivenValue(param1:Number) : void

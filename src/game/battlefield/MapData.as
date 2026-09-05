@@ -109,6 +109,100 @@
 			return TILES_PASSABILITY[param1] == TILE_LAND;
 		}
 
+		private static function parseTileMapCsv(param1: String, param2: int, param3: int): Array {
+			var result: Array = new Array();
+			var rawRows: Array = null;
+			var rawRow: String = null;
+			var rawCells: Array = null;
+			var rawCell: String = null;
+			var cells: Array = null;
+			var rows: Array = new Array();
+			var expected: int = param2 * param3;
+			var rowNumber: int = 0;
+			var rowIndex: int = 0;
+			var colIndex: int = 0;
+			var legacyPaddingRows: int = 0;
+			var legacyDesertPadding: Boolean = param2 == 71 && param3 == 73;
+			var tileIndex: int = 0;
+			if (param1 == null) {
+				throw new Error("TILEMAP_RESOURCE_NULL");
+			}
+			rawRows = param1.replace(/\r/g, "").split("\n");
+			for each (rawRow in rawRows) {
+				cells = new Array();
+				rawCells = rawRow.split(",");
+				for each (rawCell in rawCells) {
+					while (rawCell.length > 0 && (rawCell.charCodeAt(0) == 65279 || rawCell.charCodeAt(0) == 32 || rawCell.charCodeAt(0) == 9)) {
+						rawCell = rawCell.substr(1);
+					}
+					while (rawCell.length > 0 && (rawCell.charCodeAt(rawCell.length - 1) == 32 || rawCell.charCodeAt(rawCell.length - 1) == 9)) {
+						rawCell = rawCell.substr(0, rawCell.length - 1);
+					}
+					if (rawCell.length > 0) {
+						cells.push(int(rawCell));
+					}
+				}
+				if (cells.length == 0) {
+					continue;
+				}
+				rowNumber = rows.length + 1;
+				if (rowNumber > param3) {
+					throw new Error("TILEMAP_ROW_COUNT expected=" + param3 + " actual_more_than=" + param3);
+				}
+				if (cells.length < param2) {
+					throw new Error("TILEMAP_ROW_WIDTH row=" + rowNumber + " expected=" + param2 + " actual=" + cells.length);
+				}
+				if (cells.length > param2) {
+					if (legacyDesertPadding && (rowNumber == 30 || rowNumber == 31) && cells.length == param2 + 1 && int(cells[param2]) == 99) {
+						legacyPaddingRows++;
+					} else {
+						throw new Error("TILEMAP_ROW_WIDTH row=" + rowNumber + " expected=" + param2 + " actual=" + cells.length);
+					}
+				}
+				rows.push(cells);
+			}
+			if (rows.length != param3) {
+				throw new Error("TILEMAP_ROW_COUNT expected=" + param3 + " actual=" + rows.length);
+			}
+			if (legacyPaddingRows != 0 && legacyPaddingRows != 2) {
+				throw new Error("TILEMAP_LEGACY_PADDING expected=2 actual=" + legacyPaddingRows);
+			}
+			legacyDesertPadding = legacyDesertPadding && legacyPaddingRows == 2;
+			rowIndex = 0;
+			if (legacyDesertPadding) {
+				while (rowIndex < rows.length && result.length < expected) {
+					cells = rows[rowIndex] as Array;
+					colIndex = 0;
+					while (colIndex < cells.length && result.length < expected) {
+						result.push(cells[colIndex]);
+						colIndex++;
+					}
+					rowIndex++;
+				}
+				trace("[TILEMAP_LAYOUT] mode=legacy_desert_flat_padding overflow=2 rows=" + param3 + " width=" + param2);
+				Utils.DiagEvent("TILEMAP_LAYOUT","mode=legacy_desert_flat_padding;overflow=2;rows=" + param3 + ";width=" + param2);
+			} else {
+				while (rowIndex < rows.length) {
+					cells = rows[rowIndex] as Array;
+					colIndex = 0;
+					while (colIndex < param2) {
+						result.push(cells[colIndex]);
+						colIndex++;
+					}
+					rowIndex++;
+				}
+			}
+			if (result.length != expected) {
+				throw new Error("TILEMAP_CELL_COUNT expected=" + expected + " actual=" + result.length);
+			}
+			for (tileIndex = 0; tileIndex < result.length; tileIndex++) {
+				if (TILES_PASSABILITY[int(result[tileIndex])] === undefined) {
+					throw new Error("TILEMAP_UNKNOWN_TILE index=" + tileIndex + " type=" + result[tileIndex]);
+				}
+			}
+			return result;
+		}
+
 		public function initFromServer(param1: ServerCall): void {
 			var _loc2_: int = 0;
 			var _loc5_: String = null;
@@ -118,6 +212,7 @@
 			var _loc16_: int = 0;
 			if (!param1) {
 				this.initOfflineMap("Home", false);
+				return;
 			}
 			initArrays();
 			this.mUpdateRequired = true;
@@ -144,7 +239,7 @@
 			this.mGridWidth = _loc7_.Width;
 			this.mGridHeight = _loc7_.Height;
 			if (FeatureTuner.LOAD_TILE_MAP_CSV) {
-				_loc10_ = _loc5_.split(",");
+				_loc10_ = parseTileMapCsv(_loc5_, this.mGridWidth, this.mGridHeight);
 			}
 			_loc2_ = this.mGridWidth * this.mGridHeight;
 			this.mGrid = new Array(_loc2_);
@@ -152,8 +247,8 @@
 			while (_loc11_ < this.mGrid.length) {
 				(_loc14_ = new GridCell(_loc11_ % this.mGridWidth, _loc11_ / this.mGridWidth)).mWalkable = false;
 				if (FeatureTuner.LOAD_TILE_MAP_CSV) {
-					_loc14_.mType = _loc10_[_loc11_];
-					if (isTilePassable(_loc10_[_loc11_])) {
+					_loc14_.mType = int(_loc10_[_loc11_]);
+					if (isTilePassable(int(_loc10_[_loc11_]))) {
 						_loc14_.mOwner = TILE_OWNER_ENEMY;
 					} else {
 						_loc14_.mOwner = TILE_OWNER_NEUTRAL;
@@ -199,7 +294,7 @@
 			this.mGridWidth = _loc7_.Width;
 			this.mGridHeight = _loc7_.Height;
 			if (FeatureTuner.LOAD_TILE_MAP_CSV) {
-				_loc10_ = _loc6_.split(",");
+				_loc10_ = parseTileMapCsv(_loc6_, this.mGridWidth, this.mGridHeight);
 			}
 			_loc3_ = this.mGridWidth * this.mGridHeight;
 			this.mGrid = new Array(_loc3_);
@@ -207,9 +302,9 @@
 			while (_loc11_ < this.mGrid.length) {
 				(_loc12_ = new GridCell(_loc11_ % this.mGridWidth, _loc11_ / this.mGridWidth)).mWalkable = false;
 				if (FeatureTuner.LOAD_TILE_MAP_CSV) {
-					_loc12_.mType = _loc10_[_loc11_];
-					if (isTilePassable(_loc10_[_loc11_])) {
-						if (GameState.mInstance.mState == GameState.STATE_PVP) {
+					_loc12_.mType = int(_loc10_[_loc11_]);
+					if (isTilePassable(int(_loc10_[_loc11_]))) {
+						if (param1.indexOf("pvp_") == 0) {
 							_loc12_.mOwner = TILE_OWNER_FRIENDLY;
 						} else {
 							_loc12_.mOwner = TILE_OWNER_ENEMY; // Modified to load desert as enemy: needs to be updated if we add friends.

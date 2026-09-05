@@ -1,6 +1,7 @@
 ﻿package game.gui.pvp
 {
-   import com.dchoc.graphics.DCResourceManager;
+   import com.dchoc.GUI.DCButton;
+    import com.dchoc.graphics.DCResourceManager;
    import flash.display.DisplayObjectContainer;
    import flash.display.MovieClip;
    import flash.display.Sprite;
@@ -24,7 +25,6 @@
    import game.net.PvPOpponentCollection;
    import game.player.GamePlayerProfile;
    import game.states.GameState;
-   import game.environment.EnvEffectManager;
    
    public class PvPCombatSetupDialog extends PopUpWindow
    {
@@ -109,8 +109,10 @@
          this.mInfoPanel = mClip.getChildByName("Info_Panel") as MovieClip;
          var _loc2_:MovieClip = this.mInfoPanel.getChildByName("Toolbox") as MovieClip;
          this.mButtonBack = Utils.createBasicButton(_loc2_,"Button_Back",this.backClicked);
-         this.mButtonFight = Utils.createBasicButton(_loc2_,"Button_Fight",this.fightClicked);
-         this.mButtonBuy = Utils.createBasicButton(_loc2_,"Button_Buy",this.buyClicked);
+         this.mButtonFight = Utils.createStaticBasicButton(_loc2_,"Button_Fight",this.fightClicked,false);
+         this.mButtonBuy = Utils.createStaticBasicButton(_loc2_,"Button_Buy",this.buyClicked,true);
+         this.mButtonFight.playAnim(DCButton.BUTTON_FRAME_NAME_DISABLED_UP);
+         this.mButtonBuy.playAnim(DCButton.BUTTON_FRAME_NAME_UP);
          var _loc3_:Friend = FriendsCollection.smFriends.GetThePlayer();
          (_loc4_ = this.mPlayerCard.getChildByName("Text_Name") as TextField).text = _loc3_.mName;
          this.mHeader = new StylizedHeaderClip(mClip.getChildByName("Header") as MovieClip);
@@ -264,6 +266,7 @@
       private function backClicked(param1:MouseEvent) : void
       {
          this.closeDialog();
+         GameState.mInstance.mPvPMatch.mOpponent = null;
          this.mMatchUpCallback();
       }
       
@@ -295,8 +298,6 @@
                _loc5_.mSupplyCost = _loc3_;
                PvPOpponentCollection.smCollection.removeRecentAttack(_loc5_.mOpponent.mFacebookID);
                this.closeDialog();
-			   EnvEffectManager.destroy();
-			   GameState.mInstance.mScene.mFog.destroy();
                this.mStartPvPCallback();
             }
          }
@@ -309,8 +310,8 @@
       
       private function closeClicked(param1:MouseEvent) : void
       {
+         GameState.mInstance.mPvPMatch.mOpponent = null;
          this.closeDialog();
-         GameState.mInstance.endPvP();
       }
       
       protected function closeDialog(param1:Boolean = true) : void
@@ -381,6 +382,7 @@
             _loc3_++;
          }
          this.mButtonFight.setEnabled(smSelectedUnits.length > 0);
+         this.mButtonFight.playAnim(smSelectedUnits.length > 0 ? DCButton.BUTTON_FRAME_NAME_UP : DCButton.BUTTON_FRAME_NAME_DISABLED_UP);
       }
       
       private function setScrollButtons() : void
@@ -472,13 +474,16 @@
          var _loc2_:Number = 0;
          for each(_loc3_ in smSelectedUnits)
          {
-            _loc1_ += _loc3_.getDefaultActorPriority();
+            _loc1_ += Math.max(0,_loc3_.getDefaultActorPriority());
          }
          for each(_loc4_ in this.mOpponentUnits)
          {
-            _loc2_ += _loc4_.getDefaultActorPriority();
+            _loc2_ += Math.max(0,_loc4_.getDefaultActorPriority());
          }
-         (_loc5_ = this.mInfoPanel.getChildByName("Text_Chances") as TextField).text = "" + (_loc1_ - _loc2_);
+         var total:Number = _loc1_ + _loc2_;
+         var chance:int = total > 0 ? Math.round(100 * _loc1_ / total) : 50;
+         chance = Math.max(0,Math.min(100,chance));
+         (_loc5_ = this.mInfoPanel.getChildByName("Text_Chances") as TextField).text = chance.toString() + "%";
       }
    }
 }

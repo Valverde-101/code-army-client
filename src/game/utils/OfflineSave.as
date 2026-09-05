@@ -1,4 +1,5 @@
 ﻿package game.utils {
+	import flash.utils.getTimer;
 	import game.player.GamePlayerProfile;
 	import game.player.Inventory;
 	import game.sound.ArmySoundManager;
@@ -18,6 +19,7 @@
 	import game.missions.MissionManager;
 	import game.gameElements.Production;
 	import game.net.ServerCall;
+	import game.net.PvPOpponentCollection;
 	import com.dchoc.utils.Cookie;
 	import game.characters.EnemyUnit;
 	import game.characters.PlayerUnit;
@@ -300,37 +302,49 @@
 
 		public static function switchMap(): void {
 			var map_id: String = GameState.mInstance.mCurrentMapId;
+			var savedMap: * = null;
+			var switchStarted: int = getTimer();
+			var mapPhaseStarted: int = switchStarted;
+			trace("[OFFLINE_SWITCH_MAP_BEGIN] map=" + map_id + " has_saved=" + Boolean(mMaps[map_id]));
+			Utils.DiagEvent("OFFLINE_SWITCH_MAP_BEGIN","map=" + map_id + ";has_saved=" + Boolean(mMaps[map_id]));
 			GameState.mInstance.mLoadingStatesOver = false;
 			GameState.mInstance.mCurrentMapGraphicsId = Math.max(GameState.GRAPHICS_MAP_ID_LIST.indexOf(map_id), 0);
-			//GameState.mInstance.loadingFirstFinished();
 			GameState.mInstance.mPlayerProfile.mInventory.getAreas();
 			GameState.mInstance.changeState(0);
-			GameState.mInstance.mMapData.destroy();
 			var fakeservercall: * = new ServerCall("GetMapData", null, null, null);
 			fakeservercall["mData"] = mMissions;
 			if (mMaps[map_id]) {
+				savedMap = mMaps[map_id];
+				savedMap["map_name"] = map_id;
+				if (savedMap["map_data"]) {
+					savedMap["map_data"]["map_id"] = map_id;
+				}
 				fakeservercall["mData"]["missions_incomplete"] = mMissions["missions_incomplete"];
-				GameState.mInstance.initObjects(null);
-				loadMap(mMaps[map_id]);
+				loadMap(savedMap);
 			} else {
-				GameState.mInstance.initObjects(null);
+				Utils.DiagEvent("OFFLINE_MAP_PHASE","map=" + map_id + ";phase=init_empty_map");
 				GameState.mInstance.initMap(null, map_id);
+				GameState.mInstance.initObjects(null);
+				Utils.DiagEvent("OFFLINE_MAP_PHASE","map=" + map_id + ";phase=init_empty_objects_done");
 			}
-			GameState.mInstance.updateGrid();
+			Utils.DiagEvent("OFFLINE_MAP_TIMING","map=" + map_id + ";phase=map_objects;ms=" + (getTimer() - mapPhaseStarted) + ";elements=" + (GameState.mInstance.mScene && GameState.mInstance.mScene.mAllElements ? GameState.mInstance.mScene.mAllElements.length : 0));
+			mapPhaseStarted = getTimer();
 			GameState.mInstance.mScene.mFog.init();
-			MissionManager.initialize()
-			GameState.mInstance.mMissionIconsManager.reset()
+			MissionManager.initialize();
+			GameState.mInstance.mMissionIconsManager.reset();
 			MissionManager.setupFromServer(fakeservercall);
 			MissionManager.findNewActiveMissions();
-			// Show water amount in HUD
+			Utils.DiagEvent("OFFLINE_MAP_TIMING","map=" + map_id + ";phase=fog_missions;ms=" + (getTimer() - mapPhaseStarted));
 			if (map_id == "Desert") {
 				(GameState.mInstance.getMainClip() as GameMain).changeDiscordMap("Desert");
-				GameState.mInstance.mHUD.changeWaterVisibility(true)
+				GameState.mInstance.mHUD.changeWaterVisibility(true);
 			} else if (map_id == "Home") {
 				(GameState.mInstance.getMainClip() as GameMain).changeDiscordMap("Homeland");
-				GameState.mInstance.mHUD.changeWaterVisibility(false)
+				GameState.mInstance.mHUD.changeWaterVisibility(false);
 			}
 			GameState.mInstance.mLoadingStatesOver = true;
+			trace("[OFFLINE_SWITCH_MAP_END] map=" + map_id + " grid=" + (GameState.mInstance.mMapData && GameState.mInstance.mMapData.mGrid ? GameState.mInstance.mMapData.mGrid.length : 0));
+			Utils.DiagEvent("OFFLINE_SWITCH_MAP_END","map=" + map_id + ";grid=" + (GameState.mInstance.mMapData && GameState.mInstance.mMapData.mGrid ? GameState.mInstance.mMapData.mGrid.length : 0) + ";total_ms=" + (getTimer() - switchStarted));
 		}
 
 		public static function generateSaveJson(): * {
@@ -350,9 +364,10 @@
 				savedata["maps"].push(mMaps[i])
 			}
 			savedata["isFogOfWarOff"] = GameState.mInstance.isFogOfWarOn();
+			savedata["active_map_id"] = map_id.indexOf("pvp_") == -1 ? map_id : "Home";
 			var now: Date = new Date();
 			savedata["time_of_last_save"] = now.valueOf();
-			savedata["saveversion"] = 5;
+			savedata["saveversion"] = 7;
 			return savedata;
 		}
 
@@ -402,6 +417,12 @@
 					}
 				}
 			}
+			if (version < 6) {
+				if (savedata["active_map_id"] == null || String(savedata["active_map_id"]).length == 0) {
+					savedata["active_map_id"] = "Home";
+				}
+			}
+			if (version < 7) savedata["offline_pvp_booster_seed_cleanup_pending"] = true;
 			return savedata;
 		}
 
@@ -475,6 +496,27 @@
 			return player_unit_count
 		}
 
+		public static function ensureOfflinePvPBoosters(): void {
+			if (!Config.OFFLINE_MODE || !GameState.mInstance || !GameState.mInstance.mPlayerProfile || !GameState.mInstance.mPlayerProfile.mInventory) return;
+			var inventory: Inventory = GameState.mInstance.mPlayerProfile.mInventory;
+			var boosterIds: Array = ["Damage1", "Damage2", "Damage3", "Health5", "Health10", "Health15", "Range1", "Range2", "Range3"];
+			var boosters: Array = new Array();
+			var boosterId: String = null;
+			var booster: Item = null;
+			var legacySeedDetected: Boolean = true;
+			var index: int = 0;
+			for each (boosterId in boosterIds) {
+				booster = ItemManager.getItem(boosterId, "Booster");
+				boosters.push(booster);
+				if (!booster || inventory.getNumberOfItems(booster) < 3) legacySeedDetected = false;
+			}
+			if (legacySeedDetected) {
+				for (index = 0; index < boosters.length; index++) inventory.addItems(boosters[index], -3);
+				Utils.DiagEvent("OFFLINE_PVP_BOOSTER_LEGACY_SEED_REMOVED","entries=" + boosters.length);
+			}
+			var visible: Array = inventory.getBoosters();
+			Utils.DiagEvent("OFFLINE_PVP_BOOSTERS","visible_entries=" + int(visible.length / 2) + ";legacy_seed_removed=" + legacySeedDetected);
+		}
 		public static function startEmptyPvPProgress(): void {
 			var fakedata: * = {};
 
@@ -494,8 +536,10 @@
 			saveOldMap()
 			fakedata["player_unit_count"] = calculateGlobalUnits(mMaps);
 
+			PvPOpponentCollection.smCollection = new PvPOpponentCollection();
 			GameState.mInstance.mPlayerProfile.setupPvPData(fakedata);
 			GameState.mInstance.mPlayerProfile.setupGlobalUnitCounts(fakedata);
+			ensureOfflinePvPBoosters();
 		}
 
 		public static function loadMap(mapdata: * ): void {
@@ -509,6 +553,14 @@
 			// Convert old saves
 			var saveversion: int = int(savedata["saveversion"]);
 			savedata = fixOldSave(savedata, saveversion);
+
+			var activeMapId: String = "Home";
+			if (savedata["active_map_id"] != null) {
+				activeMapId = String(savedata["active_map_id"]);
+			}
+			if (activeMapId.indexOf("pvp_") == 0 || GameState.GRAPHICS_MAP_ID_LIST.indexOf(activeMapId) < 0) {
+				activeMapId = "Home";
+			}
 
 			// Decrease timers (worst piece of code ever, forgive me xD)
 			var minus_rechargetime: int = 0;
@@ -581,6 +633,7 @@
 
 			fakedata["player_unit_count"] = calculateGlobalUnits(savedata["maps"]);
 
+			PvPOpponentCollection.smCollection = new PvPOpponentCollection();
 			GameState.mInstance.mPlayerProfile.setupPvPData(fakedata);
 			GameState.mInstance.mPlayerProfile.setupGlobalUnitCounts(fakedata);
 
@@ -606,6 +659,13 @@
 			GameState.mInstance.startMusic();
 			(GameState.mInstance.getMainClip() as GameMain).changeDiscordMap("Homeland");
 			GameState.mInstance.mHUD.changeWaterVisibility(false)
+
+			// restore_active_map_after_home_bootstrap: Home remains the safe bootstrap scene.
+			// executeSwitchMap() owns resource readiness, transition cleanup and rollback.
+			if (activeMapId != "Home" && mMaps[activeMapId]) {
+				trace("[OFFLINE_RESTORE_MAP] from=Home to=" + activeMapId);
+				GameState.mInstance.executeSwitchMap(activeMapId, null);
+			}
 		}
 
 	}

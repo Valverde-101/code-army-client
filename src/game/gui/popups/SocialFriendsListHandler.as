@@ -129,23 +129,23 @@ package game.gui.popups
             {
                if(this.s + _loc2_ < this.friendsArray.length)
                {
-                  (this.rowsAvailable[_loc2_] as Row_Friend).Button_Row.Text_Amount_Resource.text = this.friendsArray[this.s + _loc2_].name;
-                  (this.rowsAvailable[_loc2_] as Row_Friend).y = this.sy + this.rowWidth * _loc2_;
-                  ((this.rowsAvailable[_loc2_] as Row_Friend).getChildByName("mindex") as TextField).text = String(this.s + _loc2_);
+                  (this.rowsAvailable[_loc2_] as MovieClip).Button_Row.Text_Amount_Resource.text = this.friendsArray[this.s + _loc2_].name;
+                  (this.rowsAvailable[_loc2_] as MovieClip).y = this.sy + this.rowWidth * _loc2_;
+                  ((this.rowsAvailable[_loc2_] as MovieClip).getChildByName("mindex") as TextField).text = String(this.s + _loc2_);
                   if(this.type == 0)
                   {
-                     (this.rowsAvailable[_loc2_] as Row_Friend).Button_Row.gotoAndStop("Plain");
+                     (this.rowsAvailable[_loc2_] as MovieClip).Button_Row.gotoAndStop("Plain");
                   }
                   else
                   {
-                     (this.rowsAvailable[_loc2_] as Row_Friend).Button_Row.gotoAndStop("Cross");
+                     (this.rowsAvailable[_loc2_] as MovieClip).Button_Row.gotoAndStop("Cross");
                   }
-                  (this.rowsAvailable[_loc2_] as Row_Friend).visible = true;
+                  (this.rowsAvailable[_loc2_] as MovieClip).visible = true;
                }
                else
                {
-                  (this.rowsAvailable[_loc2_] as Row_Friend).Button_Row.Text_Amount_Resource.text = "";
-                  (this.rowsAvailable[_loc2_] as Row_Friend).visible = false;
+                  (this.rowsAvailable[_loc2_] as MovieClip).Button_Row.Text_Amount_Resource.text = "";
+                  (this.rowsAvailable[_loc2_] as MovieClip).visible = false;
                }
                _loc2_++;
             }
@@ -155,29 +155,29 @@ package game.gui.popups
          this.moveFieldY = this.lengthPerItem * this.dragHandleMC.y;
          this.s = Math.floor(this.moveFieldY);
          this.fractionToMove = this.moveFieldY - this.s;
-         this.lengthOfFieldToMoveExtra = this.fractionToMove * (this.rowsAvailable[0] as Row_Friend).height;
+         this.lengthOfFieldToMoveExtra = this.fractionToMove * (this.rowsAvailable[0] as MovieClip).height;
          _loc2_ = 0;
          while(_loc2_ < this.rowsAvailable.length)
          {
             if(this.s + _loc2_ < this.friendsArray.length)
             {
-               (this.rowsAvailable[_loc2_] as Row_Friend).Button_Row.Text_Amount_Resource.text = this.friendsArray[this.s + _loc2_].name;
-               (this.rowsAvailable[_loc2_] as Row_Friend).y = this.sy + this.rowWidth * _loc2_ - this.lengthOfFieldToMoveExtra;
-               ((this.rowsAvailable[_loc2_] as Row_Friend).getChildByName("mindex") as TextField).text = String(this.s + _loc2_);
+               (this.rowsAvailable[_loc2_] as MovieClip).Button_Row.Text_Amount_Resource.text = this.friendsArray[this.s + _loc2_].name;
+               (this.rowsAvailable[_loc2_] as MovieClip).y = this.sy + this.rowWidth * _loc2_ - this.lengthOfFieldToMoveExtra;
+               ((this.rowsAvailable[_loc2_] as MovieClip).getChildByName("mindex") as TextField).text = String(this.s + _loc2_);
                if(this.type == 0)
                {
-                  (this.rowsAvailable[_loc2_] as Row_Friend).Button_Row.gotoAndStop("Plain");
+                  (this.rowsAvailable[_loc2_] as MovieClip).Button_Row.gotoAndStop("Plain");
                }
                else
                {
-                  (this.rowsAvailable[_loc2_] as Row_Friend).Button_Row.gotoAndStop("Cross");
+                  (this.rowsAvailable[_loc2_] as MovieClip).Button_Row.gotoAndStop("Cross");
                }
-               (this.rowsAvailable[_loc2_] as Row_Friend).visible = true;
+               (this.rowsAvailable[_loc2_] as MovieClip).visible = true;
             }
             else
             {
-               (this.rowsAvailable[_loc2_] as Row_Friend).Button_Row.Text_Amount_Resource.text = "";
-               (this.rowsAvailable[_loc2_] as Row_Friend).visible = false;
+               (this.rowsAvailable[_loc2_] as MovieClip).Button_Row.Text_Amount_Resource.text = "";
+               (this.rowsAvailable[_loc2_] as MovieClip).visible = false;
             }
             _loc2_++;
          }
@@ -199,7 +199,7 @@ package game.gui.popups
       
       private function updateRowSelect(param1:MouseEvent) : void
       {
-         var _loc2_:int = parseInt(((param1.currentTarget as Row_Friend).getChildByName("mindex") as TextField).text);
+         var _loc2_:int = parseInt(((param1.currentTarget as MovieClip).getChildByName("mindex") as TextField).text);
          this.mOtherInstance.friendsArray.push(this.friendsArray[_loc2_]);
          this.friendsArray.splice(_loc2_,1);
          this.updateDragScroll(new MouseEvent("c"));
@@ -265,25 +265,25 @@ package game.gui.popups
          {
             if(_loc7_ < this.friendsArray.length)
             {
-               ((this.rowsAvailable[_loc7_] as Row_Friend).getChildByName("mindex") as TextField).text = String(_loc7_);
-               (this.rowsAvailable[_loc7_] as Row_Friend).addEventListener(MouseEvent.MOUSE_DOWN,this.updateRowSelect);
+               ((this.rowsAvailable[_loc7_] as MovieClip).getChildByName("mindex") as TextField).text = String(_loc7_);
+               (this.rowsAvailable[_loc7_] as MovieClip).addEventListener(MouseEvent.MOUSE_DOWN,this.updateRowSelect);
                if(param6 == 0)
                {
-                  (this.rowsAvailable[_loc7_] as Row_Friend).Button_Row.gotoAndStop("Plain");
+                  (this.rowsAvailable[_loc7_] as MovieClip).Button_Row.gotoAndStop("Plain");
                }
                else
                {
-                  (this.rowsAvailable[_loc7_] as Row_Friend).Button_Row.gotoAndStop("Cross");
+                  (this.rowsAvailable[_loc7_] as MovieClip).Button_Row.gotoAndStop("Cross");
                }
-               (this.rowsAvailable[_loc7_] as Row_Friend).Button_Row.Text_Amount_Resource.text = this.friendsArray[_loc7_].name;
-               (this.rowsAvailable[_loc7_] as Row_Friend).y = this.sy + this.rowWidth * _loc7_;
-               (this.rowsAvailable[_loc7_] as Row_Friend).visible = true;
+               (this.rowsAvailable[_loc7_] as MovieClip).Button_Row.Text_Amount_Resource.text = this.friendsArray[_loc7_].name;
+               (this.rowsAvailable[_loc7_] as MovieClip).y = this.sy + this.rowWidth * _loc7_;
+               (this.rowsAvailable[_loc7_] as MovieClip).visible = true;
             }
             else
             {
-               (this.rowsAvailable[_loc7_] as Row_Friend).Button_Row.Text_Amount_Resource.text = "";
-               (this.rowsAvailable[_loc7_] as Row_Friend).addEventListener(MouseEvent.MOUSE_DOWN,this.updateRowSelect);
-               (this.rowsAvailable[_loc7_] as Row_Friend).visible = false;
+               (this.rowsAvailable[_loc7_] as MovieClip).Button_Row.Text_Amount_Resource.text = "";
+               (this.rowsAvailable[_loc7_] as MovieClip).addEventListener(MouseEvent.MOUSE_DOWN,this.updateRowSelect);
+               (this.rowsAvailable[_loc7_] as MovieClip).visible = false;
             }
             _loc7_++;
          }

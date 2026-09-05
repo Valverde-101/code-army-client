@@ -23,6 +23,9 @@
 
 		private var mButtonContainer: MovieClip;
 
+		private var mClosing: Boolean = false;
+
+
 		public function WorldMapWindow() {
 			var _loc3_: MovieClip = null;
 			var _loc4_: MovieClip = null;
@@ -54,7 +57,7 @@
 					_loc4_.y = _loc6_.y;
 					_loc4_.visible = true;
 				}
-				this.setAreaAvailability(_loc5_, !MissionManager.isMapLocked(WORLD_MAP_ID_LIST[_loc5_]));
+				this.setAreaAvailability(_loc5_, this.isAreaAvailable(_loc5_));
 				_loc5_++;
 			}
 			this.setAreaAvailability(2, false);
@@ -79,33 +82,23 @@
 
 		public function Activate(param1: Function): void {
 			var _loc2_: StylizedHeaderClip = null;
+			this.mClosing = false;
+			this.mouseEnabled = true;
+			this.mouseChildren = true;
 			mDoneCallback = param1;
 			_loc2_ = new StylizedHeaderClip(mClip.getChildByName("Header") as MovieClip, GameState.getText("HUD_MAP_TOOLTIP"));
 			MissionManager.increaseCounter("OpenMap", null, 1);
 		}
 
-		/*
-		CONFIG::BUILD_FOR_MOBILE_AIR {
-			override public function scaleToScreen(): void {
-				// Get the current stage width and height
-				var stageWidth: Number = GameState.mInstance.getStageWidth();
-				var stageHeight: Number = GameState.mInstance.getStageHeight();
-
-				// Define the target size relative to the provided percentages
-				var targetWidth: Number = stageWidth * 1.5;
-				var targetHeight: Number = stageHeight * 1.5;
-
-				// Calculate the scaling factors based on the clip's dimensions
-				var scaleXFactor: Number = targetWidth / mClip.width;
-				var scaleYFactor: Number = targetHeight / mClip.height;
-
-				// Apply the smaller scaling factor to maintain aspect ratio
-				var scaleFactor: Number = Math.min(scaleXFactor, scaleYFactor);
-				mClip.scaleX = scaleFactor;
-				mClip.scaleY = scaleFactor;
+		private function isAreaAvailable(param1: int): Boolean {
+			if (param1 < 0 || param1 >= WORLD_MAP_ID_LIST.length || !WORLD_MAP_ID_LIST[param1] || WORLD_MAP_ID_LIST[param1].length == 0) {
+				return false;
 			}
+			if (Config.OFFLINE_MODE && (param1 == 0 || param1 == 1)) {
+				return true;
+			}
+			return !MissionManager.isMapLocked(WORLD_MAP_ID_LIST[param1]);
 		}
-		*/
 
 		private function setupIcon(param1: MovieClip): void {
 			param1.setMouseEnabled(false);
@@ -113,8 +106,11 @@
 		}
 
 		private function mouseDown(param1: MouseEvent): void {
-			var _loc2_: int = this.getAreaIndex(param1.target) + 1;
-			var _loc3_: MovieClip = this.mButtonContainer.getChildByName("Button_Campaign_0" + _loc2_) as MovieClip;
+			var _loc2_: int = this.getAreaIndex(param1.target);
+			if (_loc2_ < 0 || !this.isAreaAvailable(_loc2_) || this.mClosing) {
+				return;
+			}
+			var _loc3_: MovieClip = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 			(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = false;
 			(_loc3_.getChildByName("Background_Over") as MovieClip).visible = false;
 			(_loc3_.getChildByName("Background_Down") as MovieClip).visible = true;
@@ -125,7 +121,10 @@
 		private function mouseOver(param1: MouseEvent): void {
 			var _loc3_: MovieClip = null;
 			var _loc2_: int = this.getAreaIndex(param1.target);
-			if (!MissionManager.isMapLocked(WORLD_MAP_ID_LIST[_loc2_])) {
+			if (_loc2_ < 0 || this.mClosing) {
+				return;
+			}
+			if (this.isAreaAvailable(_loc2_)) {
 				_loc3_ = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 				(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = false;
 				(_loc3_.getChildByName("Background_Over") as MovieClip).visible = true;
@@ -134,7 +133,7 @@
 				(_loc3_.getChildByName("Background_Disabled") as MovieClip).visible = false;
 			}
 			if (!this.mTooltip.visible) {
-				if (MissionManager.isMapLocked(WORLD_MAP_ID_LIST[_loc2_])) {
+				if (!this.isAreaAvailable(_loc2_)) {
 					this.mTooltip.setText(this.mCampaignTexts[_loc2_ * 3], this.mCampaignTexts[_loc2_ * 3 + 2]);
 				} else {
 					this.mTooltip.setText(this.mCampaignTexts[_loc2_ * 3], this.mCampaignTexts[_loc2_ * 3 + 1]);
@@ -146,7 +145,10 @@
 		private function mouseOut(param1: MouseEvent): void {
 			var _loc3_: MovieClip = null;
 			var _loc2_: int = this.getAreaIndex(param1.target);
-			if (!MissionManager.isMapLocked(WORLD_MAP_ID_LIST[_loc2_])) {
+			if (_loc2_ < 0) {
+				return;
+			}
+			if (this.isAreaAvailable(_loc2_)) {
 				_loc3_ = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 				(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = true;
 				(_loc3_.getChildByName("Background_Over") as MovieClip).visible = false;
@@ -160,6 +162,9 @@
 
 		private function mouseUp(param1: MouseEvent): void {
 			var _loc2_: int = this.getAreaIndex(param1.target);
+			if (_loc2_ < 0 || !this.isAreaAvailable(_loc2_) || this.mClosing) {
+				return;
+			}
 			var _loc3_: MovieClip = this.mButtonContainer.getChildByName("Button_Campaign_0" + (_loc2_ + 1)) as MovieClip;
 			(_loc3_.getChildByName("Background_Enabled") as MovieClip).visible = true;
 			(_loc3_.getChildByName("Background_Over") as MovieClip).visible = false;
@@ -178,7 +183,7 @@
 				}
 				_loc2_++;
 			}
-			return 0;
+			return -1;
 		}
 
 		private function setAreaAvailability(param1: int, param2: Boolean): void {
@@ -202,16 +207,64 @@
 			}
 		}
 
+		private function detachCampaignListeners(): void {
+			var _loc1_: MovieClip = null;
+			for each (_loc1_ in this.mCampaignButtons) {
+				if (_loc1_) {
+					_loc1_.removeEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown);
+					_loc1_.removeEventListener(MouseEvent.MOUSE_UP, this.mouseUp);
+					_loc1_.removeEventListener(MouseEvent.MOUSE_OVER, this.mouseOver);
+					_loc1_.removeEventListener(MouseEvent.MOUSE_OUT, this.mouseOut);
+				}
+			}
+		}
+
+		private function requestClose(): void {
+			var callback: Function = null;
+			var tracked: * = null;
+			if (this.mClosing) return;
+			this.mClosing = true;
+			this.mouseEnabled = false;
+			this.mouseChildren = false;
+			this.detachCampaignListeners();
+			callback = mDoneCallback;
+			mDoneCallback = null;
+			Utils.DiagEvent("WORLD_MAP_CLOSE","current=" + GameState.mInstance.mCurrentMapId + ";callback=" + Boolean(callback) + ";modal_before=" + PopUpManager.mModalOpenCount);
+			try {
+				if (callback != null) callback((this as Object).constructor);
+			} catch (error: Error) {
+				Utils.DiagEvent("WORLD_MAP_CLOSE_CALLBACK_FAIL","error=" + error.message);
+			} finally {
+				if (PopUpManager.isPopUpCreated(WorldMapWindow)) {
+					tracked = PopUpManager.getPopUp(WorldMapWindow);
+					if (tracked === this) {
+						this.close();
+						PopUpManager.releasePopUp(WorldMapWindow);
+						Utils.DiagEvent("WORLD_MAP_CLOSE_FALLBACK","modal_after=" + PopUpManager.mModalOpenCount);
+					}
+				}
+				if (GameState.mInstance) GameState.mInstance.restoreGameplayInputAfterPopup();
+			}
+		}
 		private function goToArea(param1: String): void {
-			mDoneCallback((this as Object).constructor);
-			GameState.mInstance.executeSwitchMap(param1, null);
+			if (!param1 || param1.length == 0 || this.mClosing || WORLD_MAP_ID_LIST.indexOf(param1) < 0) {
+				Utils.DiagEvent("WORLD_MAP_AREA_REJECT","target=" + param1 + ";closing=" + this.mClosing);
+				return;
+			}
+			var game:GameState = GameState.mInstance;
+			Utils.DiagEvent("WORLD_MAP_AREA","from=" + game.mCurrentMapId + ";to=" + param1);
+			if (param1 == game.mCurrentMapId) {
+				this.requestClose();
+				return;
+			}
+			this.requestClose();
+			game.requestWorldMapSwitch(param1);
 		}
 
 		private function closeClicked(param1: MouseEvent): void {
-			var _loc2_: MovieClip = param1.target as MovieClip;
-			_loc2_.removeEventListener(MouseEvent.MOUSE_DOWN, this.mouseDown);
-			_loc2_.removeEventListener(MouseEvent.MOUSE_UP, this.mouseUp);
-			mDoneCallback((this as Object).constructor);
+			if (param1) param1.stopImmediatePropagation();
+			Utils.DiagEvent("WORLD_MAP_CLOSE_CLICK","current=" + GameState.mInstance.mCurrentMapId);
+			this.requestClose();
 		}
 	}
 }
