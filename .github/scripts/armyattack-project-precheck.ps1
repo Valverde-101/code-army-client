@@ -9,10 +9,10 @@ $manifest=Join-Path $root 'Core\Current\AndroidBuild.psd1'
 if(-not(Test-Path -LiteralPath $manifest -PathType Leaf)){throw "ARMY_PROJECT_PRECHECK=FAIL core_manifest_missing=$manifest"}
 Import-Module $manifest -DisableNameChecking -Force
 $core=[version](Get-AndroidBuildCoreVersion)
-if($core -lt [version]'3.0.9'){throw "ARMY_PROJECT_PRECHECK=FAIL core=$core minimum=3.0.9"}
+if($core -lt [version]'3.0.11'){throw "ARMY_PROJECT_PRECHECK=FAIL core=$core minimum=3.0.11"}
 foreach($command in @(
   'Resolve-AndroidBuildFlashToolchain','Ensure-AndroidBuildFFDec','Ensure-AndroidBuildHarmanAirSdk','Ensure-AndroidBuildPortableJdk17','Ensure-AndroidBuildPinnedAndroidSdkView',
-  'Sync-AndroidBuildRepositoryExactHead','Invoke-AndroidBuildProcess','Reduce-AndroidBuildEvidence','Protect-AndroidBuildEvidence','Publish-AndroidBuildEvidence','Publish-AndroidBuildEvidenceCommit'
+  'Sync-AndroidBuildRepositoryExactHead','Invoke-AndroidBuildProcess','Reduce-AndroidBuildEvidence','Protect-AndroidBuildEvidence','Publish-AndroidBuildEvidence','Publish-AndroidBuildEvidenceCommit','Publish-AndroidBuildFinalApk'
 )){
   if(-not(Get-Command $command -ErrorAction SilentlyContinue)){throw "ARMY_PROJECT_PRECHECK=FAIL core_capability_missing=$command"}
 }
@@ -25,7 +25,9 @@ if([string]$cfg.hooks.build -ne '.github/scripts/armyattack-build.ps1'){throw "A
 if([string]$cfg.apk.package_name -ne 'air.army.attack'){throw "ARMY_PROJECT_PRECHECK=FAIL package=$($cfg.apk.package_name)"}
 if([string]$cfg.apk.explicit_output -ne '.work/artifacts/android/ArmyAttack.apk'){throw "ARMY_PROJECT_PRECHECK=FAIL apk_output=$($cfg.apk.explicit_output)"}
 if([string]$cfg.delivery.final_apk_name -ne 'ArmyAttack-23.2.apk'){throw "ARMY_PROJECT_PRECHECK=FAIL final_apk_name=$($cfg.delivery.final_apk_name)"}
-if([string]$cfg.core.minimum_version -ne '3.0.9'){throw "ARMY_PROJECT_PRECHECK=FAIL core_contract=$($cfg.core.minimum_version)"}
+if([string]$cfg.delivery.mode -ne 'candidate-build-to-apk-final-plus-manual-physical-validation'){throw "ARMY_PROJECT_PRECHECK=FAIL delivery_mode=$($cfg.delivery.mode)"}
+if([string]$cfg.core.minimum_version -ne '3.0.11'){throw "ARMY_PROJECT_PRECHECK=FAIL core_contract=$($cfg.core.minimum_version)"}
+if([string]$cfg.core.tested_installed_version -ne '3.0.11'){throw "ARMY_PROJECT_PRECHECK=FAIL tested_core_contract=$($cfg.core.tested_installed_version)"}
 if([string]$cfg.migration.mode -ne 'complete-core-orchestrated' -or [string]$cfg.migration.status -ne 'COMPLETE'){throw "ARMY_PROJECT_PRECHECK=FAIL migration_mode=$($cfg.migration.mode) status=$($cfg.migration.status)"}
 if([bool]$cfg.migration.preserve_legacy_until_equivalence){throw 'ARMY_PROJECT_PRECHECK=FAIL migration_still_progressive'}
 if(-not [bool]$cfg.migration.global_core_candidate_orchestration -or -not [bool]$cfg.migration.global_repository_sync -or -not [bool]$cfg.migration.global_flash_toolchain -or -not [bool]$cfg.migration.global_broker_ownership -or -not [bool]$cfg.migration.global_apk_final_gate -or -not [bool]$cfg.migration.global_evidence_publisher){throw 'ARMY_PROJECT_PRECHECK=FAIL global_ownership_contract'}
@@ -34,7 +36,10 @@ if([string]$cfg.migration.workspace_adapter -ne '.github/scripts/armyattack-work
 if([string]$cfg.migration.project_state_canonical_root -ne '.work' -or -not [bool]$cfg.migration.external_builds_inputs_scratch_retired){throw 'ARMY_PROJECT_PRECHECK=FAIL project_state_migration_contract'}
 if([bool]$cfg.broker.repository_owned_broker_mutation){throw 'ARMY_PROJECT_PRECHECK=FAIL repository_owned_broker_mutation'}
 if([string]$cfg.physical.activation -ne 'manual_workflow_dispatch'){throw "ARMY_PROJECT_PRECHECK=FAIL physical_activation=$($cfg.physical.activation)"}
-if([string]$cfg.validation.publish_final_apk_after -ne 'PHYSICALLY_VALIDATED'){throw "ARMY_PROJECT_PRECHECK=FAIL final_apk_gate=$($cfg.validation.publish_final_apk_after)"}
+if(-not [bool]$cfg.physical.required){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_required_must_remain_true'}
+if([bool]$cfg.physical.final_apk_requires_physical_pass){throw 'ARMY_PROJECT_PRECHECK=FAIL candidate_apk_delivery_still_physical_gated'}
+if([string]$cfg.validation.publish_final_apk_after -ne 'CANDIDATE_VALIDATION'){throw "ARMY_PROJECT_PRECHECK=FAIL final_apk_gate=$($cfg.validation.publish_final_apk_after)"}
+if([string]$cfg.validation.final_without_physical -ne 'FINAL_VALIDATION=VALIDATION_INCOMPLETE'){throw "ARMY_PROJECT_PRECHECK=FAIL final_truth_without_physical=$($cfg.validation.final_without_physical)"}
 
 $workspaceContract=[ordered]@{
   directory='.work'
@@ -88,6 +93,9 @@ foreach($legacy in @('Enable-AutoRepoPool4.ps1','Start-AutoRepoPool4.runtime.ps1
   if($candidateWorkflow.Contains($legacy)){throw "ARMY_PROJECT_PRECHECK=FAIL legacy_infrastructure_still_invoked=$legacy"}
 }
 if(-not $candidateWorkflow.Contains("paths-ignore:") -or -not $candidateWorkflow.Contains("'Logs/**'")){throw 'ARMY_PROJECT_PRECHECK=FAIL candidate_does_not_ignore_evidence_only_commits'}
+foreach($needle in @('minimum=3.0.11','APK_FINAL_PUBLICATION=PASS','validation_scope=candidate','PHYSICAL_VALIDATION=NOT_ACTIVATED','FINAL_VALIDATION=VALIDATION_INCOMPLETE')){
+  if(-not $candidateWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL candidate_delivery_contract_missing=$needle"}
+}
 
 $windowsWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\windows-candidate.yml') -Raw
 foreach($needle in @('Resolve-AndroidBuildFlashToolchain','Initialize-ArmyAttackWorkspace','ARMY_RUNTIME_ROOT','WINDOWS_WORKSPACE_ISOLATION=PASS')){
@@ -124,7 +132,7 @@ foreach($needle in @('Logs/physical-adb','EVIDENCE_RETENTION=FAIL','EVIDENCE_MAN
 }
 
 $retentionText=Get-Content -LiteralPath (Join-Path $repoRoot 'Logs\physical-adb\RETENTION.md') -Raw
-foreach($needle in @('3 physical runs total','200 files','25 MiB','8 MiB','TESTED_SHA','EVIDENCE_COMMIT_SHA','AndroidBuild Core 3.0.9')){
+foreach($needle in @('3 physical runs total','200 files','25 MiB','8 MiB','TESTED_SHA','EVIDENCE_COMMIT_SHA','AndroidBuild Core 3.0.11','APK-FINAL','FINAL_VALIDATION=VALIDATION_INCOMPLETE')){
   if(-not $retentionText.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL retention_document_missing=$needle"}
 }
 $physicalRuns=@()
@@ -139,8 +147,11 @@ if($physicalRuns.Count -gt 3){throw "ARMY_PROJECT_PRECHECK=FAIL evidence_retenti
 Write-Host "ARMY_EVIDENCE_RETENTION_PRECHECK=PASS runs=$($physicalRuns.Count) maximum=3"
 
 $publisher=Get-Content -LiteralPath (Join-Path $repoRoot 'Tools\CI\Publish-ApkFinal.ps1') -Raw
-if(-not $publisher.Contains('[switch]$PhysicalValidated') -or -not $publisher.Contains('APK_FINAL_PUBLICATION=DEFERRED_UNTIL_PHYSICAL_VALIDATION')){throw 'ARMY_PROJECT_PRECHECK=FAIL apk_final_publisher_gate_missing'}
-if(-not $publisher.Contains('delivery.final_apk_name')){throw 'ARMY_PROJECT_PRECHECK=FAIL apk_final_ownership_not_config_driven'}
-if($publisher.Contains('c3ec09fff4c06da08aeebdd070bf570534cd4fbe') -or $publisher.Contains('Remove-PrematureMigrationFinal')){throw 'ARMY_PROJECT_PRECHECK=FAIL one_shot_migration_cleanup_still_present'}
+foreach($needle in @('[switch]$PhysicalValidated','Publish-AndroidBuildFinalApk','delivery.final_apk_name','metadata=State/apk-final')){
+  if(-not $publisher.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL physical_apk_republisher_contract_missing=$needle"}
+}
+foreach($forbidden in @('APK-FINAL\archive','Set-Content -LiteralPath ($latestDest+.json)','Remove-PrematureMigrationFinal')){
+  if($publisher.Contains($forbidden)){throw "ARMY_PROJECT_PRECHECK=FAIL apk_final_non_apk_payload_or_legacy_cleanup=$forbidden"}
+}
 
-Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.9 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE project_state=repo-work build_retention=3 input_cache=sha256 scratch=ephemeral windows=repo-work swf_extract=core-synced physical_activation=manual evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_gate=physical_pass_only legacy_evidence_publisher=ABSENT"
+Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.11 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE project_state=repo-work build_retention=3 input_cache=sha256 scratch=ephemeral windows=repo-work swf_extract=core-synced physical_activation=manual physical_required=true evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_delivery=candidate_validated apk_final_payload=apk_only final_without_physical=VALIDATION_INCOMPLETE legacy_evidence_publisher=ABSENT"
