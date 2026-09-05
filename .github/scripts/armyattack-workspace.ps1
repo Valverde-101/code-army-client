@@ -209,13 +209,6 @@ function Initialize-ArmyAttackWorkspace {
   if(-not(Test-Path -LiteralPath $exactBuildTools)){throw "ARMY_WORKSPACE=FAIL exact_build_tools_missing=$exactBuildTools"}
   Ensure-ArmyJunction -Path (Join-Path $runtimeBuildTools '33.0.2') -Target $exactBuildTools
 
-  # apksigner.bat resolves its JAR through ..\framework relative to build-tools\<version>.
-  # Preserve that sibling topology with a junction to the globally owned SDK framework; do not duplicate SDK bytes.
-  $frameworkSource=Join-Path $root 'AndroidSDK\build-tools\framework'
-  if(-not(Test-Path -LiteralPath (Join-Path $frameworkSource 'apksigner.jar') -PathType Leaf)){throw "ARMY_WORKSPACE=FAIL apksigner_framework_missing=$frameworkSource"}
-  Ensure-ArmyJunction -Path (Join-Path $runtimeBuildTools 'framework') -Target $frameworkSource
-  Write-Host "ARMY_APKSIGNER_FRAMEWORK=PASS alias=$(Join-Path $runtimeBuildTools 'framework') target=$frameworkSource duplicated_bytes=false"
-
   $toolRoots=@((Join-Path $globalSdk 'build-tools'),(Join-Path $root 'AndroidSDK\build-tools'),(Join-Path $pinned 'AndroidSDK\build-tools'))
   $compatDir=Join-Path $runtimeBuildTools '_compat-discovery'
   New-Item -ItemType Directory -Force -Path $compatDir|Out-Null
@@ -224,7 +217,17 @@ function Initialize-ArmyAttackWorkspace {
     if(-not $tool){throw "ARMY_WORKSPACE=FAIL global_sdk_tool_missing=$toolName"}
     Ensure-ArmyHardLink -Path (Join-Path $compatDir $toolName) -Target $tool
   }
-  Write-Host "ARMY_ANDROID_SDK_FACADE=PASS root=$runtimeSdk exact=33.0.2 recursive_tools=hardlinks apksigner_framework=junction"
+
+  # The discovered apksigner wrapper expects ..\framework\apksigner.jar relative to its build-tools directory.
+  # Find the globally owned JAR wherever the installed SDK placed it, then mirror only the required relative file via hardlink.
+  $jarRoots=@((Join-Path $root 'AndroidSDK'),$globalSdk,(Join-Path $pinned 'AndroidSDK'),$AirHome)
+  $apksignerJar=Find-ArmyGlobalSdkTool -Roots $jarRoots -Name 'apksigner.jar'
+  if(-not $apksignerJar){throw "ARMY_WORKSPACE=FAIL apksigner_jar_missing roots=$($jarRoots -join ',')"}
+  $frameworkCompat=Join-Path $runtimeBuildTools 'framework'
+  New-Item -ItemType Directory -Force -Path $frameworkCompat|Out-Null
+  Ensure-ArmyHardLink -Path (Join-Path $frameworkCompat 'apksigner.jar') -Target $apksignerJar
+  Write-Host "ARMY_APKSIGNER_FRAMEWORK=PASS jar=$apksignerJar compatibility=$frameworkCompat duplicated_bytes=false"
+  Write-Host "ARMY_ANDROID_SDK_FACADE=PASS root=$runtimeSdk exact=33.0.2 recursive_tools=hardlinks apksigner_jar=hardlink"
 
   # AIR50 packaging view uses globally owned SDK bytes through junctions; marker points at the repo-local source facade.
   $packageSdk=Join-Path $runtime 'Tools\AndroidSDK-AIR50-api33'
