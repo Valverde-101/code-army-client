@@ -56,7 +56,7 @@ Write-Host "ARMY_FFDEC_COMPAT=PASS alias=$ffdecCompat target=$ffdecGlobal execut
 & (Join-Path $repoRoot 'Tools\CI\Validate-UpstreamAndroidRelease.ps1') -AndroidBuildRoot $runtimeRoot -ExpectedSha $expected
 
 $projectBuilder=Join-Path $repoRoot 'Tools\CI\Build-Android.ps1'
-Write-Host "ARMY_APPLICATION_BUILD=START adapter=army-project-builder infrastructure=core-3.0.9 workspace=repo-work render=gpu"
+Write-Host "ARMY_APPLICATION_BUILD=START adapter=army-project-builder infrastructure=core-$core workspace=repo-work render=gpu"
 & $projectBuilder -RepoRoot $repoRoot -ExpectedSha $expected -AndroidBuildRoot $runtimeRoot -RenderMode gpu
 Write-Host 'ARMY_APPLICATION_BUILD=PASS'
 

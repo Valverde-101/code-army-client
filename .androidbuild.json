@@ -135,7 +135,7 @@
   "core": {
     "minimum_version": "3.0.9",
     "stable_path": "Core/Current",
-    "tested_installed_version": "3.0.9",
+    "tested_installed_version": "3.0.10",
     "update_model": "single-current-one-rollback"
   },
   "migration": {
