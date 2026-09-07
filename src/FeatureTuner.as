@@ -15,11 +15,14 @@ package
       public static const USE_ENVIRONMENT_EFFECTS:Boolean = USE_RIVER_TILE_EFFECTS || USE_CLOUD_EFFECTS || USE_AIRPLANE_WEDGE_EFFECTS || USE_SEA_WAVES_EFFECT;
 
       public static const USE_ALL_FIRE_CALL_SOUND:Boolean = !DROP_ALL_OPTIONAL_FEATURES;
-      public static const USE_HARVEST_READY_ICON_EFFECT:Boolean = !DROP_ALL_OPTIONAL_FEATURES;
+      // Preserve the ready-state signal but use the static fallback icon in LOW mode.
+      // With dozens of campaign buildings this avoids keeping decorative completion timelines alive.
+      public static const USE_HARVEST_READY_ICON_EFFECT:Boolean = !DROP_ALL_OPTIONAL_FEATURES && !USE_LOW_SWF;
       public static const USE_MINE_EFFECTS:Boolean = !DROP_ALL_OPTIONAL_FEATURES;
       public static const USE_CHARACTER_DIALOQUE:Boolean = true;
       public static const USE_CHARACTER_DIALOQUE_EFFECTS:Boolean = !DROP_ALL_OPTIONAL_FEATURES;
-      public static const USE_POPUP_OPENING_TRANSITION_EFFECT:Boolean = !DROP_ALL_OPTIONAL_FEATURES;
+      // Popup content remains immediate; LOW mode only drops the decorative opening tween.
+      public static const USE_POPUP_OPENING_TRANSITION_EFFECT:Boolean = !DROP_ALL_OPTIONAL_FEATURES && !USE_LOW_SWF;
       public static const USE_POPUP_CLOSING_TRANSITION_EFFECT:Boolean = false;
       public static const USE_CITY_CELEBRATION_EFFECTS:Boolean = !DROP_ALL_OPTIONAL_FEATURES && !USE_LOW_SWF;
       public static const USE_LEVELUP_BACKGROUND_EFFECTS:Boolean = !DROP_ALL_OPTIONAL_FEATURES && !USE_LOW_SWF;

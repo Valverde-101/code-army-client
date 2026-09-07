@@ -2,22 +2,34 @@ name: Army Attack Windows full candidate
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'Tools/CI/**'
+      - 'Tools/SWF/**'
+      - '.github/scripts/**'
+      - '.github/workflows/windows-candidate.yml'
+      - '.androidbuild.json'
+      - 'vendor/Test_army_attack'
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: army-attack-windows-candidate
+  group: army-attack-windows-candidate-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   windows-candidate:
     name: Core-synced Windows full candidate
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
-      EXPECTED_SOURCE_SHA: ${{ github.sha }}
-      SOURCE_BRANCH: ${{ github.ref_name }}
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
 
     steps:
       - name: Enable AndroidBuild Core repository sync
@@ -29,7 +41,7 @@ jobs:
           $root=(Resolve-Path -LiteralPath $root).Path
           Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
           $core=[version](Get-AndroidBuildCoreVersion)
-          if($core -lt [version]'3.0.9'){throw "CORE_PRECHECK=FAIL version=$core minimum=3.0.9"}
+          if($core -lt [version]'3.0.11'){throw "CORE_PRECHECK=FAIL version=$core minimum=3.0.11"}
           foreach($name in @('Sync-AndroidBuildRepositoryExactHead','Test-AndroidBuildExactHead','Get-AndroidBuildGitPath','Resolve-AndroidBuildFlashToolchain')){if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "CORE_PRECHECK=FAIL capability=$name"}}
           Enable-AndroidBuildPortableTools -AndroidBuildRoot $root|Out-Null
           $git=Get-AndroidBuildGitPath $root
@@ -57,7 +69,7 @@ jobs:
           $sync=Sync-AndroidBuildRepositoryExactHead -RepoRoot $repo -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -AllowTrackedReset -CleanUntracked -SourceRemote $checkout
           if([string]$sync.status -ne 'PASS' -or [string]$sync.actual_sha -ne $env:EXPECTED_SOURCE_SHA){throw "REPOSITORY_SYNC=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$($sync.actual_sha)"}
           "PHYSICAL_REPO_ROOT=$repo"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "PRECHECK_GITHUB=PASS"
+          Write-Host 'PRECHECK_GITHUB=PASS'
           Write-Host "BROKER=PASS runner=$env:RUNNER_NAME"
           Write-Host "RUNNER_ASSIGNMENT=PASS runner=$env:RUNNER_NAME"
           Write-Host "EXACT_ACTIONS_HEAD=PASS sha=$checkoutSha"
@@ -75,6 +87,17 @@ jobs:
           "ARMY_RUNTIME_ROOT=$($ws.runtime_root)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "WINDOWS_WORKSPACE=PASS runtime=$($ws.runtime_root) build=$($ws.build_root) cache=$($ws.input_cache_root)"
 
+      - name: Validate Windows build scripts
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($script in @('.\Tools\CI\Build-WindowsFullCandidate.ps1','.\Tools\CI\Patch-WindowsSharedSwf.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\CI\Measure-WindowsPerformance.ps1','.\Tools\CI\Test-WindowsRuntime.ps1')){
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors)
+            if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$script line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw "PARSER_VALID=FAIL file=$script"}
+            Write-Host "PARSER_VALID=PASS file=$script"
+          }
+
       - name: Validate exact-source upstream Windows reference
         id: upstream_reference
         shell: powershell
@@ -88,7 +111,7 @@ jobs:
         run: |
           & '.\Tools\CI\Build-Windows.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT
 
-      - name: Assemble and validate full Windows candidate
+      - name: Assemble shared-SWF Windows candidate
         id: full_candidate
         shell: powershell
         run: |
@@ -119,9 +142,10 @@ jobs:
           Write-Host "UPSTREAM_REFERENCE_OUTCOME=${{ steps.upstream_reference.outcome }}"
           Write-Host "FULL_CANDIDATE_OUTCOME=${{ steps.full_candidate.outcome }}"
           Write-Host "PERFORMANCE_OUTCOME=${{ steps.performance.outcome }}"
-          Write-Host "APK_GENERATED=NOT_RUN"
-          Write-Host "PHYSICAL_ANDROID_VALIDATION=NOT_RUN"
-          if ('${{ steps.upstream_reference.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL upstream_reference' }
-          if ('${{ steps.full_candidate.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL full_candidate' }
-          if ('${{ steps.performance.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL performance' }
-          Write-Host "FINAL_VALIDATION=PASS windows_full_candidate workspace=repo-work"
+          Write-Host 'APK_GENERATED=NOT_RUN'
+          Write-Host 'PHYSICAL_ANDROID_VALIDATION=NOT_RUN'
+          if('${{ steps.upstream_reference.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL upstream_reference'}
+          if('${{ steps.full_candidate.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL full_candidate'}
+          if('${{ steps.performance.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL performance'}
+          Write-Host 'PC_SHARED_SWF=PASS'
+          Write-Host 'FINAL_VALIDATION=PASS windows_full_candidate_shared_swf'

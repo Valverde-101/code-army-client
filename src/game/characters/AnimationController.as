@@ -42,9 +42,6 @@ package game.characters
       private var mFiles:Array;
       private var mIsPlaying:Boolean = false;
       private var mDirectionTargets:Array;
-
-      // Flattened MovieClip trees are immutable after an animation symbol is materialized.
-      // Cache them once so play/stop/frame-label hot paths never rescan three display-list levels.
       private var mPlaybackTargets:Array;
 
       private static var smActiveControllers:int = 0;
@@ -55,6 +52,8 @@ package game.characters
       private static var smDirectionChanges:int = 0;
       private static var smAnimationTreeCacheBuilds:int = 0;
       private static var smAnimationTreeCacheHits:int = 0;
+      private static var smDeferredSpecials:int = 0;
+      private static var smMaterializationMisses:int = 0;
       private static var smLastStatsAt:int = 0;
 
       private var mDiagnosticsDestroyed:Boolean = false;
@@ -76,17 +75,86 @@ package game.characters
             return;
          }
          smLastStatsAt = now;
-         Utils.DiagEvent("ANIMATION_STATS","active_controllers=" + smActiveControllers + ";created_total=" + smCreatedControllers + ";materialized_total=" + smMaterializedClips + ";changes_total=" + smAnimationChanges + ";plays_total=" + smPlayCalls + ";direction_changes_total=" + smDirectionChanges + ";tree_cache_builds=" + smAnimationTreeCacheBuilds + ";tree_cache_hits=" + smAnimationTreeCacheHits);
+         Utils.DiagEvent("ANIMATION_STATS","active_controllers=" + smActiveControllers + ";created_total=" + smCreatedControllers + ";materialized_total=" + smMaterializedClips + ";changes_total=" + smAnimationChanges + ";plays_total=" + smPlayCalls + ";direction_changes_total=" + smDirectionChanges + ";tree_cache_builds=" + smAnimationTreeCacheBuilds + ";tree_cache_hits=" + smAnimationTreeCacheHits + ";deferred_specials=" + smDeferredSpecials + ";materialization_misses=" + smMaterializationMisses);
+      }
+
+      private function compactStack(param1:Error) : String
+      {
+         var stack:String = param1 ? param1.getStackTrace() : null;
+         if(!stack)
+         {
+            return "none";
+         }
+         stack = stack.split("\r").join("").split("\n").join(" > ");
+         return stack.length > 1000 ? stack.substr(0,1000) : stack;
+      }
+
+      private function shouldDeferSpecialAnimation(param1:int) : Boolean
+      {
+         return param1 == CHARACTER_ANIMATION_AIRDROP || param1 == CHARACTER_ANIMATION_EXPLOSION;
+      }
+
+      private function materializeAnimation(param1:int, param2:DCResourceManager = null) : Boolean
+      {
+         if(!this.mAnimations || !this.mFiles || param1 < 0 || param1 >= this.mFiles.length)
+         {
+            return false;
+         }
+         var wrapper:MovieClip = this.mAnimations[param1] as MovieClip;
+         if(!wrapper)
+         {
+            return false;
+         }
+         if(wrapper.numChildren > 0)
+         {
+            return true;
+         }
+         var source:String = this.mFiles[param1] as String;
+         if(!source)
+         {
+            return false;
+         }
+         var slash:int = source.lastIndexOf("/");
+         var symbol:String = source.slice(slash + 1);
+         var resource:String = source.slice(0,slash);
+         var manager:DCResourceManager = param2 ? param2 : DCResourceManager.getInstance();
+         if(!manager.isLoaded(resource))
+         {
+            return false;
+         }
+         try
+         {
+            var cls:Class = manager.getSWFClass(resource,symbol);
+            if(cls != null)
+            {
+               wrapper.addChild(new cls());
+               wrapper.visible = true;
+               smMaterializedClips++;
+               this.invalidateAnimationTreeCache(param1);
+               this.emitAnimationStats(false);
+               Utils.DiagEvent("ANIMATION_MATERIALIZED","index=" + param1 + ";resource=" + resource + ";symbol=" + symbol + ";special=" + this.shouldDeferSpecialAnimation(param1));
+               return true;
+            }
+         }
+         catch(error:Error)
+         {
+            smMaterializationMisses++;
+            Utils.DiagEvent("ANIMATION_CLASS_MISS","index=" + param1 + ";resource=" + resource + ";symbol=" + symbol + ";special=" + this.shouldDeferSpecialAnimation(param1) + ";errorID=" + error.errorID + ";message=" + error.message + ";stack=" + this.compactStack(error));
+            this.emitAnimationStats(false);
+            return false;
+         }
+         smMaterializationMisses++;
+         Utils.DiagEvent("ANIMATION_CLASS_MISS","index=" + param1 + ";resource=" + resource + ";symbol=" + symbol + ";special=" + this.shouldDeferSpecialAnimation(param1) + ";errorID=0;message=null_class;stack=none");
+         this.emitAnimationStats(false);
+         return false;
       }
 
       public function loadAnimations(param1:Array) : void
       {
          var resource:String = null;
-         var symbol:String = null;
          var slash:int = 0;
          var source:String = null;
          var wrapper:MovieClip = null;
-         var cls:Class = null;
          var callbackType:String = null;
          var manager:DCResourceManager = DCResourceManager.getInstance();
 
@@ -102,7 +170,6 @@ package game.characters
          {
             source = param1[index] as String;
             slash = source.lastIndexOf("/");
-            symbol = source.slice(slash + 1);
             resource = source.slice(0,slash);
             wrapper = new MovieClip();
             this.mAnimations.push(wrapper);
@@ -111,13 +178,14 @@ package game.characters
 
             if(manager.isLoaded(resource))
             {
-               cls = manager.getSWFClass(resource,symbol);
-               if(cls != null)
+               if(this.shouldDeferSpecialAnimation(index))
                {
-                  wrapper.addChild(new cls());
-                  smMaterializedClips++;
-                  this.invalidateAnimationTreeCache(index);
-                  this.emitAnimationStats(false);
+                  smDeferredSpecials++;
+                  Utils.DiagEvent("ANIMATION_DEFERRED","index=" + index + ";source=" + source + ";reason=special_on_demand");
+               }
+               else
+               {
+                  this.materializeAnimation(index,manager);
                }
             }
             else
@@ -140,11 +208,8 @@ package game.characters
 
       public function LoadingFinished(param1:Event) : void
       {
-         var symbol:String = null;
          var resource:String = null;
          var slash:int = 0;
-         var cls:Class = null;
-         var wrapper:MovieClip = null;
          var manager:DCResourceManager = DCResourceManager.getInstance();
          manager.removeEventListener(param1.type,this.LoadingFinished);
          this.mLoadingCallbackEventTypes[param1.type] = null;
@@ -153,19 +218,16 @@ package game.characters
          while(index < this.mFiles.length)
          {
             slash = (this.mFiles[index] as String).lastIndexOf("/");
-            symbol = (this.mFiles[index] as String).slice(slash + 1);
             resource = (this.mFiles[index] as String).slice(0,slash);
             if(manager.isLoaded(resource) && (this.mAnimations[index] as MovieClip).numChildren == 0)
             {
-               cls = manager.getSWFClass(resource,symbol);
-               if(cls != null)
+               if(this.shouldDeferSpecialAnimation(index) && index != this.mCurrentAnimation)
                {
-                  wrapper = this.mAnimations[index] as MovieClip;
-                  wrapper.addChild(new cls());
-                  smMaterializedClips++;
-                  this.invalidateAnimationTreeCache(index);
-                  wrapper.visible = true;
-                  this.emitAnimationStats(false);
+                  smDeferredSpecials++;
+               }
+               else
+               {
+                  this.materializeAnimation(index,manager);
                }
             }
             index++;
@@ -207,6 +269,10 @@ package game.characters
          if(!this.mPlaybackTargets)
          {
             this.mPlaybackTargets = new Array();
+         }
+         if(this.mAnimations && param1 >= 0 && param1 < this.mAnimations.length && (this.mAnimations[param1] as MovieClip).numChildren == 0)
+         {
+            this.materializeAnimation(param1);
          }
          var cached:Array = this.mPlaybackTargets[param1] as Array;
          if(cached != null)
@@ -268,11 +334,12 @@ package game.characters
 
       public function setAnimation(param1:int) : Boolean
       {
-         if(param1 == this.mCurrentAnimation)
+         if(param1 >= this.mAnimations.length)
          {
             return false;
          }
-         if(param1 >= this.mAnimations.length)
+         this.materializeAnimation(param1);
+         if(param1 == this.mCurrentAnimation)
          {
             return false;
          }
@@ -289,14 +356,9 @@ package game.characters
       {
          var animation:MovieClip = null;
          var child:MovieClip = null;
-         if(param1)
-         {
-            animation = this.mAnimations[CHARACTER_ANIMATION_SHOOT] as MovieClip;
-         }
-         else
-         {
-            animation = this.mAnimations[INSTALLATION_ANIMATION_SHOOT] as MovieClip;
-         }
+         var index:int = param1 ? CHARACTER_ANIMATION_SHOOT : INSTALLATION_ANIMATION_SHOOT;
+         this.materializeAnimation(index);
+         animation = this.mAnimations[index] as MovieClip;
          if(animation && animation.numChildren > 0)
          {
             child = animation.getChildAt(animation.numChildren - 1) as MovieClip;
@@ -377,6 +439,7 @@ package game.characters
 
       public function setSize(param1:int, param2:int) : void
       {
+         this.materializeAnimation(this.mCurrentAnimation);
          (this.mAnimations[this.mCurrentAnimation] as MovieClip).width = param1;
          (this.mAnimations[this.mCurrentAnimation] as MovieClip).height = param2;
       }
