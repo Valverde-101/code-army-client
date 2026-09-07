@@ -165,15 +165,18 @@ function Convert-MobileAirSourceForFFDec([string]$Source,[string]$Destination,[s
       'this.mPullOutMissionFrame.gotoAndPlay("Close");'
     )){if(-not $text.Contains($needle)){throw "SWF_GAMEHUD_FIX=FAIL missing_pattern=$needle"}}
     $nl=[Environment]::NewLine
-    $text=$text.Replace('private var mMobileRightMenuBaseY:Number = 0;','private var mMobileRightMenuBaseY:Number = 0;'+$nl+'\t\tprivate var mMobileMissionMenuBaseY:Number = 0;')
-    $text=$text.Replace('if(!param1 || !this.mIngameHUDClip_BOTTOM) return;','if(!param1 || !this.mIngameHUDClip_BOTTOM) return;'+$nl+'\t\t\tif(param2 == "missions" && this.mPullOutMissionMenuState == this.STATE_MISSIONS_MENU_CLOSED) return;')
-    $text=$text.Replace('var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);','var baseY:Number = param2 == "missions" ? this.mMobileMissionMenuBaseY : this.mMobileRightMenuBaseY;'+$nl+'\t\t\tparam1.y = baseY;'+$nl+'\t\t\tvar bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);')
+    $tab="`t"
+    $text=$text.Replace('private var mMobileRightMenuBaseY:Number = 0;','private var mMobileRightMenuBaseY:Number = 0;'+$nl+$tab+$tab+'private var mMobileMissionMenuBaseY:Number = 0;')
+    $text=$text.Replace('if(!param1 || !this.mIngameHUDClip_BOTTOM) return;','if(!param1 || !this.mIngameHUDClip_BOTTOM) return;'+$nl+$tab+$tab+$tab+'if(param2 == "missions" && this.mPullOutMissionMenuState == this.STATE_MISSIONS_MENU_CLOSED) return;')
+    $text=$text.Replace('var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);','var baseY:Number = param2 == "missions" ? this.mMobileMissionMenuBaseY : this.mMobileRightMenuBaseY;'+$nl+$tab+$tab+$tab+'param1.y = baseY;'+$nl+$tab+$tab+$tab+'var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);')
     $text=$text.Replace('param1.y += deltaY;','param1.y = baseY + deltaY;')
-    $text=$text.Replace('this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);','this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);'+$nl+'\t\t\t\tthis.mMobileMissionMenuBaseY = this.mPullOutMissionFrame.y;')
-    $text=$text.Replace('this.mPullOutMissionFrame.gotoAndPlay("Open");','this.mPullOutMissionFrame.y = this.mMobileMissionMenuBaseY;'+$nl+'\t\t\t\tthis.mPullOutMissionFrame.gotoAndPlay("Open");'+$nl+'\t\t\t\tUtils.DiagEvent("HUD_MISSION_TRANSITION","phase=open_begin;base_y=" + this.mMobileMissionMenuBaseY + ";y=" + this.mPullOutMissionFrame.y);')
-    $text=$text.Replace('this.mPullOutMissionFrame.gotoAndPlay("Close");','this.mPullOutMissionFrame.gotoAndPlay("Close");'+$nl+'\t\t\t\tUtils.DiagEvent("HUD_MISSION_TRANSITION","phase=close_begin;y=" + this.mPullOutMissionFrame.y + ";frame=" + this.mPullOutMissionFrame.currentFrame);')
+    $text=$text.Replace('this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);','this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);'+$nl+$tab+$tab+$tab+$tab+'this.mMobileMissionMenuBaseY = this.mPullOutMissionFrame.y;')
+    $text=$text.Replace('this.mPullOutMissionFrame.gotoAndPlay("Open");','this.mPullOutMissionFrame.y = this.mMobileMissionMenuBaseY;'+$nl+$tab+$tab+$tab+$tab+'this.mPullOutMissionFrame.gotoAndPlay("Open");'+$nl+$tab+$tab+$tab+$tab+'Utils.DiagEvent("HUD_MISSION_TRANSITION","phase=open_begin;base_y=" + this.mMobileMissionMenuBaseY + ";y=" + this.mPullOutMissionFrame.y);')
+    $text=$text.Replace('this.mPullOutMissionFrame.gotoAndPlay("Close");','this.mPullOutMissionFrame.gotoAndPlay("Close");'+$nl+$tab+$tab+$tab+$tab+'Utils.DiagEvent("HUD_MISSION_TRANSITION","phase=close_begin;y=" + this.mPullOutMissionFrame.y + ";frame=" + this.mPullOutMissionFrame.currentFrame);')
     if($text.Contains('param1.y += deltaY;') -or -not $text.Contains('mMobileMissionMenuBaseY') -or -not $text.Contains('param1.y = baseY + deltaY;')){throw 'SWF_GAMEHUD_FIX=FAIL postcondition'}
-    Write-Host 'SWF_GAMEHUD_FIX=PASS mission_clamp=non_accumulating close_clamp=disabled'
+    if($text -match '\\t'){throw 'SWF_GAMEHUD_FIX=FAIL literal_backslash_tab_survived'}
+    if($text -match '\btprivate\b'){throw 'SWF_GAMEHUD_FIX=FAIL invalid_namespace_tprivate'}
+    Write-Host 'SWF_GAMEHUD_FIX=PASS mission_clamp=non_accumulating close_clamp=disabled indentation=real_tabs'
   }
 
   if($text -match 'CONFIG::'){throw "SWF_PERF_PATCH=FAIL config_directive_survived source=$Source"}
