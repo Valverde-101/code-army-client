@@ -59,6 +59,10 @@ package game.gameElements {
 			var freeCell: GridCell = null;
 			var spawned: Renderable = null;
 			var nested: PowerUpItem = null;
+			var selectedTarget:IsometricCharacter = null;
+			var selectionStart:int = 0;
+			var selectionAttempt:int = 0;
+			var selectionIndex:int = -1;
 			var actor:String = param2 is PlayerUnit ? "player" : "enemy";
 			Utils.DiagEvent("PVP_POWERUP_PICKUP","id=" + param1.mId + ";actor=" + actor + ";depth=" + param3 + ";health=" + param1.mIncreasedHealth + ";actions=" + param1.mIncreasedActions + ";freeze=" + param1.mFreezeTurns);
 			if(param1.mIncreasedHealth > 0) { param2.setHealth(Math.min(param2.getMaxHealth(), param2.getHealth() + param1.mIncreasedHealth)); param2.refreshStatusHints(); }
@@ -96,7 +100,17 @@ package game.gameElements {
 				if(param2 is PlayerUnit) targets = mScene.getPvPEnemyAliveUnits(); else targets = mScene.getPlayerAliveUnits();
 				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_SELECT","id=" + param1.mId + ";actor=" + actor + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";candidate_targets=" + (targets ? targets.length : 0));
 				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_PHASE","phase=select;id=" + param1.mId + ";actor=" + actor + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";candidate_targets=" + (targets ? targets.length : 0));
-				if(targets && targets.length > 0) targetCell = (targets[Math.floor(Math.random() * targets.length)] as IsometricCharacter).getCell();
+				if(targets && targets.length > 0) {
+					selectionStart = Math.floor(Math.random() * targets.length);
+					selectionAttempt = 0;
+					while(selectionAttempt < targets.length && !targetCell) {
+						selectionIndex = (selectionStart + selectionAttempt) % targets.length;
+						selectedTarget = targets[selectionIndex] as IsometricCharacter;
+						if(selectedTarget) targetCell = selectedTarget.getCell();
+						selectionAttempt++;
+					}
+				}
+				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_PHASE","phase=selected;id=" + param1.mId + ";actor=" + actor + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";target_index=" + selectionIndex + ";target=" + (selectedTarget && selectedTarget.mItem ? selectedTarget.mItem.mId : "none") + ";cell=" + (targetCell ? targetCell.mPosI + "," + targetCell.mPosJ : "none") + ";attempts=" + selectionAttempt);
 				if(targetCell) {
 					try {
 						Utils.DiagEvent("PVP_POWERUP_FIREMISSION_PHASE","phase=construct_begin;id=" + param1.mId + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";graphics=" + param1.mFireMissionAnimation + ";cell=" + targetCell.mPosI + "," + targetCell.mPosJ);
