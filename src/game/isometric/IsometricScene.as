@@ -1551,13 +1551,15 @@
 			}
 			if(!cls) {
 				resource = Config.SWF_EFFECTS_NAME;
-				if(param4 == "enemy" && (param5.indexOf("Commando") >= 0 || param5.indexOf("SpecialForces") >= 0)) {
+				var normalizedUnitId:String = param5 ? param5.toLowerCase() : "";
+				if(param4 == "enemy" && (normalizedUnitId.indexOf("commando") >= 0 || normalizedUnitId.indexOf("specialforces") >= 0 || normalizedUnitId.indexOf("special_forces") >= 0)) {
 					symbol = "enemy_commando_airdrop";
 				} else if(param4 == "enemy") {
 					symbol = "enemy_infantry_airdrop";
 				} else {
 					symbol = "enemy_airdrop_01";
 				}
+				Utils.DiagEvent("PVP_PARATROOPER_ASSET_SELECT","phase=fallback_select;side=" + param4 + ";unit=" + param5 + ";normalized_unit=" + normalizedUnitId + ";requested=" + requested + ";resource=" + resource + ";symbol=" + symbol);
 				try {
 					cls = resources.getSWFClass(resource,symbol);
 				} catch(fallbackError:Error) {
