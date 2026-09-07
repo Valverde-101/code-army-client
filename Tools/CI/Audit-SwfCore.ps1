@@ -20,6 +20,19 @@ function Resolve-Git {
   throw 'SWF_CORE_AUDIT=FAIL git_not_found'
 }
 
+function Require-SourceContains([string]$Path,[string]$Needle,[string]$Name){
+  if(-not(Test-Path -LiteralPath $Path)){throw "SWF_ROOT_FIX_REGRESSION=FAIL check=$Name missing=$Path"}
+  $text=Get-Content -LiteralPath $Path -Raw
+  if(-not $text.Contains($Needle)){throw "SWF_ROOT_FIX_REGRESSION=FAIL check=$Name expected=contains"}
+  Write-Host "SWF_ROOT_FIX_REGRESSION_CHECK=PASS name=$Name"
+}
+function Require-SourceNotContains([string]$Path,[string]$Needle,[string]$Name){
+  if(-not(Test-Path -LiteralPath $Path)){throw "SWF_ROOT_FIX_REGRESSION=FAIL check=$Name missing=$Path"}
+  $text=Get-Content -LiteralPath $Path -Raw
+  if($text.Contains($Needle)){throw "SWF_ROOT_FIX_REGRESSION=FAIL check=$Name expected=absent"}
+  Write-Host "SWF_ROOT_FIX_REGRESSION_CHECK=PASS name=$Name"
+}
+
 $repo=(Resolve-Path -LiteralPath $RepoRoot -ErrorAction Stop).Path
 $git=Resolve-Git
 $head=(& $git -C $repo rev-parse HEAD).Trim()
@@ -31,6 +44,22 @@ $srcRoot=Join-Path $repo 'src'
 if(-not (Test-Path -LiteralPath $srcRoot)){throw "SWF_CORE_AUDIT=FAIL src_missing=$srcRoot"}
 if(-not $OutputRoot){$OutputRoot=Join-Path $repo ".work\reports\core-audit\$head"}
 New-Item -ItemType Directory -Force -Path $OutputRoot|Out-Null
+
+# Root-fix regression gate. These checks run through Test-AndroidRuntimePatch.ps1
+# before FFDec replaces the classes in the root SWF.
+$animationPath=Join-Path $srcRoot 'game\characters\AnimationController.as'
+$resourcePath=Join-Path $srcRoot 'com\dchoc\graphics\DCResourceManager.as'
+$fireMissionPath=Join-Path $srcRoot 'game\gameElements\FireMissionObject.as'
+Require-SourceContains $fireMissionPath 'private static const CRITICAL_COMBAT_FX_ENABLED:Boolean = true;' 'combat_fx_independent_of_low_swf'
+Require-SourceContains $fireMissionPath 'FIREMISSION_FX_POLICY' 'combat_fx_policy_is_observable'
+Require-SourceNotContains $fireMissionPath 'if(FeatureTuner.USE_FIRE_CALL_EFFECTS && this.mAnim)' 'legacy_low_swf_firemission_gate_removed'
+Require-SourceContains $animationPath 'private var mPlaybackTargets:Array;' 'animation_tree_cache_declared'
+Require-SourceContains $animationPath 'private function getAnimationTreeTargets(param1:int) : Array' 'animation_tree_cache_builder_exists'
+Require-SourceContains $animationPath 'tree_cache_hits=' 'animation_tree_cache_is_observable'
+Require-SourceContains $resourcePath 'private var mSwfClassCache:Object = new Object();' 'swf_class_cache_declared'
+Require-SourceContains $resourcePath 'var cacheKey:String = (param1 == null ? "" : param1) + "|" + _loc3_;' 'swf_class_cache_key_preserves_resource_identity'
+Require-SourceContains $resourcePath 'SWF_EMBEDDED_SYMBOL_COLLISION' 'swf_cross_resource_collision_is_observable'
+Write-Host 'SWF_ROOT_FIX_REGRESSION=PASS combat_fx=true animation_tree_cache=true swf_resource_symbol_cache=true'
 
 $asFiles=@(Get-ChildItem -LiteralPath $srcRoot -Recurse -File -Filter '*.as' -ErrorAction Stop)
 if($asFiles.Count -lt 100){throw "SWF_CORE_AUDIT=FAIL suspicious_as_file_count=$($asFiles.Count)"}
@@ -64,11 +93,6 @@ foreach($file in $asFiles){
   $repeat=[Math]::Max(0,$timers-$singleShot)
   $bitmap=([regex]::Matches($text,'new\s+BitmapData\s*\(')).Count
   $dispose=([regex]::Matches($text,'\.dispose\s*\(')).Count
-  # A common mobile-memory anti-pattern is allocating a raster cache at the
-  # source DisplayObject's unscaled width/height, then drawing it with a zoom
-  # matrix. At 40% zoom that retains 6.25x the pixel area actually required.
-  # This is only a static candidate signal; lifecycle/source review decides
-  # whether the allocation is genuinely wasteful.
   $unscaledRaster=([regex]::Matches($text,'new\s+BitmapData\s*\(\s*[^,\r\n]+\.width\s*,\s*[^,\r\n]+\.height')).Count
   $enterFrame=([regex]::Matches($text,'Event\.ENTER_FRAME')).Count
   $mouseMove=([regex]::Matches($text,'MouseEvent\.MOUSE_MOVE')).Count
@@ -135,10 +159,11 @@ foreach($f in $configFiles){
 }
 
 $report=[ordered]@{
-  schema_version=2
+  schema_version=3
   repository='Valverde-101/code-army-client'
   tested_sha=$head
   generated_utc=[DateTime]::UtcNow.ToString('o')
+  root_fix_regression=[ordered]@{combat_fx='PASS';animation_tree_cache='PASS';swf_resource_symbol_cache='PASS'}
   totals=$total
   config_inventory=[ordered]@{files=$configFiles.Count;mapsetup_references=$mapSetupHits;desert_references=$desertHits;pvp_map_references=$pvpHits}
   hotspots=$hotspots
@@ -165,6 +190,7 @@ $lines=New-Object System.Collections.Generic.List[string]
 $lines.Add('# Army Attack SWF/Core static audit')
 $lines.Add('')
 $lines.Add("TESTED_SHA: $head")
+$lines.Add('Root fixes: combat FX=PASS; animation tree cache=PASS; SWF resource/symbol cache=PASS')
 $lines.Add("AS files: $($total.action_script_files); lines: $($total.lines)")
 $lines.Add("Listeners add/remove: $($total.add_event_listener)/$($total.remove_event_listener)")
 $lines.Add("Timer allocations: $($total.timer_allocations); repeating candidates: $($total.repeating_timer_candidates)")

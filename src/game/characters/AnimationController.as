@@ -6,86 +6,59 @@ package game.characters
    import flash.events.Event;
    import flash.utils.getTimer;
    import game.isometric.elements.Renderable;
-    import game.isometric.characters.IsometricCharacter;
-   
+   import game.isometric.characters.IsometricCharacter;
+
    public class AnimationController
    {
-      
       public static const DIR_RIGHT:int = 0;
-      
       public static const DIR_LEFT:int = 1;
-      
       public static const DIR_UP:int = 3;
-      
+
       public static const CHARACTER_ANIMATION_IDLE:int = 0;
-      
       public static const CHARACTER_ANIMATION_MOVE:int = 1;
-      
       public static const CHARACTER_ANIMATION_AIM:int = 2;
-      
       public static const CHARACTER_ANIMATION_SHOOT:int = 3;
-      
       public static const CHARACTER_ANIMATION_HIT:int = 4;
-      
       public static const CHARACTER_ANIMATION_DYING:int = 5;
-      
       public static const CHARACTER_ANIMATION_AIM_UP:int = 6;
-      
       public static const CHARACTER_ANIMATION_SHOOT_UP:int = 7;
-      
       public static const CHARACTER_ANIMATION_MOVE_UP:int = 8;
-      
       public static const CHARACTER_ANIMATION_AIRDROP:int = 9;
-      
       public static const CHARACTER_ANIMATION_EXPLOSION:int = 10;
-      
+
       public static const INSTALLATION_ANIMATION_IDLE:int = 0;
-      
       public static const INSTALLATION_ANIMATION_SHOOT:int = 1;
-      
       public static const INSTALLATION_ANIMATION_HIT:int = 2;
-      
       public static const INSTALLATION_ANIMATION_WRECKING:int = 3;
-      
       public static const INSTALLATION_ANIMATION_READY_FOR_ACTION:int = 4;
-      
       public static const INSTALLATION_ANIMATION_ACTION:int = 5;
-      
       public static const INSTALLATION_ANIMATION_NOACTION:int = 6;
-       
-      
+
       protected var mOwner:Renderable;
-      
       public var mAnimations:Array;
-      
       private var mCurrentAnimation:int = 0;
-      
       protected var mCurrentDirection:int = 0;
-      
       private var mLoadingCallbackEventTypes:Object;
-      
       private var mFiles:Array;
-      
       private var mIsPlaying:Boolean = false;
-      
       private var mDirectionTargets:Array;
 
+      // Flattened MovieClip trees are immutable after an animation symbol is materialized.
+      // Cache them once so play/stop/frame-label hot paths never rescan three display-list levels.
+      private var mPlaybackTargets:Array;
+
       private static var smActiveControllers:int = 0;
-
       private static var smCreatedControllers:int = 0;
-
       private static var smMaterializedClips:int = 0;
-
       private static var smAnimationChanges:int = 0;
-
       private static var smPlayCalls:int = 0;
-
       private static var smDirectionChanges:int = 0;
-
+      private static var smAnimationTreeCacheBuilds:int = 0;
+      private static var smAnimationTreeCacheHits:int = 0;
       private static var smLastStatsAt:int = 0;
 
       private var mDiagnosticsDestroyed:Boolean = false;
-      
+
       public function AnimationController(param1:Renderable)
       {
          super();
@@ -103,91 +76,101 @@ package game.characters
             return;
          }
          smLastStatsAt = now;
-         Utils.DiagEvent("ANIMATION_STATS","active_controllers=" + smActiveControllers + ";created_total=" + smCreatedControllers + ";materialized_total=" + smMaterializedClips + ";changes_total=" + smAnimationChanges + ";plays_total=" + smPlayCalls + ";direction_changes_total=" + smDirectionChanges);
+         Utils.DiagEvent("ANIMATION_STATS","active_controllers=" + smActiveControllers + ";created_total=" + smCreatedControllers + ";materialized_total=" + smMaterializedClips + ";changes_total=" + smAnimationChanges + ";plays_total=" + smPlayCalls + ";direction_changes_total=" + smDirectionChanges + ";tree_cache_builds=" + smAnimationTreeCacheBuilds + ";tree_cache_hits=" + smAnimationTreeCacheHits);
       }
-      
+
       public function loadAnimations(param1:Array) : void
       {
-         var _loc3_:String = null;
-         var _loc4_:String = null;
-         var _loc5_:int = 0;
-         var _loc6_:String = null;
-         var _loc9_:MovieClip = null;
-         var _loc10_:Class = null;
-         var _loc11_:String = null;
-         var _loc2_:DCResourceManager = DCResourceManager.getInstance();
+         var resource:String = null;
+         var symbol:String = null;
+         var slash:int = 0;
+         var source:String = null;
+         var wrapper:MovieClip = null;
+         var cls:Class = null;
+         var callbackType:String = null;
+         var manager:DCResourceManager = DCResourceManager.getInstance();
+
          this.mAnimations = new Array();
          this.mDirectionTargets = new Array();
+         this.mPlaybackTargets = new Array();
          this.mFiles = param1;
          this.mLoadingCallbackEventTypes = new Object();
-         var _loc7_:int = int(param1.length);
-         var _loc8_:int = 0;
-         while(_loc8_ < _loc7_)
+
+         var count:int = int(param1.length);
+         var index:int = 0;
+         while(index < count)
          {
-            _loc5_ = (_loc6_ = param1[_loc8_] as String).lastIndexOf("/");
-            _loc3_ = _loc6_.slice(_loc5_ + 1);
-            _loc4_ = _loc6_.slice(0,_loc5_);
-            _loc9_ = new MovieClip();
-            this.mAnimations.push(_loc9_);
-            if(_loc2_.isLoaded(_loc4_))
+            source = param1[index] as String;
+            slash = source.lastIndexOf("/");
+            symbol = source.slice(slash + 1);
+            resource = source.slice(0,slash);
+            wrapper = new MovieClip();
+            this.mAnimations.push(wrapper);
+            this.mPlaybackTargets[index] = null;
+            this.mDirectionTargets[index] = null;
+
+            if(manager.isLoaded(resource))
             {
-               if((_loc10_ = _loc2_.getSWFClass(_loc4_,_loc3_)) != null)
+               cls = manager.getSWFClass(resource,symbol);
+               if(cls != null)
                {
-                  _loc9_.addChild(new _loc10_());
+                  wrapper.addChild(new cls());
                   smMaterializedClips++;
+                  this.invalidateAnimationTreeCache(index);
                   this.emitAnimationStats(false);
                }
             }
             else
             {
-               _loc11_ = _loc4_ + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
-               this.mLoadingCallbackEventTypes[_loc11_] = _loc11_;
-               _loc9_.visible = false;
-               _loc9_.gotoAndStop(1);
-               _loc2_.addEventListener(_loc11_,this.LoadingFinished);
-               if(!_loc2_.isAddedToLoadingList(_loc4_))
+               callbackType = resource + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
+               this.mLoadingCallbackEventTypes[callbackType] = callbackType;
+               wrapper.visible = false;
+               wrapper.gotoAndStop(1);
+               manager.addEventListener(callbackType,this.LoadingFinished);
+               if(!manager.isAddedToLoadingList(resource))
                {
-                  _loc2_.load(Config.DIR_DATA + _loc4_ + ".swf",_loc4_,null,false,false);
+                  manager.load(Config.DIR_DATA + resource + ".swf",resource,null,false,false);
                }
             }
-            _loc8_++;
+            index++;
          }
          this.mCurrentAnimation = 0;
          this.notifyOwnerAnimationReady();
       }
-      
+
       public function LoadingFinished(param1:Event) : void
       {
-         var _loc3_:String = null;
-         var _loc4_:String = null;
-         var _loc5_:int = 0;
-         var _loc7_:Class = null;
-         var _loc8_:MovieClip = null;
-         var _loc2_:DCResourceManager = DCResourceManager.getInstance();
-         _loc2_.removeEventListener(param1.type,this.LoadingFinished);
+         var symbol:String = null;
+         var resource:String = null;
+         var slash:int = 0;
+         var cls:Class = null;
+         var wrapper:MovieClip = null;
+         var manager:DCResourceManager = DCResourceManager.getInstance();
+         manager.removeEventListener(param1.type,this.LoadingFinished);
          this.mLoadingCallbackEventTypes[param1.type] = null;
-         var _loc6_:int = 0;
-         while(_loc6_ < this.mFiles.length)
+
+         var index:int = 0;
+         while(index < this.mFiles.length)
          {
-            _loc5_ = (this.mFiles[_loc6_] as String).lastIndexOf("/");
-            _loc3_ = (this.mFiles[_loc6_] as String).slice(_loc5_ + 1);
-            _loc4_ = (this.mFiles[_loc6_] as String).slice(0,_loc5_);
-            if(_loc2_.isLoaded(_loc4_))
+            slash = (this.mFiles[index] as String).lastIndexOf("/");
+            symbol = (this.mFiles[index] as String).slice(slash + 1);
+            resource = (this.mFiles[index] as String).slice(0,slash);
+            if(manager.isLoaded(resource) && (this.mAnimations[index] as MovieClip).numChildren == 0)
             {
-               if((this.mAnimations[_loc6_] as MovieClip).numChildren == 0)
+               cls = manager.getSWFClass(resource,symbol);
+               if(cls != null)
                {
-                  if((_loc7_ = _loc2_.getSWFClass(_loc4_,_loc3_)) != null)
-                  {
-                     (_loc8_ = this.mAnimations[_loc6_] as MovieClip).addChild(new _loc7_());
-                     smMaterializedClips++;
-                     this.emitAnimationStats(false);
-                     this.mDirectionTargets[_loc6_] = null;
-                     _loc8_.visible = true;
-                  }
+                  wrapper = this.mAnimations[index] as MovieClip;
+                  wrapper.addChild(new cls());
+                  smMaterializedClips++;
+                  this.invalidateAnimationTreeCache(index);
+                  wrapper.visible = true;
+                  this.emitAnimationStats(false);
                }
             }
-            _loc6_++;
+            index++;
          }
+
          if(this.mIsPlaying)
          {
             this.playCurrentAnimation();
@@ -206,7 +189,83 @@ package game.characters
             (this.mOwner as IsometricCharacter).refreshStatusHints();
          }
       }
-      
+
+      private function invalidateAnimationTreeCache(param1:int) : void
+      {
+         if(this.mPlaybackTargets)
+         {
+            this.mPlaybackTargets[param1] = null;
+         }
+         if(this.mDirectionTargets)
+         {
+            this.mDirectionTargets[param1] = null;
+         }
+      }
+
+      private function getAnimationTreeTargets(param1:int) : Array
+      {
+         if(!this.mPlaybackTargets)
+         {
+            this.mPlaybackTargets = new Array();
+         }
+         var cached:Array = this.mPlaybackTargets[param1] as Array;
+         if(cached != null)
+         {
+            smAnimationTreeCacheHits++;
+            return cached;
+         }
+
+         var result:Array = new Array();
+         var root:MovieClip = this.mAnimations && param1 >= 0 && param1 < this.mAnimations.length ? this.mAnimations[param1] as MovieClip : null;
+         if(root == null)
+         {
+            this.mPlaybackTargets[param1] = result;
+            return result;
+         }
+
+         result.push(root);
+         var child:MovieClip = null;
+         var nested:MovieClip = null;
+         var deep:MovieClip = null;
+         var i:int = 0;
+         var j:int = 0;
+         var k:int = 0;
+         while(i < root.numChildren)
+         {
+            child = root.getChildAt(i) as MovieClip;
+            if(child)
+            {
+               result.push(child);
+               j = 0;
+               while(j < child.numChildren)
+               {
+                  nested = child.getChildAt(j) as MovieClip;
+                  if(nested)
+                  {
+                     result.push(nested);
+                     k = 0;
+                     while(k < nested.numChildren)
+                     {
+                        deep = nested.getChildAt(k) as MovieClip;
+                        if(deep)
+                        {
+                           result.push(deep);
+                        }
+                        k++;
+                     }
+                  }
+                  j++;
+               }
+            }
+            i++;
+         }
+
+         this.mPlaybackTargets[param1] = result;
+         smAnimationTreeCacheBuilds++;
+         this.emitAnimationStats(false);
+         return result;
+      }
+
       public function setAnimation(param1:int) : Boolean
       {
          if(param1 == this.mCurrentAnimation)
@@ -225,28 +284,31 @@ package game.characters
          this.emitAnimationStats(false);
          return true;
       }
-      
+
       private function startShootAnimation(param1:Boolean) : void
       {
-         var _loc2_:MovieClip = null;
-         var _loc3_:MovieClip = null;
+         var animation:MovieClip = null;
+         var child:MovieClip = null;
          if(param1)
          {
-            _loc2_ = this.mAnimations[CHARACTER_ANIMATION_SHOOT] as MovieClip;
+            animation = this.mAnimations[CHARACTER_ANIMATION_SHOOT] as MovieClip;
          }
          else
          {
-            _loc2_ = this.mAnimations[INSTALLATION_ANIMATION_SHOOT] as MovieClip;
+            animation = this.mAnimations[INSTALLATION_ANIMATION_SHOOT] as MovieClip;
          }
-         if(_loc2_.numChildren > 0)
+         if(animation && animation.numChildren > 0)
          {
-            _loc3_ = _loc2_.getChildAt(_loc2_.numChildren - 1) as MovieClip;
-            _loc3_.visible = true;
-            _loc3_.gotoAndPlay(1);
-            _loc3_.addEventListener(Event.ENTER_FRAME,this.enterFrame,false,0,true);
+            child = animation.getChildAt(animation.numChildren - 1) as MovieClip;
+            if(child)
+            {
+               child.visible = true;
+               child.gotoAndPlay(1);
+               child.addEventListener(Event.ENTER_FRAME,this.enterFrame,false,0,true);
+            }
          }
       }
-      
+
       private function resolveDirectionTarget(param1:int) : DisplayObject
       {
          var animation:MovieClip = this.mAnimations[param1] as MovieClip;
@@ -284,7 +346,7 @@ package game.characters
          this.mDirectionTargets[param1] = animation;
          return animation;
       }
-      
+
       public function setDirection(param1:int) : void
       {
          var target:DisplayObject = null;
@@ -312,200 +374,119 @@ package game.characters
          }
          this.mCurrentDirection = param1;
       }
+
       public function setSize(param1:int, param2:int) : void
       {
          (this.mAnimations[this.mCurrentAnimation] as MovieClip).width = param1;
          (this.mAnimations[this.mCurrentAnimation] as MovieClip).height = param2;
       }
-      
+
       public function getAnimation() : MovieClip
       {
          return this.mAnimations[this.mCurrentAnimation];
       }
-      
+
       public function getCurrentAnimationIndex() : int
       {
          return this.mCurrentAnimation;
       }
-      
+
       public function getCurrentAnimation() : MovieClip
       {
          return this.mAnimations[this.mCurrentAnimation];
       }
-      
+
       public function getCurrentAnimationFrameLabel() : String
       {
-         var _loc2_:int = 0;
-         var _loc3_:MovieClip = null;
-         var _loc4_:int = 0;
-         var _loc5_:MovieClip = null;
-         var _loc6_:int = 0;
-         var _loc7_:MovieClip = null;
-         var _loc1_:String = (this.mAnimations[this.mCurrentAnimation] as MovieClip).currentFrameLabel;
-         if(!_loc1_)
+         var targets:Array = this.getAnimationTreeTargets(this.mCurrentAnimation);
+         var clip:MovieClip = null;
+         var label:String = null;
+         var i:int = 0;
+         while(i < targets.length)
          {
-            _loc2_ = 0;
-            while(_loc2_ < (this.mAnimations[this.mCurrentAnimation] as MovieClip).numChildren)
+            clip = targets[i] as MovieClip;
+            if(clip)
             {
-               _loc3_ = (this.mAnimations[this.mCurrentAnimation] as MovieClip).getChildAt(_loc2_) as MovieClip;
-               if(_loc3_)
+               label = clip.currentFrameLabel;
+               if(label)
                {
-                  _loc1_ = _loc3_.currentFrameLabel;
-                  if(_loc1_)
-                  {
-                     break;
-                  }
-                  _loc4_ = 0;
-                  while(_loc4_ < _loc3_.numChildren)
-                  {
-                     if(_loc5_ = _loc3_.getChildAt(_loc4_) as MovieClip)
-                     {
-                        _loc1_ = _loc5_.currentFrameLabel;
-                        if(_loc1_)
-                        {
-                           break;
-                        }
-                        _loc6_ = 0;
-                        while(_loc6_ < _loc5_.numChildren)
-                        {
-                           if(_loc7_ = _loc5_.getChildAt(_loc6_) as MovieClip)
-                           {
-                              _loc1_ = _loc7_.currentFrameLabel;
-                              if(_loc1_)
-                              {
-                                 return _loc1_;
-                              }
-                           }
-                           _loc6_++;
-                        }
-                     }
-                     _loc4_++;
-                  }
+                  return label;
                }
-               _loc2_++;
             }
-         }
-         if(_loc1_)
-         {
-            return _loc1_;
+            i++;
          }
          return "";
       }
-      
+
       protected function hasIdleAnimation() : Boolean
       {
          return false;
       }
-      
+
       public function applyOnAllAnimations(param1:Function) : void
       {
-         var _loc2_:int = 0;
-         var _loc3_:MovieClip = null;
+         var i:int = 0;
+         var animation:MovieClip = null;
          if(this.mAnimations[this.mCurrentAnimation])
          {
-            _loc2_ = 0;
-            while(_loc2_ < this.mAnimations.length)
+            while(i < this.mAnimations.length)
             {
-               _loc3_ = this.mAnimations[_loc2_];
-               if(_loc3_)
+               animation = this.mAnimations[i];
+               if(animation)
                {
-                  param1(_loc3_);
+                  param1(animation);
                }
-               _loc2_++;
+               i++;
             }
          }
       }
-      
+
       public function playCurrentAnimation() : void
       {
-         var _loc2_:MovieClip = null;
-         var _loc3_:int = 0;
-         var _loc4_:MovieClip = null;
-         var _loc5_:int = 0;
-         var _loc6_:MovieClip = null;
          this.mIsPlaying = true;
          smPlayCalls++;
          this.emitAnimationStats(false);
-         (this.mAnimations[this.mCurrentAnimation] as MovieClip).gotoAndPlay(1);
-         var _loc1_:int = 0;
-         while(_loc1_ < (this.mAnimations[this.mCurrentAnimation] as MovieClip).numChildren)
+         var targets:Array = this.getAnimationTreeTargets(this.mCurrentAnimation);
+         var clip:MovieClip = null;
+         var i:int = 0;
+         while(i < targets.length)
          {
-            _loc2_ = (this.mAnimations[this.mCurrentAnimation] as MovieClip).getChildAt(_loc1_) as MovieClip;
-            if(_loc2_)
+            clip = targets[i] as MovieClip;
+            if(clip)
             {
-               _loc2_.gotoAndPlay(1);
-               _loc3_ = 0;
-               while(_loc3_ < _loc2_.numChildren)
-               {
-                  if(_loc4_ = _loc2_.getChildAt(_loc3_) as MovieClip)
-                  {
-                     _loc4_.gotoAndPlay(1);
-                     _loc5_ = 0;
-                     while(_loc5_ < _loc4_.numChildren)
-                     {
-                        if(_loc6_ = _loc4_.getChildAt(_loc5_) as MovieClip)
-                        {
-                           _loc6_.gotoAndPlay(1);
-                        }
-                        _loc5_++;
-                     }
-                  }
-                  _loc3_++;
-               }
+               clip.gotoAndPlay(1);
             }
-            _loc1_++;
+            i++;
          }
       }
-      
+
       public function stopCurrentAnimation() : void
       {
-         var _loc2_:MovieClip = null;
-         var _loc3_:int = 0;
-         var _loc4_:MovieClip = null;
-         var _loc5_:int = 0;
-         var _loc6_:MovieClip = null;
          this.mIsPlaying = false;
-         (this.mAnimations[this.mCurrentAnimation] as MovieClip).gotoAndStop(1);
-         var _loc1_:int = 0;
-         while(_loc1_ < (this.mAnimations[this.mCurrentAnimation] as MovieClip).numChildren)
+         var targets:Array = this.getAnimationTreeTargets(this.mCurrentAnimation);
+         var clip:MovieClip = null;
+         var i:int = 0;
+         while(i < targets.length)
          {
-            _loc2_ = (this.mAnimations[this.mCurrentAnimation] as MovieClip).getChildAt(_loc1_) as MovieClip;
-            if(_loc2_)
+            clip = targets[i] as MovieClip;
+            if(clip)
             {
-               _loc2_.gotoAndStop(1);
-               _loc3_ = 0;
-               while(_loc3_ < _loc2_.numChildren)
-               {
-                  if(_loc4_ = _loc2_.getChildAt(_loc3_) as MovieClip)
-                  {
-                     _loc4_.gotoAndStop(1);
-                     _loc5_ = 0;
-                     while(_loc5_ < _loc4_.numChildren)
-                     {
-                        if(_loc6_ = _loc4_.getChildAt(_loc5_) as MovieClip)
-                        {
-                           _loc6_.gotoAndStop(1);
-                        }
-                        _loc5_++;
-                     }
-                  }
-                  _loc3_++;
-               }
+               clip.gotoAndStop(1);
             }
-            _loc1_++;
+            i++;
          }
       }
-      
+
       public function enterFrame(param1:Event) : void
       {
-         var _loc2_:MovieClip = param1.target as MovieClip;
-         if(_loc2_.currentFrame == _loc2_.totalFrames)
+         var clip:MovieClip = param1.target as MovieClip;
+         if(clip.currentFrame == clip.totalFrames)
          {
-            (param1.target as MovieClip).stop();
-            (param1.target as MovieClip).removeEventListener(Event.ENTER_FRAME,this.enterFrame);
+            clip.stop();
+            clip.removeEventListener(Event.ENTER_FRAME,this.enterFrame);
          }
       }
-      
+
       private function stopAnim(param1:DisplayObject, param2:Array) : void
       {
          if(param1 is MovieClip)
@@ -513,7 +494,7 @@ package game.characters
             (param1 as MovieClip).gotoAndStop(1);
          }
       }
-      
+
       public function destroy() : void
       {
          if(!this.mDiagnosticsDestroyed)
@@ -525,32 +506,33 @@ package game.characters
             }
             this.emitAnimationStats(false);
          }
-         var _loc1_:String = null;
-         var _loc2_:String = null;
-         var _loc3_:MovieClip = null;
-         for each(_loc1_ in this.mLoadingCallbackEventTypes)
+         var callback:String = null;
+         var key:String = null;
+         var animation:MovieClip = null;
+         for each(callback in this.mLoadingCallbackEventTypes)
          {
-            if(_loc1_ != null)
+            if(callback != null)
             {
-               DCResourceManager.getInstance().removeEventListener(_loc1_,this.LoadingFinished);
+               DCResourceManager.getInstance().removeEventListener(callback,this.LoadingFinished);
             }
          }
-         for(_loc2_ in this.mAnimations)
+         for(key in this.mAnimations)
          {
-            _loc3_ = this.mAnimations[_loc2_];
-            if(_loc3_)
+            animation = this.mAnimations[key];
+            if(animation)
             {
-               Utils.CallForAllChildren(_loc3_,this.stopAnim,null);
-               if(_loc3_.parent)
+               Utils.CallForAllChildren(animation,this.stopAnim,null);
+               if(animation.parent)
                {
-                  _loc3_.parent.removeChild(_loc3_);
+                  animation.parent.removeChild(animation);
                }
             }
-            this.mAnimations[_loc2_] = null;
+            this.mAnimations[key] = null;
          }
          this.mAnimations = null;
          this.mDirectionTargets = null;
-         _loc3_ = null;
+         this.mPlaybackTargets = null;
+         animation = null;
       }
    }
 }

@@ -19,63 +19,47 @@ package com.dchoc.graphics
    import flash.utils.Dictionary;
    import flash.utils.getDefinitionByName;
    import flash.utils.getTimer;
-   
+
    public class DCResourceManager extends EventDispatcher
    {
-      
       private static var mInstance:DCResourceManager;
-      
       private static var mAllowInstantiation:Boolean;
-      
+
       public static const EVENT_COMPLETE_SINGLE_FILE:String = "_Complete";
-      
       public static const USE_CONTEXT:Boolean = true;
-       
-      
+
       private var mList:Object;
-      
       private var mType:Object;
-      
       private var mLoaded:Object;
-      
       private var mAffectsLoadingScreen:Object;
-      
       private var mResolver:Dictionary;
-      
       private var mUnloader:Object;
-      
       private var mTotalSize:int;
-      
       private var mFileCountToLoad:int;
-      
       private var mTotalFileCountToLoad:int;
-      
       private var mLoadedPolicyFiles:Array;
 
       private var mSwfLookupCount:int = 0;
-
       private var mSwfLookupMissCount:int = 0;
-
       private var mSwfAliasRiskCount:int = 0;
-
       private var mSwfAliasRiskLogged:Object = new Object();
-
       private var mSwfClassResolveLogged:Object = new Object();
-
       private var mSwfLoadRequestLogged:Object = new Object();
-
       private var mAssetLoadRequestLogged:Object = new Object();
-
       private var mAssetLoadCompleteLogged:Object = new Object();
-
       private var mSwfClassResourceDomainCount:int = 0;
-
       private var mSwfClassFallbackCount:int = 0;
-
       private var mSwfClassHitCount:int = 0;
-
+      private var mSwfClassCacheHitCount:int = 0;
       private var mLastSwfStatsAt:int = 0;
-      
+
+      // Child-SWF symbols are embedded in the root mobile SWF. Preserve the original
+      // logical resource identity in the cache key so reflection is deterministic and
+      // repeated animation materialization does not repeatedly traverse AVM2 metadata.
+      private var mSwfClassCache:Object = new Object();
+      private var mSwfGlobalSymbolOwner:Object = new Object();
+      private var mSwfGlobalSymbolCollisionLogged:Object = new Object();
+
       public function DCResourceManager()
       {
          this.mList = new Object();
@@ -85,13 +69,16 @@ package com.dchoc.graphics
          this.mResolver = new Dictionary(true);
          this.mUnloader = new Object();
          this.mLoadedPolicyFiles = new Array();
+         this.mSwfClassCache = new Object();
+         this.mSwfGlobalSymbolOwner = new Object();
+         this.mSwfGlobalSymbolCollisionLogged = new Object();
          super();
          if(!mAllowInstantiation)
          {
             throw new Error("ERROR: DCResourceManager Error: Instantiation failed: Use DCResourceManager.getInstance() instead of new.");
          }
       }
-      
+
       public static function getInstance() : DCResourceManager
       {
          if(mInstance == null)
@@ -102,7 +89,7 @@ package com.dchoc.graphics
          }
          return mInstance;
       }
-      
+
       public function unsetResources() : void
       {
          try
@@ -127,17 +114,20 @@ package com.dchoc.graphics
          this.mAffectsLoadingScreen = new Object();
          this.mResolver = new Dictionary(true);
          this.mUnloader = new Object();
+         this.mSwfClassCache = new Object();
+         this.mSwfGlobalSymbolOwner = new Object();
+         this.mSwfGlobalSymbolCollisionLogged = new Object();
       }
-      
+
       public function load(param1:String, param2:String = "", param3:String = null, param4:Boolean = true, param5:Boolean = false) : Boolean
       {
-         var _loc6_:int = param1.lastIndexOf(".");
-         var _loc7_:String = param1.slice(_loc6_ + 1);
+         var extensionIndex:int = param1.lastIndexOf(".");
+         var extension:String = param1.slice(extensionIndex + 1);
          if(this.mLoaded[param2])
          {
             return false;
          }
-         if(_loc7_ == "swf")
+         if(extension == "swf")
          {
             if(!this.mSwfLoadRequestLogged[param2])
             {
@@ -152,10 +142,10 @@ package com.dchoc.graphics
          }
          if(this.mType[param2] == null)
          {
-            if(_loc7_ != "swf" && !this.mAssetLoadRequestLogged[param2])
+            if(extension != "swf" && !this.mAssetLoadRequestLogged[param2])
             {
                this.mAssetLoadRequestLogged[param2] = true;
-               Utils.DiagEvent("ASSET_LOAD_REQUEST","resource=" + param2 + ";url=" + param1 + ";type=" + (param3 ? param3 : _loc7_));
+               Utils.DiagEvent("ASSET_LOAD_REQUEST","resource=" + param2 + ";url=" + param1 + ";type=" + (param3 ? param3 : extension));
             }
             this.loadFromFile(param1,param2,param3,param4,param5);
             if(param4)
@@ -166,43 +156,44 @@ package com.dchoc.graphics
          }
          return true;
       }
-      
+
       private function loadTextFile(param1:String, param2:String, param3:String = null) : void
       {
-         var _loc4_:URLRequest = new URLRequest(param1);
-         var _loc5_:URLLoaderWithName;
-         (_loc5_ = new URLLoaderWithName()).dataFormat = URLLoaderDataFormat.TEXT;
-         _loc5_.load(_loc4_);
-         this.mResolver[_loc5_.name] = new ResourceLoaderObject(param2,_loc4_,null);
-         this.mList[param2] = _loc5_;
-         this.mUnloader[param2] = _loc5_;
-         _loc5_.addEventListener(Event.COMPLETE,this.completeTextLoad,false,0,true);
-         _loc5_.addEventListener(ProgressEvent.PROGRESS,this.progressLoad,false,0,true);
-         _loc5_.addEventListener(IOErrorEvent.IO_ERROR,this.errorTextLoad,false,0,true);
+         var request:URLRequest = new URLRequest(param1);
+         var loader:URLLoaderWithName = new URLLoaderWithName();
+         loader.dataFormat = URLLoaderDataFormat.TEXT;
+         loader.load(request);
+         this.mResolver[loader.name] = new ResourceLoaderObject(param2,request,null);
+         this.mList[param2] = loader;
+         this.mUnloader[param2] = loader;
+         loader.addEventListener(Event.COMPLETE,this.completeTextLoad,false,0,true);
+         loader.addEventListener(ProgressEvent.PROGRESS,this.progressLoad,false,0,true);
+         loader.addEventListener(IOErrorEvent.IO_ERROR,this.errorTextLoad,false,0,true);
       }
-      
+
       private function loadBinFile(param1:String, param2:String, param3:String = null) : void
       {
-         var _loc4_:URLRequest = new URLRequest(param1);
-         var _loc5_:URLLoaderWithName;
-         (_loc5_ = new URLLoaderWithName()).dataFormat = URLLoaderDataFormat.BINARY;
-         _loc5_.load(_loc4_);
-         this.mResolver[_loc5_.name] = new ResourceLoaderObject(param2,_loc4_,null);
-         this.mList[param2] = _loc5_;
-         this.mUnloader[param2] = _loc5_;
-         _loc5_.addEventListener(Event.COMPLETE,this.completeTextLoad,false,0,true);
-         _loc5_.addEventListener(ProgressEvent.PROGRESS,this.progressLoad,false,0,true);
-         _loc5_.addEventListener(IOErrorEvent.IO_ERROR,this.errorTextLoad,false,0,true);
+         var request:URLRequest = new URLRequest(param1);
+         var loader:URLLoaderWithName = new URLLoaderWithName();
+         loader.dataFormat = URLLoaderDataFormat.BINARY;
+         loader.load(request);
+         this.mResolver[loader.name] = new ResourceLoaderObject(param2,request,null);
+         this.mList[param2] = loader;
+         this.mUnloader[param2] = loader;
+         loader.addEventListener(Event.COMPLETE,this.completeTextLoad,false,0,true);
+         loader.addEventListener(ProgressEvent.PROGRESS,this.progressLoad,false,0,true);
+         loader.addEventListener(IOErrorEvent.IO_ERROR,this.errorTextLoad,false,0,true);
       }
-      
+
       private function loadFromFile(param1:String, param2:String, param3:String = null, param4:Boolean = true, param5:Boolean = false) : void
       {
-         var _loc9_:int = 0;
+         var extensionIndex:int = 0;
          if(param3 == null || param3 == "")
          {
-            if((_loc9_ = param1.lastIndexOf(".")) != -1)
+            extensionIndex = param1.lastIndexOf(".");
+            if(extensionIndex != -1)
             {
-               param3 = param1.substring(_loc9_);
+               param3 = param1.substring(extensionIndex);
             }
          }
          this.mLoaded[param2] = false;
@@ -221,45 +212,45 @@ package com.dchoc.graphics
                   this.loadBinFile(param1,param2,param3);
                   return;
                }
-               var _loc6_:URLRequest = new URLRequest(param1);
-               var _loc7_:Loader = new Loader();
-               this.mList[param2] = _loc7_;
-               this.mUnloader[param2] = _loc7_;
-               _loc7_.contentLoaderInfo.addEventListener(Event.COMPLETE,this.completeLoad,false,0,true);
-               _loc7_.contentLoaderInfo.addEventListener(ProgressEvent.PROGRESS,this.progressLoad,false,0,true);
-               _loc7_.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.errorLoad,false,0,true);
-               var _loc8_:LoaderContext = null;
+               var request:URLRequest = new URLRequest(param1);
+               var loader:Loader = new Loader();
+               this.mList[param2] = loader;
+               this.mUnloader[param2] = loader;
+               loader.contentLoaderInfo.addEventListener(Event.COMPLETE,this.completeLoad,false,0,true);
+               loader.contentLoaderInfo.addEventListener(ProgressEvent.PROGRESS,this.progressLoad,false,0,true);
+               loader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.errorLoad,false,0,true);
+               var context:LoaderContext = null;
                if(param3 == ".swf")
                {
                   if(param5)
                   {
-                     _loc8_ = new LoaderContext(true,ApplicationDomain.currentDomain);
+                     context = new LoaderContext(true,ApplicationDomain.currentDomain);
                   }
-                  _loc7_.load(_loc6_,_loc8_);
+                  loader.load(request,context);
                }
                else
                {
                   if(USE_CONTEXT)
                   {
-                     _loc8_ = new LoaderContext(true,ApplicationDomain.currentDomain);
+                     context = new LoaderContext(true,ApplicationDomain.currentDomain);
                   }
-                  _loc7_.load(_loc6_,_loc8_);
+                  loader.load(request,context);
                }
-               this.mResolver[_loc7_.contentLoaderInfo] = new ResourceLoaderObject(param2,_loc6_,_loc8_);
+               this.mResolver[loader.contentLoaderInfo] = new ResourceLoaderObject(param2,request,context);
                return;
          }
       }
-      
+
       public function getLoadedSWFAppDomain(param1:String) : ApplicationDomain
       {
-         var _loc2_:Object = this.mUnloader[param1];
-         if(!(_loc2_ is Loader))
+         var unloader:Object = this.mUnloader[param1];
+         if(!(unloader is Loader))
          {
             return null;
          }
-         return (_loc2_ as Loader).contentLoaderInfo.applicationDomain;
+         return (unloader as Loader).contentLoaderInfo.applicationDomain;
       }
-      
+
       private function emitSwfResourceStats(param1:Boolean = false) : void
       {
          var now:int = getTimer();
@@ -268,7 +259,27 @@ package com.dchoc.graphics
             return;
          }
          this.mLastSwfStatsAt = now;
-         Utils.DiagEvent("SWF_RESOURCE_STATS","lookups=" + this.mSwfLookupCount + ";hits=" + this.mSwfClassHitCount + ";resource_domain=" + this.mSwfClassResourceDomainCount + ";global_fallback=" + this.mSwfClassFallbackCount + ";misses=" + this.mSwfLookupMissCount + ";alias_risk=" + this.mSwfAliasRiskCount + ";pending=" + this.mFileCountToLoad + ";total_requests=" + this.mTotalFileCountToLoad);
+         Utils.DiagEvent("SWF_RESOURCE_STATS","lookups=" + this.mSwfLookupCount + ";hits=" + this.mSwfClassHitCount + ";cache_hits=" + this.mSwfClassCacheHitCount + ";resource_domain=" + this.mSwfClassResourceDomainCount + ";global_fallback=" + this.mSwfClassFallbackCount + ";misses=" + this.mSwfLookupMissCount + ";alias_risk=" + this.mSwfAliasRiskCount + ";pending=" + this.mFileCountToLoad + ";total_requests=" + this.mTotalFileCountToLoad);
+      }
+
+      private function recordGlobalSymbolOwner(param1:String, param2:String) : void
+      {
+         var owner:String = this.mSwfGlobalSymbolOwner[param2] as String;
+         if(owner == null || owner.length == 0)
+         {
+            this.mSwfGlobalSymbolOwner[param2] = param1 == null ? "" : param1;
+            return;
+         }
+         if(owner == param1)
+         {
+            return;
+         }
+         var collisionKey:String = owner + "|" + param1 + "|" + param2;
+         if(!this.mSwfGlobalSymbolCollisionLogged[collisionKey])
+         {
+            this.mSwfGlobalSymbolCollisionLogged[collisionKey] = true;
+            Utils.DiagEvent("SWF_EMBEDDED_SYMBOL_COLLISION","symbol=" + param2 + ";first_resource=" + owner + ";next_resource=" + param1 + ";resolution=global_same_class");
+         }
       }
 
       public function getSWFClass(param1:String, param2:String = null) : Class
@@ -282,6 +293,7 @@ package com.dchoc.graphics
          var resolveKey:String = null;
          var resolvedName:String = null;
          var startedAt:int = getTimer();
+
          if(!param2)
          {
             if(!param1)
@@ -296,7 +308,18 @@ package com.dchoc.graphics
          {
             _loc3_ = param2;
          }
+
          this.mSwfLookupCount++;
+         var cacheKey:String = (param1 == null ? "" : param1) + "|" + _loc3_;
+         var cached:Class = this.mSwfClassCache[cacheKey] as Class;
+         if(cached != null)
+         {
+            this.mSwfClassCacheHitCount++;
+            this.mSwfClassHitCount++;
+            this.emitSwfResourceStats(false);
+            return cached;
+         }
+
          if(param1 != null && param1.indexOf("swf/units_opfor") == 0 && _loc3_ != null && _loc3_.indexOf("pvp_") != 0 && _loc3_.indexOf("_airdrop") < 0)
          {
             this.mSwfAliasRiskCount++;
@@ -307,6 +330,7 @@ package com.dchoc.graphics
                Utils.DiagEvent("SWF_ALIAS_RISK","resource=" + param1 + ";symbol=" + _loc3_ + ";lookup=" + this.mSwfLookupCount);
             }
          }
+
          resourceDomain = this.getLoadedSWFAppDomain(param1);
          if(resourceDomain != null)
          {
@@ -328,12 +352,14 @@ package com.dchoc.graphics
                Utils.DiagEvent("SWF_RESOURCE_DOMAIN_ERROR","resource=" + param1 + ";symbol=" + _loc3_ + ";error=" + domainError.errorID);
             }
          }
+
          if(resolved == null)
          {
             try
             {
                resolved = getDefinitionByName(_loc3_) as Class;
                this.mSwfClassFallbackCount++;
+               this.recordGlobalSymbolOwner(param1,_loc3_);
             }
             catch(error:Error)
             {
@@ -343,15 +369,17 @@ package com.dchoc.graphics
                throw error;
             }
          }
+
          if(resolved != null)
          {
             this.mSwfClassHitCount++;
+            this.mSwfClassCache[cacheKey] = resolved;
             resolvedName = String(resolved);
             resolveKey = param1 + "|" + _loc3_ + "|" + domainMode;
             if(!this.mSwfClassResolveLogged[resolveKey])
             {
                this.mSwfClassResolveLogged[resolveKey] = true;
-               Utils.DiagEvent("SWF_CLASS_RESOLVED","resource=" + param1 + ";symbol=" + _loc3_ + ";resolved_class=" + resolvedName + ";domain=" + domainMode + ";elapsed_ms=" + (getTimer() - startedAt));
+               Utils.DiagEvent("SWF_CLASS_RESOLVED","resource=" + param1 + ";symbol=" + _loc3_ + ";resolved_class=" + resolvedName + ";domain=" + domainMode + ";cache_key=" + cacheKey + ";elapsed_ms=" + (getTimer() - startedAt));
                if(resolvedName.indexOf(_loc3_) < 0)
                {
                   Utils.DiagEvent("SWF_CLASS_IDENTITY_MISMATCH","resource=" + param1 + ";symbol=" + _loc3_ + ";resolved_class=" + resolvedName + ";domain=" + domainMode);
@@ -361,11 +389,11 @@ package com.dchoc.graphics
          this.emitSwfResourceStats(false);
          return resolved;
       }
-      
+
       public function get(param1:String) : *
       {
-         var _loc2_:BitmapData = null;
-         var _loc3_:Sprite = null;
+         var bitmapData:BitmapData = null;
+         var sprite:Sprite = null;
          if(this.mList[param1] == null)
          {
             if(Config.DEBUG_MODE)
@@ -395,13 +423,13 @@ package com.dchoc.graphics
             case "MovieClip":
                return this.mList[param1] as MovieClip;
             case "Sprite":
-               _loc2_ = Bitmap(this.mList[param1]).bitmapData;
-               _loc3_ = new Sprite();
-               _loc3_.addChild(new Bitmap(_loc2_));
-               return _loc3_;
+               bitmapData = Bitmap(this.mList[param1]).bitmapData;
+               sprite = new Sprite();
+               sprite.addChild(new Bitmap(bitmapData));
+               return sprite;
             case "Bitmap":
-               _loc2_ = Bitmap(this.mList[param1]).bitmapData;
-               return new Bitmap(_loc2_);
+               bitmapData = Bitmap(this.mList[param1]).bitmapData;
+               return new Bitmap(bitmapData);
             case ".xml":
                return new XML(this.mList[param1]);
             case ".txt":
@@ -412,7 +440,7 @@ package com.dchoc.graphics
                return null;
          }
       }
-      
+
       public function unload(param1:String) : void
       {
          if(param1 == "")
@@ -452,53 +480,53 @@ package com.dchoc.graphics
          delete this.mLoaded[param1];
          delete this.mType[param1];
       }
-      
+
       public function unloadAll() : void
       {
-         var _loc1_:String = null;
-         for(_loc1_ in this.mList)
+         var key:String = null;
+         for(key in this.mList)
          {
-            this.unload(_loc1_);
+            this.unload(key);
          }
       }
-      
+
       private function progressLoad(param1:ProgressEvent) : void
       {
-         var _loc2_:String = null;
+         var resource:String = null;
          if(param1.target is Loader)
          {
-            _loc2_ = String(this.mResolver[param1.target].mResourceName);
+            resource = String(this.mResolver[param1.target].mResourceName);
             if(Config.DEBUG_MODE)
             {
             }
          }
          this.updateProgess();
       }
-      
+
       private function updateProgess() : void
       {
-         var _loc1_:String = null;
+         var key:String = null;
          this.mTotalSize = 0;
-         for(_loc1_ in this.mList)
+         for(key in this.mList)
          {
-            if(this.mUnloader[_loc1_] is Loader)
+            if(this.mUnloader[key] is Loader)
             {
-               this.mTotalSize += Loader(this.mUnloader[_loc1_]).contentLoaderInfo.bytesTotal;
+               this.mTotalSize += Loader(this.mUnloader[key]).contentLoaderInfo.bytesTotal;
             }
             else
             {
-               this.mTotalSize += URLLoaderWithName(this.mUnloader[_loc1_]).bytesTotal;
+               this.mTotalSize += URLLoaderWithName(this.mUnloader[key]).bytesTotal;
             }
          }
       }
-      
+
       private function completeLoad(param1:Event) : void
       {
-         var _loc2_:String = String(this.mResolver[param1.target].mResourceName);
+         var resource:String = String(this.mResolver[param1.target].mResourceName);
          if(Config.DEBUG_MODE)
          {
          }
-         var _loc3_:Loader = param1.target.loader;
+         var loader:Loader = param1.target.loader;
          param1.target.removeEventListener(Event.COMPLETE,this.completeLoad);
          param1.target.removeEventListener(ProgressEvent.PROGRESS,this.progressLoad);
          param1.target.removeEventListener(IOErrorEvent.IO_ERROR,this.errorLoad);
@@ -510,21 +538,21 @@ package com.dchoc.graphics
          }
          this.finalizeLoading(param1.target as LoaderInfo);
       }
-      
+
       private function finalizeLoading(param1:LoaderInfo) : void
       {
-         var _loc2_:String = String(this.mResolver[param1].mResourceName);
-         this.mList[_loc2_] = param1.content;
-         this.mLoaded[_loc2_] = true;
-         if(!this.mAssetLoadCompleteLogged[_loc2_])
+         var resource:String = String(this.mResolver[param1].mResourceName);
+         this.mList[resource] = param1.content;
+         this.mLoaded[resource] = true;
+         if(!this.mAssetLoadCompleteLogged[resource])
          {
-            this.mAssetLoadCompleteLogged[_loc2_] = true;
-            Utils.DiagEvent("ASSET_LOAD_COMPLETE","resource=" + _loc2_ + ";type=" + this.mType[_loc2_] + ";bytes=" + param1.bytesLoaded + ";width=" + (param1.content ? param1.content.width : 0) + ";height=" + (param1.content ? param1.content.height : 0));
+            this.mAssetLoadCompleteLogged[resource] = true;
+            Utils.DiagEvent("ASSET_LOAD_COMPLETE","resource=" + resource + ";type=" + this.mType[resource] + ";bytes=" + param1.bytesLoaded + ";width=" + (param1.content ? param1.content.width : 0) + ";height=" + (param1.content ? param1.content.height : 0));
          }
          delete this.mResolver[param1];
-         this.mUnloader[_loc2_] = param1.loader;
-         dispatchEvent(new Event(_loc2_ + "_Complete"));
-         if(this.mAffectsLoadingScreen[_loc2_])
+         this.mUnloader[resource] = param1.loader;
+         dispatchEvent(new Event(resource + "_Complete"));
+         if(this.mAffectsLoadingScreen[resource])
          {
             --this.mFileCountToLoad;
             if(this.mFileCountToLoad == 0)
@@ -533,40 +561,40 @@ package com.dchoc.graphics
             }
          }
       }
-      
+
       private function loadSecurityPolicyFile(param1:ResourceLoaderObject) : void
       {
-         var _loc2_:String = param1.mLoaderInfo.url;
-         var _loc3_:Array = _loc2_.split("/");
-         _loc2_ = _loc3_[0] + "//" + _loc3_[2];
-         if(this.mLoadedPolicyFiles.indexOf(_loc2_) < 0)
+         var url:String = param1.mLoaderInfo.url;
+         var parts:Array = url.split("/");
+         url = parts[0] + "//" + parts[2];
+         if(this.mLoadedPolicyFiles.indexOf(url) < 0)
          {
-            this.mLoadedPolicyFiles.push(_loc2_);
-            Security.loadPolicyFile(_loc2_ + "/crossdomain.xml");
+            this.mLoadedPolicyFiles.push(url);
+            Security.loadPolicyFile(url + "/crossdomain.xml");
          }
          param1.startPolling(this.finalizeLoading);
       }
-      
+
       private function completeTextLoad(param1:Event) : void
       {
-         var _loc2_:URLLoaderWithName = URLLoaderWithName(param1.target);
-         var _loc3_:String = String(this.mResolver[_loc2_.name].mResourceName);
+         var loader:URLLoaderWithName = URLLoaderWithName(param1.target);
+         var resource:String = String(this.mResolver[loader.name].mResourceName);
          if(Config.DEBUG_MODE)
          {
          }
-         _loc2_.removeEventListener(Event.COMPLETE,this.completeTextLoad);
-         _loc2_.removeEventListener(ProgressEvent.PROGRESS,this.progressLoad);
-         _loc2_.removeEventListener(IOErrorEvent.IO_ERROR,this.errorTextLoad);
-         this.mList[_loc3_] = _loc2_.data;
-         this.mLoaded[_loc3_] = true;
-         if(_loc3_.indexOf("swf/") == 0)
+         loader.removeEventListener(Event.COMPLETE,this.completeTextLoad);
+         loader.removeEventListener(ProgressEvent.PROGRESS,this.progressLoad);
+         loader.removeEventListener(IOErrorEvent.IO_ERROR,this.errorTextLoad);
+         this.mList[resource] = loader.data;
+         this.mLoaded[resource] = true;
+         if(resource.indexOf("swf/") == 0)
          {
-            Utils.DiagEvent("SWF_LOAD_COMPLETE","resource=" + _loc3_ + ";mode=embedded_symbols;bytes=" + _loc2_.bytesLoaded);
+            Utils.DiagEvent("SWF_LOAD_COMPLETE","resource=" + resource + ";mode=embedded_symbols;bytes=" + loader.bytesLoaded);
          }
-         delete this.mResolver[_loc2_.name];
-         this.mUnloader[_loc3_] = _loc2_;
-         dispatchEvent(new Event(_loc3_ + EVENT_COMPLETE_SINGLE_FILE));
-         if(this.mAffectsLoadingScreen[_loc3_])
+         delete this.mResolver[loader.name];
+         this.mUnloader[resource] = loader;
+         dispatchEvent(new Event(resource + EVENT_COMPLETE_SINGLE_FILE));
+         if(this.mAffectsLoadingScreen[resource])
          {
             --this.mFileCountToLoad;
             if(this.mFileCountToLoad == 0)
@@ -575,55 +603,55 @@ package com.dchoc.graphics
             }
          }
       }
-      
+
       private function errorLoad(param1:IOErrorEvent) : void
       {
          if(Config.DEBUG_MODE)
          {
          }
-         var _loc2_:ResourceLoaderObject = this.mResolver[param1.target];
-         var _loc3_:Loader = param1.target.loader;
-         if(_loc2_.mRetryCount > 1)
+         var resourceObject:ResourceLoaderObject = this.mResolver[param1.target];
+         var loader:Loader = param1.target.loader;
+         if(resourceObject.mRetryCount > 1)
          {
-            Utils.DiagEvent("ASSET_LOAD_ERROR","resource=" + _loc2_.mResourceName + ";url=" + _loc2_.mURL.url + ";retry=" + _loc2_.mRetryCount + ";terminal=true;text=" + param1.text);
+            Utils.DiagEvent("ASSET_LOAD_ERROR","resource=" + resourceObject.mResourceName + ";url=" + resourceObject.mURL.url + ";retry=" + resourceObject.mRetryCount + ";terminal=true;text=" + param1.text);
             --this.mFileCountToLoad;
          }
          else
          {
-            Utils.DiagEvent("ASSET_LOAD_ERROR","resource=" + _loc2_.mResourceName + ";url=" + _loc2_.mURL.url + ";retry=" + _loc2_.mRetryCount + ";terminal=false;text=" + param1.text);
-            _loc3_.load(_loc2_.mURL,_loc2_.mLoaderContext);
-            ++_loc2_.mRetryCount;
+            Utils.DiagEvent("ASSET_LOAD_ERROR","resource=" + resourceObject.mResourceName + ";url=" + resourceObject.mURL.url + ";retry=" + resourceObject.mRetryCount + ";terminal=false;text=" + param1.text);
+            loader.load(resourceObject.mURL,resourceObject.mLoaderContext);
+            ++resourceObject.mRetryCount;
          }
       }
-      
+
       private function errorTextLoad(param1:IOErrorEvent) : void
       {
          if(Config.DEBUG_MODE)
          {
          }
-         var _loc2_:URLLoaderWithName = URLLoaderWithName(param1.target);
-         var _loc3_:ResourceLoaderObject = this.mResolver[_loc2_.name];
-         if(_loc3_.mRetryCount > 1)
+         var loader:URLLoaderWithName = URLLoaderWithName(param1.target);
+         var resourceObject:ResourceLoaderObject = this.mResolver[loader.name];
+         if(resourceObject.mRetryCount > 1)
          {
             --this.mFileCountToLoad;
          }
          else
          {
-            _loc2_.load(_loc3_.mURL);
-            ++_loc3_.mRetryCount;
+            loader.load(resourceObject.mURL);
+            ++resourceObject.mRetryCount;
          }
       }
-      
+
       public function isAddedToLoadingList(param1:String) : Boolean
       {
          return this.mList[param1] != null;
       }
-      
+
       public function getFileCountToLoad() : int
       {
          return this.mFileCountToLoad;
       }
-      
+
       public function isLoaded(param1:String) : Boolean
       {
          if(this.mLoaded[param1] != null)
@@ -632,7 +660,7 @@ package com.dchoc.graphics
          }
          return false;
       }
-      
+
       public function getLoadingPercent() : int
       {
          if(Config.DEBUG_MODE)
