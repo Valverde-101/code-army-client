@@ -48,7 +48,22 @@ package game.actions
 
       private function executeFallback() : void
       {
-         var target:Renderable = mGC ? mGC.mCharacter as Renderable : null;
+         var target:Renderable = null;
+         var targetSource:String = "none";
+         if(mGC)
+         {
+            if(mGC.mCharacter)
+            {
+               target = mGC.mCharacter as Renderable;
+               targetSource = "character";
+            }
+            else if(mGC.mObject)
+            {
+               target = mGC.mObject as Renderable;
+               targetSource = "object";
+            }
+         }
+         Utils.DiagEvent("PVP_FIREMISSION_PHASE","phase=fallback_select;mission=" + (mItem ? mItem.mId : "null") + ";cell=" + (mGC ? mGC.mPosI + "," + mGC.mPosJ : "null") + ";target_source=" + targetSource + ";target=" + (target && target.mItem ? target.mItem.mId : "none"));
          if(target is PlayerUnit)
          {
             damageOwnUnit(PlayerUnit(target));
@@ -69,7 +84,7 @@ package game.actions
             this.attackUnit(PvPEnemyUnit(target));
          }
          GameState.mInstance.updateGrid();
-         Utils.DiagEvent("PVP_FIREMISSION_FALLBACK","mission=" + (mItem ? mItem.mId : "null") + ";target=" + (target && target.mItem ? target.mItem.mId : "none"));
+         Utils.DiagEvent("PVP_FIREMISSION_FALLBACK","mission=" + (mItem ? mItem.mId : "null") + ";target_source=" + targetSource + ";target=" + (target && target.mItem ? target.mItem.mId : "none") + ";result=" + (target ? "applied" : "no_target"));
       }
       
       override protected function execute() : void
