@@ -145,13 +145,25 @@ try{
   Write-Utf8Bom $tilePath $tile
 
   $scenePath=Join-Path $RepoRoot 'src\game\isometric\IsometricScene.as';$scene=Normalize-Lf ([IO.File]::ReadAllText($scenePath))
-  $scene=Replace-Exact $scene "`t`t`tvar _loc6_: Boolean = false;" "`t`t`tvar _loc6_: Boolean = false;`n`t`t`tvar tilemapRedrawReason:String = \"\";" 'scene_redraw_reason_field'
-  $scene=Replace-Range $scene "`t`t`tif (this.mFog.mUpdateRequired) {" "`t`t`t`t_loc6_ = true;" "`t`t`tif (this.mFog.mUpdateRequired) {`n`t`t`t`t_loc6_ = true;`n`t`t`t`ttilemapRedrawReason = \"fog\";" 'scene_redraw_reason_fog'
-  $scene=Replace-Range $scene "`t`t`tif (this.mGame.mMapData.mUpdateRequired) {" "`t`t`t`t_loc6_ = true;" "`t`t`tif (this.mGame.mMapData.mUpdateRequired) {`n`t`t`t`t_loc6_ = true;`n`t`t`t`ttilemapRedrawReason = tilemapRedrawReason.length > 0 ? tilemapRedrawReason + \"+map\" : \"map\";" 'scene_redraw_reason_map'
-  $oldTelemetry="`t`t`t`tthis.reportSceneSubsystem(\"tilemap_redraw\",getTimer() - perfStart,this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);"
-  $newTelemetry="`t`t`t`tthis.reportSceneSubsystem(\"tilemap_redraw\",getTimer() - perfStart,this.mTilemapGraphic.getLastDrawCellCount());`n`t`t`t`tUtils.DiagEvent(\"TILEMAP_REDRAW_BOUNDS\",\"map=\" + this.mGame.mCurrentMapId + \";reason=\" + tilemapRedrawReason + \";cells=\" + this.mTilemapGraphic.getLastDrawCellCount() + \";bounds=\" + this.mTilemapGraphic.getLastDrawBounds() + \";scale=\" + this.mTilemapGraphic.getLastDrawScale() + \";cache_margin_x=\" + this.mTilemapGraphic.getCameraCacheEffectiveMarginX() + \";cache_margin_y=\" + this.mTilemapGraphic.getCameraCacheEffectiveMarginY());"
+  $sceneReasonOld="`t`t`tvar _loc6_: Boolean = false;"
+  $sceneReasonNew=$sceneReasonOld+"`n`t`t`tvar tilemapRedrawReason:String = `"`";"
+  $scene=Replace-Exact $scene $sceneReasonOld $sceneReasonNew 'scene_redraw_reason_field'
+
+  $fogStart="`t`t`tif (this.mFog.mUpdateRequired) {"
+  $fogEnd="`t`t`t`t_loc6_ = true;"
+  $fogNew=$fogStart+"`n"+$fogEnd+"`n`t`t`t`ttilemapRedrawReason = `"fog`";"
+  $scene=Replace-Range $scene $fogStart $fogEnd $fogNew 'scene_redraw_reason_fog'
+
+  $mapStart="`t`t`tif (this.mGame.mMapData.mUpdateRequired) {"
+  $mapEnd="`t`t`t`t_loc6_ = true;"
+  $mapNew=$mapStart+"`n"+$mapEnd+"`n`t`t`t`ttilemapRedrawReason = tilemapRedrawReason.length > 0 ? tilemapRedrawReason + `"+map`" : `"map`";"
+  $scene=Replace-Range $scene $mapStart $mapEnd $mapNew 'scene_redraw_reason_map'
+
+  $oldTelemetry="`t`t`t`t"+'this.reportSceneSubsystem("tilemap_redraw",getTimer() - perfStart,this.mGame.mMapData.mGrid ? this.mGame.mMapData.mGrid.length : 0);'
+  $newTelemetry="`t`t`t`t"+'this.reportSceneSubsystem("tilemap_redraw",getTimer() - perfStart,this.mTilemapGraphic.getLastDrawCellCount());'+"`n`t`t`t`t"+'Utils.DiagEvent("TILEMAP_REDRAW_BOUNDS","map=" + this.mGame.mCurrentMapId + ";reason=" + tilemapRedrawReason + ";cells=" + this.mTilemapGraphic.getLastDrawCellCount() + ";bounds=" + this.mTilemapGraphic.getLastDrawBounds() + ";scale=" + this.mTilemapGraphic.getLastDrawScale() + ";cache_margin_x=" + this.mTilemapGraphic.getCameraCacheEffectiveMarginX() + ";cache_margin_y=" + this.mTilemapGraphic.getCameraCacheEffectiveMarginY());'
   $scene=Replace-Exact $scene $oldTelemetry $newTelemetry 'scene_actual_redraw_metrics'
   Write-Utf8Bom $scenePath $scene
+
   $tileVerify=[IO.File]::ReadAllText($tilePath);$sceneVerify=[IO.File]::ReadAllText($scenePath)
   foreach($token in @('CAMERA_CACHE_MAX_MARGIN_TILES:int = 5','requestedCacheTilesX','mCameraCacheEffectiveMarginX','getLastDrawCellCount()','limitX:Number')){if(-not $tileVerify.Contains($token)){throw "ANDROID_PERF_OVERLAY=FAIL verify_tile token=$token"}}
   foreach($token in @('tilemapRedrawReason','TILEMAP_REDRAW_BOUNDS','getLastDrawCellCount()')){if(-not $sceneVerify.Contains($token)){throw "ANDROID_PERF_OVERLAY=FAIL verify_scene token=$token"}}
