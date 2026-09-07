@@ -345,11 +345,25 @@ package com.dchoc.graphics
                else
                {
                   Utils.DiagEvent("SWF_RESOURCE_SYMBOL_MISS","resource=" + param1 + ";symbol=" + _loc3_);
+                  if(param1 != null && param1.indexOf("swf/units_opfor") == 0)
+                  {
+                     this.mSwfLookupMissCount++;
+                     Utils.DiagEvent("SWF_OPFOR_STRICT_MISS","resource=" + param1 + ";symbol=" + _loc3_ + ";reason=resource_symbol_missing;global_fallback=blocked");
+                     this.emitSwfResourceStats(true);
+                     return null;
+                  }
                }
             }
             catch(domainError:Error)
             {
                Utils.DiagEvent("SWF_RESOURCE_DOMAIN_ERROR","resource=" + param1 + ";symbol=" + _loc3_ + ";error=" + domainError.errorID);
+               if(param1 != null && param1.indexOf("swf/units_opfor") == 0)
+               {
+                  this.mSwfLookupMissCount++;
+                  Utils.DiagEvent("SWF_OPFOR_STRICT_MISS","resource=" + param1 + ";symbol=" + _loc3_ + ";reason=resource_domain_error;error=" + domainError.errorID + ";global_fallback=blocked");
+                  this.emitSwfResourceStats(true);
+                  return null;
+               }
             }
          }
 
