@@ -99,7 +99,6 @@ package game.gameElements {
 				if(targets && targets.length > 0) targetCell = (targets[Math.floor(Math.random() * targets.length)] as IsometricCharacter).getCell();
 				if(targetCell) {
 					try {
-					{
 						Utils.DiagEvent("PVP_POWERUP_FIREMISSION_PHASE","phase=construct_begin;id=" + param1.mId + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";graphics=" + param1.mFireMissionAnimation + ";cell=" + targetCell.mPosI + "," + targetCell.mPosJ);
 						var fireAction:PvPFireMissionAction = new PvPFireMissionAction(targetCell,param1.mPowerUpFireMissionItem,param1.mFireMissionAnimation);
 						Utils.DiagEvent("PVP_POWERUP_FIREMISSION_PHASE","phase=construct_ready;id=" + param1.mId + ";mission=" + param1.mPowerUpFireMissionItem.mId);
