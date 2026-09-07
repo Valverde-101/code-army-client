@@ -24,9 +24,7 @@ package game.gameElements {
 			setPos(_loc7_, _loc8_, 0);
 			mMovable = false;
 			var _loc9_: GridCell;
-			if (_loc9_ = getCell()) {
-				_loc9_.mPowerUp = this;
-			}
+			if (_loc9_ = getCell()) _loc9_.mPowerUp = this;
 		}
 
 		private function compactStack(param1:Error):String {
@@ -49,8 +47,7 @@ package game.gameElements {
 			try {
 				this.applyPowerUp(powerUp, param1, 0);
 				Utils.DiagEvent("PVP_POWERUP_EXECUTE_RESULT","id=" + (powerUp ? powerUp.mId : "null") + ";actor=" + (param1 is PlayerUnit ? "player" : "enemy") + ";result=success");
-			}
-			catch(error:Error) {
+			} catch(error:Error) {
 				Utils.DiagEvent("PVP_POWERUP_EXECUTE_ERROR","id=" + (powerUp ? powerUp.mId : "null") + ";actor=" + (param1 is PlayerUnit ? "player" : "enemy") + ";error=" + error.errorID + ";message=" + error.message + ";stack=" + this.compactStack(error));
 			}
 		}
@@ -78,8 +75,7 @@ package game.gameElements {
 					Utils.DiagEvent("PVP_PARATROOPER_REQUEST","side=player;crate=" + param1.mId + ";unit=" + param1.mPowerUpUnit.mId + ";graphics=" + playerAirdropGraphics + ";cell=" + freeCell.mPosI + "," + freeCell.mPosJ + ";spawned=" + Boolean(spawned));
 					var playerDrop:Boolean = spawned && mScene.playPvPPowerUpAirdrop(freeCell,spawned,playerAirdropGraphics,"player",param1.mPowerUpUnit.mId);
 					Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpUnit.mId + ";result=spawned;airdrop=" + playerDrop + ";graphics=" + playerAirdropGraphics);
-				}
-				else Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";result=no_free_cell");
+				} else Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";result=no_free_cell");
 			}
 			if(param1.mPowerUpEnemyUnit && param2 is PvPEnemyUnit) {
 				freeCell = mScene.getPowerUpSpawnCell(param2.getCell().mPosI,param2.getCell().mPosJ);
@@ -93,12 +89,12 @@ package game.gameElements {
 						var enemyDrop:Boolean = mScene.playPvPPowerUpAirdrop(freeCell,spawned,enemyAirdropGraphics,"enemy",param1.mPowerUpEnemyUnit.mId);
 						Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";unit=" + param1.mPowerUpEnemyUnit.mId + ";result=enemy_spawned;airdrop=" + enemyDrop + ";graphics=" + enemyAirdropGraphics);
 					}
-				}
-				else Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";result=enemy_no_free_cell");
+				} else Utils.DiagEvent("PVP_POWERUP_UNIT","id=" + param1.mId + ";result=enemy_no_free_cell");
 			}
 
 			if(param1.mPowerUpFireMissionItem && GameState.mInstance.mPvPMatch) {
 				if(param2 is PlayerUnit) targets = mScene.getPvPEnemyAliveUnits(); else targets = mScene.getPlayerAliveUnits();
+				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_SELECT","id=" + param1.mId + ";actor=" + actor + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";candidate_targets=" + (targets ? targets.length : 0));
 				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_PHASE","phase=select;id=" + param1.mId + ";actor=" + actor + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";candidate_targets=" + (targets ? targets.length : 0));
 				if(targets && targets.length > 0) targetCell = (targets[Math.floor(Math.random() * targets.length)] as IsometricCharacter).getCell();
 				if(targetCell) {
@@ -111,14 +107,11 @@ package game.gameElements {
 						GameState.mInstance.queueAction(fireAction,true);
 						Utils.DiagEvent("PVP_POWERUP_FIREMISSION_PHASE","phase=queue_ready;id=" + param1.mId + ";mission=" + param1.mPowerUpFireMissionItem.mId);
 						Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";graphics=" + param1.mFireMissionAnimation + ";result=queued");
-					}
-					catch(fireError:Error)
-					{
+					} catch(fireError:Error) {
 						Utils.DiagEvent("PVP_POWERUP_FIREMISSION_ERROR","id=" + param1.mId + ";actor=" + actor + ";mission=" + param1.mPowerUpFireMissionItem.mId + ";error=" + fireError.errorID + ";message=" + fireError.message + ";stack=" + this.compactStack(fireError));
 						throw fireError;
 					}
-				}
-				else Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";result=no_target");
+				} else Utils.DiagEvent("PVP_POWERUP_FIREMISSION","id=" + param1.mId + ";result=no_target");
 			} else if(GameState.mInstance.mPvPMatch && param1.mId.indexOf("AirSupport_") == 0) {
 				Utils.DiagEvent("PVP_POWERUP_FIREMISSION_MISS","id=" + param1.mId + ";reason=missing_mapped_firemission");
 			}
@@ -130,9 +123,7 @@ package game.gameElements {
 
 		override public function destroy(): void {
 			var _loc1_: GridCell = getCell();
-			if (_loc1_) {
-				_loc1_.mPowerUp = null;
-			}
+			if (_loc1_) _loc1_.mPowerUp = null;
 			super.destroy();
 		}
 
