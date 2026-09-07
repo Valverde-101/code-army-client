@@ -39,7 +39,7 @@
   "hooks": {
     "precheck": ".github/scripts/armyattack-project-precheck.ps1",
     "materialize": null,
-    "build": "Tools/CI/Invoke-ArmyAttackBuildWithPerformanceOverlay.ps1",
+    "build": ".github/scripts/armyattack-build.ps1",
     "resolve_apk": null,
     "health": null,
     "smoke": null,
@@ -142,7 +142,7 @@
     "mode": "complete-core-orchestrated",
     "status": "COMPLETE",
     "preserve_legacy_until_equivalence": false,
-    "current_build_adapter": "Tools/CI/Invoke-ArmyAttackBuildWithPerformanceOverlay.ps1",
+    "current_build_adapter": ".github/scripts/armyattack-build.ps1",
     "workspace_adapter": ".github/scripts/armyattack-workspace.ps1",
     "project_builder": "Tools/CI/Build-Android.ps1",
     "windows_candidate_workflow": ".github/workflows/windows-candidate.yml",

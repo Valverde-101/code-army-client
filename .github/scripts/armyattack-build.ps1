@@ -55,10 +55,24 @@ Write-Host "ARMY_FFDEC_COMPAT=PASS alias=$ffdecCompat target=$ffdecGlobal execut
 & (Join-Path $repoRoot 'Tools\CI\Audit-PublishedContent.ps1') -RepoRoot $repoRoot -AndroidBuildRoot $runtimeRoot -ExpectedSha $expected -BaseOnly
 & (Join-Path $repoRoot 'Tools\CI\Validate-UpstreamAndroidRelease.ps1') -AndroidBuildRoot $runtimeRoot -ExpectedSha $expected
 
+# Apply Android-only runtime performance transforms to the build input and always
+# restore the exact tracked AS3 bytes. This keeps the canonical shared PC source
+# intact while allowing FFDec/regression gates to compile the optimized mobile path.
+$perfOverlay=Join-Path $repoRoot 'Tools\CI\Invoke-AndroidRuntimePerformanceOverlay.ps1'
+if(-not(Test-Path -LiteralPath $perfOverlay -PathType Leaf)){throw "ARMY_PERF_OVERLAY=FAIL missing=$perfOverlay"}
+$tokens=$null;$errors=$null
+[void][System.Management.Automation.Language.Parser]::ParseFile($perfOverlay,[ref]$tokens,[ref]$errors)
+if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$perfOverlay line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw 'ARMY_PERF_OVERLAY=FAIL parser'}
+
 $projectBuilder=Join-Path $repoRoot 'Tools\CI\Build-Android.ps1'
-Write-Host "ARMY_APPLICATION_BUILD=START adapter=army-project-builder infrastructure=core-$core workspace=repo-work render=gpu"
-& $projectBuilder -RepoRoot $repoRoot -ExpectedSha $expected -AndroidBuildRoot $runtimeRoot -RenderMode gpu
-Write-Host 'ARMY_APPLICATION_BUILD=PASS'
+Write-Host "ARMY_APPLICATION_BUILD=START adapter=army-project-builder infrastructure=core-$core workspace=repo-work render=gpu perf_overlay=enabled"
+try{
+  & $perfOverlay -RepoRoot $repoRoot -ExpectedSha $expected -GitPath $git -Mode Apply
+  & $projectBuilder -RepoRoot $repoRoot -ExpectedSha $expected -AndroidBuildRoot $runtimeRoot -RenderMode gpu
+  Write-Host 'ARMY_APPLICATION_BUILD=PASS'
+}finally{
+  & $perfOverlay -RepoRoot $repoRoot -ExpectedSha $expected -GitPath $git -Mode Restore
+}
 
 $buildRoot=Join-Path $repoBuildRoot (Join-Path $expected 'android')
 $builtApk=Join-Path $buildRoot 'ArmyAttack-android-arm64-gpu.apk'
