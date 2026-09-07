@@ -19,13 +19,13 @@ permissions:
 
 concurrency:
   group: army-attack-windows-candidate-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   windows-candidate:
     name: Core-synced Windows full candidate
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [windows-build, android-parallel, pc-willthom, general]
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 40
     env:
       EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
