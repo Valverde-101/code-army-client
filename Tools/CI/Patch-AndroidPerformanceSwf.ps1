@@ -47,7 +47,10 @@ if($ffdec.Extension -eq '.jar'){
 $outDir=Split-Path -Parent $OutputSwf
 New-Item -ItemType Directory -Force -Path $outDir|Out-Null
 if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.json'}
+$patchVersion='mobile-engine-v3.20-pvp-powerup-env-hud-rootfix'
 $patchSpecs=@(
+  [ordered]@{Class='FeatureTuner';Source='src\FeatureTuner.as';Log='ffdec-feature-tuner.log'},
+  [ordered]@{Class='game.environment.EnvEffectManager';Source='src\game\environment\EnvEffectManager.as';Log='ffdec-performance-environment.log'},
   [ordered]@{Class='game.battlefield.TileMapGraphic';Source='src\game\battlefield\TileMapGraphic.as';Log='ffdec-performance-tilemap.log'},
   [ordered]@{Class='game.isometric.IsometricScene';Source='src\game\isometric\IsometricScene.as';Log='ffdec-performance-scene.log'},
   [ordered]@{Class='game.battlefield.MapData';Source='src\game\battlefield\MapData.as';Log='ffdec-feature-mapdata.log'},
@@ -68,6 +71,7 @@ $patchSpecs=@(
   [ordered]@{Class='game.gameElements.LootReward';Source='src\game\gameElements\LootReward.as';Log='ffdec-feature-pvp-loot.log'},
   [ordered]@{Class='game.actions.PvPAttackEnemyAction';Source='src\game\actions\PvPAttackEnemyAction.as';Log='ffdec-feature-pvp-attack.log'},
   [ordered]@{Class='game.actions.PvPAttackEnemyInstallationAction';Source='src\game\actions\PvPAttackEnemyInstallationAction.as';Log='ffdec-feature-pvp-installation-attack.log'},
+  [ordered]@{Class='game.actions.FireMissionAction';Source='src\game\actions\FireMissionAction.as';Log='ffdec-feature-firemission-action.log'},
   [ordered]@{Class='game.actions.PvPFireMissionAction';Source='src\game\actions\PvPFireMissionAction.as';Log='ffdec-feature-pvp-firemission.log'},
   [ordered]@{Class='game.gui.GameHUD';Source='src\game\gui\GameHUD.as';Log='ffdec-feature-gamehud.log'},
   [ordered]@{Class='game.gui.pvp.PvPDebriefingDialog';Source='src\game\gui\pvp\PvPDebriefingDialog.as';Log='ffdec-feature-pvp-debriefing.log'},
@@ -78,6 +82,20 @@ $patchSpecs=@(
   [ordered]@{Class='game.gui.pvp.PvPBoosterBar';Source='src\game\gui\pvp\PvPBoosterBar.as';Log='ffdec-feature-pvp-booster.log'},
   [ordered]@{Class='game.gui.pvp.PvPHUD';Source='src\game\gui\pvp\PvPHUD.as';Log='ffdec-feature-pvp-hud.log'}
 )
+
+# Root-regression assertions are deliberately in the patcher itself, so a candidate
+# cannot silently build an old constructor contract, old airdrop routing or old LOW policy.
+$featureSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\FeatureTuner.as') -Raw
+$envSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\environment\EnvEffectManager.as') -Raw
+$powerSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\PowerUpObject.as') -Raw
+$fireBaseSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\actions\FireMissionAction.as') -Raw
+if($featureSource -notmatch 'USE_ENVIRONMENT_EFFECTS' -or $featureSource -notmatch '!USE_LOW_SWF'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=low_environment_policy'}
+if($envSource -notmatch 'if\(!FeatureTuner\.USE_ENVIRONMENT_EFFECTS\)'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=environment_fast_skip'}
+if($powerSource -notmatch 'resolvePlayerAirdropGraphics' -or $powerSource -notmatch 'PVP_POWERUP_FIREMISSION_PHASE' -or $powerSource -notmatch 'PVP_POWERUP_FIREMISSION_ERROR'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=pvp_powerup_trace'}
+if($fireBaseSource -notmatch 'param3:String\s*=\s*null' -or $fireBaseSource -notmatch 'mGraphicsOverride'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=firemission_base_contract'}
+if(-not @($patchSpecs|Where-Object{$_.Class -eq 'game.actions.FireMissionAction'})){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=firemission_base_not_patched'}
+Write-Host 'SWF_ROOT_FIX_REGRESSION=PASS firemission_base=true paratrooper_route=true low_environment=true'
+
 $logRoot=Split-Path -Parent $ManifestPath
 if(-not $logRoot){$logRoot=$outDir}
 New-Item -ItemType Directory -Force -Path $logRoot|Out-Null
@@ -99,6 +117,7 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
   }
   Write-Host "SWF_CLASS_PATCH=PASS class=$ClassName log=$log"
 }
+
 function Convert-MobileAirSourceForFFDec([string]$Source,[string]$Destination,[string]$ClassName){
   $sourceLines=Get-Content -LiteralPath $Source
   $result=New-Object System.Collections.Generic.List[string]
@@ -126,12 +145,37 @@ function Convert-MobileAirSourceForFFDec([string]$Source,[string]$Destination,[s
   if($null -ne $configMode){throw "SWF_PERF_PATCH=FAIL unterminated_config_block source=$Source mode=$configMode"}
   $text=$result -join [Environment]::NewLine
   # FFDec's experimental AS3 compiler does not resolve AIR 24+ permission-only
-  # types from the mobile SDK. Preserve runtime semantics in this temporary
-  # source without changing the canonical GameState implementation.
+  # types from the mobile SDK. Preserve runtime semantics in this temporary source.
   $text=$text -replace '(?m)^\s*import flash\.permissions\.PermissionStatus\s*;?\s*$', ''
   $text=$text -replace 'PermissionEvent\.PERMISSION_STATUS', '"permissionStatus"'
   $text=$text -replace 'PermissionStatus\.GRANTED', '"granted"'
   $text=$text -replace '(?m)(\w+)\s*:\s*PermissionEvent\b', '$1:*'
+
+  # GameHUD's authored mission panel animates its own internal bounds. The previous
+  # mobile clamp accumulated y += delta on every ENTER_FRAME and also clamped during
+  # Close, producing upward drift followed by an abrupt disappearance. Normalize to
+  # a stable base Y every frame and let the authored close timeline run untouched.
+  if($ClassName -eq 'game.gui.GameHUD'){
+    foreach($needle in @(
+      'private var mMobileRightMenuBaseY:Number = 0;',
+      'var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);',
+      'param1.y += deltaY;',
+      'this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);',
+      'this.mPullOutMissionFrame.gotoAndPlay("Open");',
+      'this.mPullOutMissionFrame.gotoAndPlay("Close");'
+    )){if(-not $text.Contains($needle)){throw "SWF_GAMEHUD_FIX=FAIL missing_pattern=$needle"}}
+    $nl=[Environment]::NewLine
+    $text=$text.Replace('private var mMobileRightMenuBaseY:Number = 0;','private var mMobileRightMenuBaseY:Number = 0;'+$nl+'\t\tprivate var mMobileMissionMenuBaseY:Number = 0;')
+    $text=$text.Replace('if(!param1 || !this.mIngameHUDClip_BOTTOM) return;','if(!param1 || !this.mIngameHUDClip_BOTTOM) return;'+$nl+'\t\t\tif(param2 == "missions" && this.mPullOutMissionMenuState == this.STATE_MISSIONS_MENU_CLOSED) return;')
+    $text=$text.Replace('var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);','var baseY:Number = param2 == "missions" ? this.mMobileMissionMenuBaseY : this.mMobileRightMenuBaseY;'+$nl+'\t\t\tparam1.y = baseY;'+$nl+'\t\t\tvar bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);')
+    $text=$text.Replace('param1.y += deltaY;','param1.y = baseY + deltaY;')
+    $text=$text.Replace('this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);','this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);'+$nl+'\t\t\t\tthis.mMobileMissionMenuBaseY = this.mPullOutMissionFrame.y;')
+    $text=$text.Replace('this.mPullOutMissionFrame.gotoAndPlay("Open");','this.mPullOutMissionFrame.y = this.mMobileMissionMenuBaseY;'+$nl+'\t\t\t\tthis.mPullOutMissionFrame.gotoAndPlay("Open");'+$nl+'\t\t\t\tUtils.DiagEvent("HUD_MISSION_TRANSITION","phase=open_begin;base_y=" + this.mMobileMissionMenuBaseY + ";y=" + this.mPullOutMissionFrame.y);')
+    $text=$text.Replace('this.mPullOutMissionFrame.gotoAndPlay("Close");','this.mPullOutMissionFrame.gotoAndPlay("Close");'+$nl+'\t\t\t\tUtils.DiagEvent("HUD_MISSION_TRANSITION","phase=close_begin;y=" + this.mPullOutMissionFrame.y + ";frame=" + this.mPullOutMissionFrame.currentFrame);')
+    if($text.Contains('param1.y += deltaY;') -or -not $text.Contains('mMobileMissionMenuBaseY') -or -not $text.Contains('param1.y = baseY + deltaY;')){throw 'SWF_GAMEHUD_FIX=FAIL postcondition'}
+    Write-Host 'SWF_GAMEHUD_FIX=PASS mission_clamp=non_accumulating close_clamp=disabled'
+  }
+
   if($text -match 'CONFIG::'){throw "SWF_PERF_PATCH=FAIL config_directive_survived source=$Source"}
   if($text -cmatch '\bPermissionEvent\b|\bPermissionStatus\b'){throw "SWF_PERF_PATCH=FAIL air_permission_type_survived source=$Source"}
   Set-Content -LiteralPath $Destination -Value $text -Encoding UTF8
@@ -185,7 +229,7 @@ $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.19-pvp-embedded-visual-fallback-deep-map-profile'
+  patch_version=$patchVersion
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -238,10 +282,10 @@ $manifest=[ordered]@{
     'offline_pvp_opponents_bounded_to_valid_ranks',
     'offline_pvp_booster_store_populated',
     'canonical_config_bytecode_preserved',
-    'canonical_gamehud_bytecode_preserved',
+    'canonical_gamehud_source_with_mobile_runtime_normalization',
     'canonical_armybutton_bytecode_preserved',
-    'canonical_animationcontroller_bytecode_preserved',
-    'canonical_enveffectmanager_bytecode_preserved',
+    'animationcontroller_cached_movieclip_targets',
+    'low_swf_decorative_environment_disabled',
     'canonical_menu_button_lifecycle_preserved',
     'canonical_audio_lifecycle_preserved',
     'pvp_enemy_exact_config_swf_paths',
@@ -258,6 +302,7 @@ $manifest=[ordered]@{
     'mainmap_viewport_fallback_recull_20_frames',
     'mainmap_spatial_audio_refresh_10hz',
     'mobile_hud_pullout_visible_bounds_clamp',
+    'mobile_left_pullout_non_accumulating_clamp',
     'placement_immediate_visibility_commit',
     'pvp_move_visual_runtime_trace',
     'pvp_loot_runtime_trace',
@@ -274,6 +319,9 @@ $manifest=[ordered]@{
     'pvp_powerup_item_bytecode_applied',
     'pvp_powerup_object_bytecode_applied',
     'pvp_firemission_object_bytecode_applied',
+    'pvp_firemission_base_constructor_patched',
+    'pvp_player_paratrooper_deterministic_embedded_airdrop',
+    'pvp_powerup_phase_stack_trace',
     'pvp_firemission_null_visual_safe',
     'pvp_firemission_single_destroy_lifecycle',
     'hfe_wallclock_resync_30fps',
@@ -287,5 +335,5 @@ $manifest=[ordered]@{
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.16-hfe-firemission-materialized-trace source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=$patchVersion source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf
