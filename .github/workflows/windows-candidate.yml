@@ -91,7 +91,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          foreach($script in @('.\Tools\CI\Build-WindowsFullCandidate.ps1','.\Tools\CI\Patch-WindowsSharedSwf.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\CI\Measure-WindowsPerformance.ps1','.\Tools\CI\Test-WindowsRuntime.ps1')){
+          foreach($script in @('.\Tools\CI\Build-WindowsFullCandidate.ps1','.\Tools\CI\Patch-WindowsSharedSwf.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\CI\Measure-WindowsPerformance.ps1','.\Tools\CI\Test-WindowsRuntime.ps1','.\Tools\CI\Invoke-SnowCampaignOverlay.ps1')){
             $tokens=$null;$errors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors)
             if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$script line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw "PARSER_VALID=FAIL file=$script"}
@@ -103,6 +103,16 @@ jobs:
         shell: powershell
         run: |
           & '.\Tools\CI\Validate-UpstreamWindowsRelease.ps1' -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+
+      - name: Apply Snow Polar campaign overlay
+        id: snow_overlay
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          & (Join-Path $env:PHYSICAL_REPO_ROOT 'Tools\CI\Invoke-SnowCampaignOverlay.ps1') -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $git -Mode Apply
+          Write-Host 'WINDOWS_SNOW_CAMPAIGN=PASS state=applied unlock_level=0 single_swf=true'
 
       - name: Diagnostic source-only recompilation
         id: source_rebuild
@@ -123,6 +133,16 @@ jobs:
         run: |
           & '.\Tools\CI\Measure-WindowsPerformance.ps1' -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -DurationSeconds 20 -SampleSeconds 2
 
+      - name: Restore exact source after Snow overlay
+        if: always() && env.PHYSICAL_REPO_ROOT != ''
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $overlay=Join-Path $env:PHYSICAL_REPO_ROOT 'Tools\CI\Invoke-SnowCampaignOverlay.ps1'
+          if(Test-Path -LiteralPath $overlay -PathType Leaf){& $overlay -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $git -Mode Restore}
+
       - name: Enforce build retention and workspace isolation
         if: always()
         shell: powershell
@@ -138,6 +158,7 @@ jobs:
         if: always()
         shell: powershell
         run: |
+          Write-Host "SNOW_OVERLAY_OUTCOME=${{ steps.snow_overlay.outcome }}"
           Write-Host "SOURCE_REBUILD_OUTCOME=${{ steps.source_rebuild.outcome }}"
           Write-Host "UPSTREAM_REFERENCE_OUTCOME=${{ steps.upstream_reference.outcome }}"
           Write-Host "FULL_CANDIDATE_OUTCOME=${{ steps.full_candidate.outcome }}"
@@ -145,7 +166,9 @@ jobs:
           Write-Host 'APK_GENERATED=NOT_RUN'
           Write-Host 'PHYSICAL_ANDROID_VALIDATION=NOT_RUN'
           if('${{ steps.upstream_reference.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL upstream_reference'}
+          if('${{ steps.snow_overlay.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL snow_overlay'}
           if('${{ steps.full_candidate.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL full_candidate'}
           if('${{ steps.performance.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL performance'}
           Write-Host 'PC_SHARED_SWF=PASS'
-          Write-Host 'FINAL_VALIDATION=PASS windows_full_candidate_shared_swf'
+          Write-Host 'SNOW_CAMPAIGN_WINDOWS=PASS unlock_level=0 single_swf=true'
+          Write-Host 'FINAL_VALIDATION=PASS windows_full_candidate_shared_swf_snow_campaign'

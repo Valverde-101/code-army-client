@@ -56,22 +56,32 @@ Write-Host "ARMY_FFDEC_COMPAT=PASS alias=$ffdecCompat target=$ffdecGlobal execut
 & (Join-Path $repoRoot 'Tools\CI\Validate-UpstreamAndroidRelease.ps1') -AndroidBuildRoot $runtimeRoot -ExpectedSha $expected
 
 # Apply Android-only runtime performance transforms to the build input and always
-# restore the exact tracked AS3 bytes. This keeps the canonical shared PC source
-# intact while allowing FFDec/regression gates to compile the optimized mobile path.
+# restore the exact tracked AS3 bytes. Snow/Polar uses the same reversible model:
+# the pinned v23 donor is merged into the build input without creating a second SWF.
 $perfOverlay=Join-Path $repoRoot 'Tools\CI\Invoke-AndroidRuntimePerformanceOverlay.ps1'
-if(-not(Test-Path -LiteralPath $perfOverlay -PathType Leaf)){throw "ARMY_PERF_OVERLAY=FAIL missing=$perfOverlay"}
-$tokens=$null;$errors=$null
-[void][System.Management.Automation.Language.Parser]::ParseFile($perfOverlay,[ref]$tokens,[ref]$errors)
-if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$perfOverlay line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw 'ARMY_PERF_OVERLAY=FAIL parser'}
+$snowOverlay=Join-Path $repoRoot 'Tools\CI\Invoke-SnowCampaignOverlay.ps1'
+foreach($overlay in @($perfOverlay,$snowOverlay)){
+  if(-not(Test-Path -LiteralPath $overlay -PathType Leaf)){throw "ARMY_RUNTIME_OVERLAY=FAIL missing=$overlay"}
+  $tokens=$null;$errors=$null
+  [void][System.Management.Automation.Language.Parser]::ParseFile($overlay,[ref]$tokens,[ref]$errors)
+  if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$overlay line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw "ARMY_RUNTIME_OVERLAY=FAIL parser file=$overlay"}
+}
+Write-Host 'ARMY_SNOW_OVERLAY_PRECHECK=PASS source=published_v23_2 unlock_level=0 single_swf=true'
 
 $projectBuilder=Join-Path $repoRoot 'Tools\CI\Build-Android.ps1'
-Write-Host "ARMY_APPLICATION_BUILD=START adapter=army-project-builder infrastructure=core-$core workspace=repo-work render=gpu perf_overlay=enabled"
+Write-Host "ARMY_APPLICATION_BUILD=START adapter=army-project-builder infrastructure=core-$core workspace=repo-work render=gpu perf_overlay=enabled snow_campaign=enabled"
+$snowApplied=$false
+$perfApplied=$false
 try{
+  & $snowOverlay -RepoRoot $repoRoot -ExpectedSha $expected -GitPath $git -Mode Apply
+  $snowApplied=$true
   & $perfOverlay -RepoRoot $repoRoot -ExpectedSha $expected -GitPath $git -Mode Apply
+  $perfApplied=$true
   & $projectBuilder -RepoRoot $repoRoot -ExpectedSha $expected -AndroidBuildRoot $runtimeRoot -RenderMode gpu
   Write-Host 'ARMY_APPLICATION_BUILD=PASS'
 }finally{
-  & $perfOverlay -RepoRoot $repoRoot -ExpectedSha $expected -GitPath $git -Mode Restore
+  if($perfApplied){& $perfOverlay -RepoRoot $repoRoot -ExpectedSha $expected -GitPath $git -Mode Restore}
+  if($snowApplied){& $snowOverlay -RepoRoot $repoRoot -ExpectedSha $expected -GitPath $git -Mode Restore}
 }
 
 $buildRoot=Join-Path $repoBuildRoot (Join-Path $expected 'android')
@@ -103,7 +113,7 @@ foreach($legacyRoot in $forbiddenRoots){
 }
 Write-Host 'ARMY_WORKSPACE_ISOLATION=PASS builds=repo-work inputs=repo-cache scratch=repo-work global_tools_only_outside=true'
 
-$manual=[ordered]@{schema='armyattack-manual-physical/v3';repository='Valverde-101/code-army-client';tested_sha=$expected;candidate_apk=$candidate;apk_sha256=$candidateHash;status='PENDING_USER_VALIDATION';adb_used=$false;required=$true;flows=@('cold_launch','home_map_navigation','unit_placement_confirm_cancel','right_hud_open_close','supply_aircraft','world_map_open_close','desert_map','pvp_match_start','pvp_cancel_action','pvp_firemission','pvp_paratrooper','pvp_loot_debrief','diagnostics_perf','diagnostics_mark_lag','diagnostics_zip','crash_anr_check')}
+$manual=[ordered]@{schema='armyattack-manual-physical/v3';repository='Valverde-101/code-army-client';tested_sha=$expected;candidate_apk=$candidate;apk_sha256=$candidateHash;status='PENDING_USER_VALIDATION';adb_used=$false;required=$true;flows=@('cold_launch','home_map_navigation','unit_placement_confirm_cancel','right_hud_open_close','supply_aircraft','world_map_open_close','desert_map','snow_map_open','snow_map_navigation','snow_campaign_entry_unlocked','pvp_match_start','pvp_cancel_action','pvp_firemission','pvp_paratrooper','pvp_loot_debrief','diagnostics_perf','diagnostics_mark_lag','diagnostics_zip','crash_anr_check')}
 $manualPath=Join-Path $artifactRoot 'manual-physical-validation.json'
 $manual|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $manualPath -Encoding UTF8
 $metadata=[ordered]@{
@@ -118,6 +128,7 @@ $metadata=[ordered]@{
   android_build_tools=[string]$tc.build_tools
   application_builder='Tools/CI/Build-Android.ps1'
   migration_mode='complete-core-orchestrated'
+  snow_campaign=[ordered]@{enabled=$true;map_id='Snow';donor_sha=$publishedSha;unlock_level=0;physical_swf_model='single-root-swf'}
   workspace=[ordered]@{work_root=[string]$workspace.work_root;build_root=[string]$workspace.build_root;input_cache_root=[string]$workspace.input_cache_root;scratch_root=[string]$workspace.scratch_root;runtime_root=$runtimeRoot;retention_generations=3}
   candidate_apk=$candidate
   apk_sha256=$candidateHash
@@ -130,6 +141,7 @@ $metadata|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $metaPath -Encoding U
 Write-Host "ARMY_CANDIDATE_APK=PASS path=$candidate sha256=$candidateHash"
 Write-Host "ARMY_BUILD_METADATA=PASS path=$metaPath"
 Write-Host 'ARMY_CORE_MIGRATION=PASS mode=complete-core-orchestrated toolchain=androidbuild-global broker=androidbuild-global repository_sync=androidbuild-core project_state=repo-work'
+Write-Host 'SNOW_CAMPAIGN_BUILD=PASS map=Snow unlock_level=0 physical_swf_model=single-root-swf'
 Write-Host "PHYSICAL_VALIDATION=NOT_ACTIVATED manual=$manualPath"
 Write-Host 'APK_FINAL_DELIVERY=CORE_CANDIDATE_VALIDATION_PENDING'
 Write-Host 'ARMY_BUILD_HOOK=PASS'
