@@ -53,7 +53,7 @@
     "explicit_output": ".work/artifacts/android/ArmyAttack.apk"
   },
   "delivery": {
-    "mode": "candidate-build-to-apk-final-plus-manual-physical-validation",
+    "mode": "candidate-build-to-apk-final-plus-pr-physical-validation",
     "final_apk_name": "ArmyAttack-23.2.apk",
     "github_artifact_apk": false,
     "replace_only_owned_filename": true,
@@ -67,11 +67,11 @@
     "minimum_battery_percent": 15,
     "minimum_storage_bytes": 1073741824,
     "ready": true,
-    "activation": "manual_workflow_dispatch",
+    "activation": "pull_request_and_manual_workflow_dispatch",
     "workflow": ".github/workflows/android-physical.yml",
     "final_apk_requires_physical_pass": false,
-    "current_state": "prepared_not_activated",
-    "workflow_timeout_minutes": 25
+    "current_state": "active_on_pr",
+    "workflow_timeout_minutes": 40
   },
   "evidence": {
     "same_pr": true,
@@ -158,7 +158,7 @@
     "external_builds_inputs_scratch_retired": true,
     "compatibility_shims": ["Tools/CI/Ensure-HarmanAir502.ps1", "Tools/CI/Ensure-PortableJdk17.ps1", "Tools/CI/Ensure-PinnedAndroidSdkRoot.ps1", "Tools/SWF/Ensure-FFDec.ps1"],
     "retired_repository_infrastructure": ["Tools/CI/Bootstrap-PhysicalClone.ps1", "Tools/CI/Enable-AutoRepoPool4.ps1", "Tools/CI/Start-AutoRepoPool4.runtime.ps1", "Tools/CI/Publish-AndroidEvidence.ps1", ".github/workflows/bootstrap-physical-clone.yml", ".github/workflows/enable-autorepo-pool4.yml", ".github/workflows/cancel-stale-android.yml", ".github/workflows/runner-pool-diagnostic.yml"],
-    "project_specific_behavior_to_keep": ["Army Attack v23.2 published-content contract", "SWF class patch set and FFDec preprocessing", "PvP/runtime configuration and asset validation", "diagnostics ANE", "Army AIR descriptor and package semantics", "Army deep APK validation", "manual physical gameplay flows", "Windows full-candidate diagnostics"]
+    "project_specific_behavior_to_keep": ["Army Attack v23.2 published-content contract", "SWF class patch set and FFDec preprocessing", "PvP/runtime configuration and asset validation", "diagnostics ANE", "Army AIR descriptor and package semantics", "Army deep APK validation", "PR physical gameplay flows", "Windows full-candidate diagnostics"]
   },
   "toolchain": {
     "androidbuild_core_minimum": "3.0.11",

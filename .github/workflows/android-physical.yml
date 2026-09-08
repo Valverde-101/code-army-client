@@ -2,23 +2,29 @@ name: Army Attack Android physical validation
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'Logs/**'
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
-  group: army-attack-physical-${{ github.ref }}
+  group: army-attack-physical-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
-  EXPECTED_SOURCE_SHA: ${{ github.sha }}
-  SOURCE_BRANCH: ${{ github.ref_name }}
+  EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
 
 jobs:
   physical-adb:
     name: 5. Physical ADB validation
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - name: Bootstrap portable Git
         shell: powershell
@@ -63,7 +69,7 @@ jobs:
           foreach($name in @('Reduce-AndroidBuildEvidence','Publish-AndroidBuildEvidence','Publish-AndroidBuildEvidenceCommit')){
             if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "PHYSICAL_PRECHECK=FAIL core_evidence_capability=$name"}
           }
-          Write-Host "PHYSICAL_CORE_PRECHECK=PASS core=$core evidence_publisher=androidbuild-global branch=$env:SOURCE_BRANCH"
+          Write-Host "PHYSICAL_CORE_PRECHECK=PASS core=$core evidence_publisher=androidbuild-global branch=$env:SOURCE_BRANCH tested_sha=$env:EXPECTED_SOURCE_SHA"
 
       - name: Prepare isolated raw evidence staging
         shell: powershell
@@ -72,39 +78,29 @@ jobs:
           $raw=Join-Path $PWD.Path (".work\evidence-staging\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
           if(Test-Path -LiteralPath $raw){Remove-Item -LiteralPath $raw -Recurse -Force}
           New-Item -ItemType Directory -Force -Path $raw|Out-Null
-          $legacy=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\physical"
-          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $legacy)|Out-Null
-          if(Test-Path -LiteralPath $legacy){
-            $item=Get-Item -LiteralPath $legacy -Force
-            if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){
-              & cmd.exe /d /c ('rmdir "{0}"' -f $legacy)|Out-Null
-            }else{
-              Remove-Item -LiteralPath $legacy -Recurse -Force
-            }
-          }
-          New-Item -ItemType Junction -Path $legacy -Target $raw|Out-Null
           "PHYSICAL_RAW_EVIDENCE=$raw"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PHYSICAL_EVIDENCE_LINK=$legacy"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "EVIDENCE_STAGING=PASS raw=$raw compatibility_link=$legacy ownership=androidbuild-core"
+          Write-Host "EVIDENCE_STAGING=PASS raw=$raw ownership=repo-work no_legacy_junction=true"
 
       - name: Wait for exact validated APK
         id: apk_wait
         continue-on-error: true
         shell: powershell
         run: |
-          $ErrorActionPreference='Stop'
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          $repo=Join-Path $env:ANDROIDBUILD_ROOT 'Repositories\code-army-client'
+          $runtime=Join-Path $repo '.work\runtime\AndroidBuild'
           $deadline=(Get-Date).AddMinutes(18)
           $apk=$null
           do {
-            $candidate=Join-Path $env:ANDROIDBUILD_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\candidate\ArmyAttack-23.2-$env:EXPECTED_SOURCE_SHA.apk"
+            $candidate=Join-Path $runtime "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\candidate\ArmyAttack-23.2-$env:EXPECTED_SOURCE_SHA.apk"
             if(Test-Path -LiteralPath $candidate){$apk=Get-Item -LiteralPath $candidate;break}
             Start-Sleep -Seconds 10
           } while((Get-Date) -lt $deadline)
-          if(-not $apk){throw "APK_VALIDATE=FAIL component=APK operation=wait_exact_candidate expected_sha=$env:EXPECTED_SOURCE_SHA actual=not_found timeout_minutes=18"}
+          if(-not $apk){throw "APK_VALIDATE=FAIL component=APK operation=wait_exact_candidate expected_sha=$env:EXPECTED_SOURCE_SHA actual=not_found timeout_minutes=18 runtime=$runtime"}
           $sha=(Get-FileHash -LiteralPath $apk.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "ANDROID_APK_PATH=$($apk.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "ANDROID_APK_SHA256=$sha"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "APK_EXACT=PASS tested_sha=$env:EXPECTED_SOURCE_SHA path=$($apk.FullName) size=$($apk.Length) sha256=$sha"
+          Write-Host "APK_EXACT=PASS tested_sha=$env:EXPECTED_SOURCE_SHA path=$($apk.FullName) size=$($apk.Length) sha256=$sha source=repo-work"
 
       - name: Test exact APK on physical device
         id: device_test
@@ -113,7 +109,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          & '.\Tools\CI\Test-AndroidDevice.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA
+          & '.\Tools\CI\Test-AndroidDevice.ps1' -ApkPath $env:ANDROID_APK_PATH -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -EvidenceRoot $env:PHYSICAL_RAW_EVIDENCE
           if($LASTEXITCODE -ne 0){throw "PHYSICAL_VALIDATION=FAIL exit=$LASTEXITCODE"}
 
       - name: Validate always-on runtime and SWF traces
@@ -161,6 +157,7 @@ jobs:
             repository=$env:GITHUB_REPOSITORY
             tested_sha=$env:EXPECTED_SOURCE_SHA
             run_id=$env:GITHUB_RUN_ID
+            runner=$env:RUNNER_NAME
             apk_outcome=$apkOutcome
             device_outcome=$deviceOutcome
             diagnostics_outcome=$diagOutcome
@@ -237,18 +234,6 @@ jobs:
           if($final -ne 'success'){throw "FINAL_VALIDATION=FAIL apk_final=$final"}
           Write-Host 'PHYSICAL_VALIDATION=PASS'
           Write-Host 'FINAL_VALIDATION=PASS physical_validation=PASS evidence=PASS apk_final=PASS'
-
-      - name: Cleanup evidence compatibility link
-        if: always()
-        shell: powershell
-        run: |
-          if($env:PHYSICAL_EVIDENCE_LINK -and (Test-Path -LiteralPath $env:PHYSICAL_EVIDENCE_LINK)){
-            $item=Get-Item -LiteralPath $env:PHYSICAL_EVIDENCE_LINK -Force
-            if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){
-              & cmd.exe /d /c ('rmdir "{0}"' -f $env:PHYSICAL_EVIDENCE_LINK)|Out-Null
-              Write-Host "EVIDENCE_COMPAT_LINK_CLEANUP=PASS path=$env:PHYSICAL_EVIDENCE_LINK"
-            }
-          }
 
       - name: Physical validation summary
         if: always()
