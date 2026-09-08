@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$ApkPath,
   [Parameter(Mandatory=$true)][string]$AndroidBuildRoot,
-  [Parameter(Mandatory=$true)][string]$ExpectedSha
+  [Parameter(Mandatory=$true)][string]$ExpectedSha,
+  [string]$EvidenceRoot
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -25,7 +26,7 @@ if($badging -match "versionName='([^']+)'"){$versionName=$matches[1]}
 if(-not $package){throw 'ADB_DEVICE=FAIL package_unparseable'}
 $packageRegex=[regex]::Escape($package)
 
-$evidence=Join-Path $AndroidBuildRoot "Builds\code-army-client\$ExpectedSha\android\physical"
+$evidence=if($EvidenceRoot){$EvidenceRoot}else{Join-Path $AndroidBuildRoot "Builds\code-army-client\$ExpectedSha\android\physical"}
 New-Item -ItemType Directory -Force -Path $evidence | Out-Null
 $badging | Set-Content (Join-Path $evidence 'apk-badging.txt') -Encoding UTF8
 @{
@@ -37,8 +38,10 @@ $badging | Set-Content (Join-Path $evidence 'apk-badging.txt') -Encoding UTF8
   version_code=$versionCode
   version_name=$versionName
   adb_path=$adb
+  evidence_root=$evidence
 }|ConvertTo-Json -Depth 4|Set-Content (Join-Path $evidence 'apk-info.json') -Encoding UTF8
 Write-Host "APK_VALIDATE=PASS tested_sha=$ExpectedSha path=$($apk.FullName) size=$($apk.Length) sha256=$apkSha package=$package versionCode=$versionCode versionName=$versionName"
+Write-Host "EVIDENCE_ROOT=PASS path=$evidence"
 
 $raw=& $adb devices -l
 $rawText=($raw|Out-String)
@@ -127,6 +130,21 @@ try{
   $activity | Set-Content (Join-Path $evidence 'activity.txt') -Encoding UTF8
   if($window -notmatch $packageRegex -and $activity -notmatch $packageRegex){throw 'HEALTH=FAIL app_not_foreground_or_visible'}
 
+  # A live PID/window is insufficient. The previous broken APK remained alive forever
+  # on the loading screen because text assets never completed. Require the actual SWF
+  # bootstrap and resource gate to finish before HEALTH/SMOKE can pass.
+  $bootLog=(& $adb -s $serial logcat -d -v threadtime | Out-String)
+  $bootLog|Set-Content (Join-Path $evidence 'boot-logcat.txt') -Encoding UTF8
+  $swfBootComplete=($bootLog -match '(?m)ArmyAttackGame\s*:\s*SWF_LOAD_COMPLETE\b')
+  $assetGateZero=($bootLog -match '(?m)ArmyAttackGame\s*:\s*ASSET_LOAD_GATE\b.*(?:^|[;\s])pending=0(?:[;\s]|$)')
+  $assetLoadError=($bootLog -match '(?m)ArmyAttackGame\s*:\s*ASSET_LOAD_ERROR\b')
+  $assetCompleteCount=([regex]::Matches($bootLog,'(?m)ArmyAttackGame\s*:\s*ASSET_LOAD_COMPLETE\b')).Count
+  if(-not $swfBootComplete){throw 'HEALTH=FAIL boot_swf_load_complete_missing'}
+  if(-not $assetGateZero){throw "HEALTH=FAIL boot_asset_gate_pending_zero_missing asset_complete_count=$assetCompleteCount"}
+  if($assetLoadError){throw 'HEALTH=FAIL boot_asset_load_error_detected'}
+  if($assetCompleteCount -lt 8){throw "HEALTH=FAIL boot_asset_completion_incomplete expected_min=8 actual=$assetCompleteCount"}
+  Write-Host "BOOT_RUNTIME=PASS swf_complete=true asset_gate_pending=0 asset_complete_count=$assetCompleteCount asset_errors=0"
+
   $uiRemote='/sdcard/armyattack-window-dump.xml'
   $uiDumpOut=(& $adb -s $serial shell uiautomator dump $uiRemote 2>&1 | Out-String)
   $uiDumpExit=$LASTEXITCODE
@@ -142,8 +160,8 @@ try{
     Write-Host "PERF_OVERLAY=SKIPPED_WITH_REASON ui_dump_unavailable exit=$uiDumpExit output=$uiDumpOut"
   }
 
-  Write-Host 'HEALTH=PASS app=READY storage=READY diagnostics=READY criterion=pid_and_window_or_activity_present_after_45s'
-  Write-Host 'SMOKE=PASS criterion=alive_after_45s'
+  Write-Host 'HEALTH=PASS app=READY storage=READY diagnostics=READY boot=READY criterion=pid_window_swf_and_asset_gate_complete'
+  Write-Host 'SMOKE=PASS criterion=boot_completed_and_alive_after_45s'
 
   # Background/foreground without coordinate taps.
   & $adb -s $serial shell am start -a android.intent.action.MAIN -c android.intent.category.HOME | Out-Null
@@ -193,6 +211,7 @@ try{
     version_name=$versionName
     runner=$env:RUNNER_NAME
     device=[ordered]@{serial=$serial;model=$model;android=$android;api=$api;abi=$abi}
+    boot=[ordered]@{swf_load_complete=$swfBootComplete;asset_gate_pending_zero=$assetGateZero;asset_complete_count=$assetCompleteCount;asset_load_error=$assetLoadError}
     results=[ordered]@{ADB_DEVICE='PASS';INSTALL='PASS';START='PASS';HEALTH='PASS';SMOKE='PASS';FUNCTIONAL_TESTS='PASS';CRASH_CHECK='PASS';ANR_CHECK='PASS';PERF_OVERLAY=$perfOverlay;PHYSICAL_EVIDENCE='PASS'}
     timestamp_utc=[DateTime]::UtcNow.ToString('o')
   }
