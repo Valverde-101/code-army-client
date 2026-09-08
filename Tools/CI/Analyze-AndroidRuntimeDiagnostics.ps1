@@ -85,6 +85,19 @@ $swfEventCount=$swfEvents.Count
 if($eventCount -eq 0){throw 'RUNTIME_DIAGNOSTICS=FAIL always_on_game_events_missing'}
 if($swfEventCount -eq 0){throw 'SWF_RUNTIME_TRACE=FAIL swf_events_missing'}
 
+# Boot truth is mandatory: launcher/AIR events alone must never certify the game.
+$swfLoadComplete=0
+$assetGateZero=0
+$assetLoadErrors=0
+foreach($e in $events){
+  if([string]$e.kind -eq 'SWF_LOAD_COMPLETE'){$swfLoadComplete++}
+  if([string]$e.kind -eq 'ASSET_LOAD_GATE' -and [string]$e.detail -match '(?:^|\s)pending=0(?:\s|$)'){$assetGateZero++}
+  if([string]$e.kind -eq 'ASSET_LOAD_ERROR'){$assetLoadErrors++}
+}
+if($swfLoadComplete -eq 0){throw 'RUNTIME_DIAGNOSTICS=FAIL swf_load_complete_missing'}
+if($assetGateZero -eq 0){throw 'RUNTIME_DIAGNOSTICS=FAIL asset_load_gate_pending_zero_missing'}
+if($assetLoadErrors -gt 0){throw "RUNTIME_DIAGNOSTICS=FAIL asset_load_errors count=$assetLoadErrors"}
+
 $loadMax=0
 $loadAvg=0.0
 if($loadElapsed.Count -gt 0){
@@ -110,6 +123,9 @@ $report=[ordered]@{
   pvp_powerup_event_count=$pvpPowerUps.Count
   pvp_firemission_event_count=$pvpFireMissions.Count
   swf_identity_mismatch_count=$swfIdentityMismatches.Count
+  swf_load_complete_count=$swfLoadComplete
+  asset_load_gate_zero_count=$assetGateZero
+  asset_load_error_count=$assetLoadErrors
   event_counts=$counts
   swf_misses=@($swfMisses|Select-Object -First 100)
   hfe_progress=@($hfeProgress|Select-Object -First 100)
@@ -126,7 +142,7 @@ $report=[ordered]@{
 }
 $report|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $resultPath -Encoding UTF8
 
-Write-Host "RUNTIME_DIAGNOSTICS=PASS game_events=$eventCount"
+Write-Host "RUNTIME_DIAGNOSTICS=PASS game_events=$eventCount swf_load_complete=$swfLoadComplete asset_gate_zero=$assetGateZero asset_load_errors=$assetLoadErrors"
 Write-Host "SWF_RUNTIME_TRACE=PASS events=$swfEventCount misses=$($swfMisses.Count) load_samples=$($loadElapsed.Count) load_avg_ms=$loadAvg load_max_ms=$loadMax"
 Write-Host "HFE_RUNTIME_TRACE=$(if($hfeProgress.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($hfeProgress.Count)"
 Write-Host "PLACEMENT_RUNTIME_TRACE=$(if($placementEvents.Count -gt 0){'PASS'}else{'SKIPPED_WITH_REASON'}) events=$($placementEvents.Count)"
