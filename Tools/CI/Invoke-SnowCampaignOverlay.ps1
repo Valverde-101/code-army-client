@@ -11,7 +11,8 @@ if(-not(Test-Path -LiteralPath $GitPath -PathType Leaf)){throw "SNOW_CAMPAIGN_OV
 $actual=(& $GitPath -C $RepoRoot rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $actual -ne $ExpectedSha){throw "SNOW_CAMPAIGN_OVERLAY=FAIL exact_head expected=$ExpectedSha actual=$actual"}
 
-$donorRoot=Join-Path $RepoRoot 'vendor\Test_army_attack\armyattack\config'
+$donorRepo=Join-Path $RepoRoot 'vendor\Test_army_attack'
+$donorRoot=Join-Path $donorRepo 'armyattack\config'
 $targetRoot=Join-Path $RepoRoot 'src\config'
 $donorConfigPath=Join-Path $donorRoot 'army_config_base.json'
 $targetConfigPath=Join-Path $targetRoot 'army_config_base.json'
@@ -19,6 +20,7 @@ $donorTilePath=Join-Path $donorRoot 'tile_map_snow.csv'
 $targetTilePath=Join-Path $targetRoot 'tile_map_snow.csv'
 $backupRoot=Join-Path $RepoRoot ('.work\scratch\snow-campaign-overlay\'+$ExpectedSha)
 $manifestPath=Join-Path $backupRoot 'manifest.json'
+$expectedDonorSha='306bccc7db5b1ce34dd68a3bc80093648c9224bd'
 
 function Get-Sha256([string]$Path){(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()}
 function Clone-JsonValue($Value){(($Value|ConvertTo-Json -Depth 100 -Compress)|ConvertFrom-Json)}
@@ -26,18 +28,14 @@ function Set-JsonProperty($Target,[string]$Name,$Value){
   $existing=$Target.PSObject.Properties[$Name]
   if($null -ne $existing){$existing.Value=$Value}else{$Target|Add-Member -MemberType NoteProperty -Name $Name -Value $Value}
 }
-function Remove-JsonProperty($Target,[string]$Name){
-  $existing=$Target.PSObject.Properties[$Name]
-  if($null -ne $existing){$Target.PSObject.Properties.Remove($Name)}
-}
+function Remove-JsonProperty($Target,[string]$Name){if($null -ne $Target.PSObject.Properties[$Name]){$Target.PSObject.Properties.Remove($Name)}}
 function Test-SnowEntry([string]$Name,$Value){
   if($Name -match '(?i)(snow|polar|nordur)'){return $true}
   try{$text=$Value|ConvertTo-Json -Depth 40 -Compress}catch{return $false}
   return ($text -match '(?i)(snow|polar|nordur)')
 }
 function Get-NormalizedTileCellCount([string]$Path){
-  $raw=Get-Content -LiteralPath $Path -Raw
-  $count=0
+  $raw=Get-Content -LiteralPath $Path -Raw;$count=0
   foreach($token in ($raw -split ',')){
     $value=(($token -replace "[\r\n]",'').Trim()).TrimStart([char]0xFEFF)
     if($value.Length -gt 0){$count++}
@@ -46,10 +44,7 @@ function Get-NormalizedTileCellCount([string]$Path){
 }
 
 if($Mode -eq 'Restore'){
-  if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){
-    Write-Host "SNOW_CAMPAIGN_OVERLAY=PASS mode=restore status=no_overlay sha=$ExpectedSha"
-    return
-  }
+  if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){Write-Host "SNOW_CAMPAIGN_OVERLAY=PASS mode=restore status=no_overlay sha=$ExpectedSha";return}
   $manifest=Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json
   $configBackup=Join-Path $backupRoot ([string]$manifest.config_backup)
   if(-not(Test-Path -LiteralPath $configBackup -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_config_backup_missing=$configBackup"}
@@ -60,13 +55,11 @@ if($Mode -eq 'Restore'){
     if(-not(Test-Path -LiteralPath $tileBackup -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_backup_missing=$tileBackup"}
     Copy-Item -LiteralPath $tileBackup -Destination $targetTilePath -Force
     if((Get-Sha256 $targetTilePath) -ne [string]$manifest.tile_sha256){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_hash'}
-  }elseif(Test-Path -LiteralPath $targetTilePath){
-    Remove-Item -LiteralPath $targetTilePath -Force
-  }
+  }elseif(Test-Path -LiteralPath $targetTilePath){Remove-Item -LiteralPath $targetTilePath -Force}
   & $GitPath -C $RepoRoot diff --quiet -- 'src/config/army_config_base.json'
   if($LASTEXITCODE -ne 0){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL restore_config_not_exact'}
-  $trackedTile=(& $GitPath -C $RepoRoot ls-files --error-unmatch -- 'src/config/tile_map_snow.csv' 2>$null)
-  $tileTracked=($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace(($trackedTile -join '')))
+  $trackedTile=@(& $GitPath -C $RepoRoot ls-files --error-unmatch -- 'src/config/tile_map_snow.csv' 2>$null)
+  $tileTracked=($LASTEXITCODE -eq 0 -and $trackedTile.Count -gt 0)
   if($tileTracked){
     & $GitPath -C $RepoRoot diff --quiet -- 'src/config/tile_map_snow.csv'
     if($LASTEXITCODE -ne 0){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_not_exact'}
@@ -76,12 +69,17 @@ if($Mode -eq 'Restore'){
   return
 }
 
-foreach($required in @($donorConfigPath,$targetConfigPath,$donorTilePath)){
-  if(-not(Test-Path -LiteralPath $required -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL required_missing=$required"}
-}
-$donorRepo=Join-Path $RepoRoot 'vendor\Test_army_attack'
+# Snow is sourced from the exact pinned v23 submodule. Materialize it here as well
+# so Windows candidates never depend on a previous Android run having populated it.
+& $GitPath -C $RepoRoot submodule sync -- 'vendor/Test_army_attack' | Out-Host
+if($LASTEXITCODE -ne 0){throw "SNOW_DONOR=FAIL operation=submodule_sync exit=$LASTEXITCODE"}
+& $GitPath -C $RepoRoot submodule update --init --recursive -- 'vendor/Test_army_attack' | Out-Host
+if($LASTEXITCODE -ne 0){throw "SNOW_DONOR=FAIL operation=submodule_update exit=$LASTEXITCODE"}
+if(-not(Test-Path -LiteralPath $donorRepo -PathType Container)){throw "SNOW_DONOR=FAIL missing=$donorRepo"}
 $donorSha=(& $GitPath -C $donorRepo rev-parse HEAD).Trim()
-if($LASTEXITCODE -ne 0 -or $donorSha -ne '306bccc7db5b1ce34dd68a3bc80093648c9224bd'){throw "SNOW_CAMPAIGN_OVERLAY=FAIL donor_sha expected=306bccc7db5b1ce34dd68a3bc80093648c9224bd actual=$donorSha"}
+if($LASTEXITCODE -ne 0 -or $donorSha -ne $expectedDonorSha){throw "SNOW_DONOR=FAIL expected_sha=$expectedDonorSha actual=$donorSha"}
+foreach($required in @($donorConfigPath,$targetConfigPath,$donorTilePath)){if(-not(Test-Path -LiteralPath $required -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL required_missing=$required"}}
+Write-Host "SNOW_DONOR=PASS sha=$donorSha config=$donorConfigPath tilemap=$donorTilePath"
 
 if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
@@ -90,17 +88,7 @@ Copy-Item -LiteralPath $targetConfigPath -Destination (Join-Path $backupRoot $co
 $tileExisted=Test-Path -LiteralPath $targetTilePath -PathType Leaf
 $tileBackup=$null;$tileSha=$null
 if($tileExisted){$tileBackup='tile_map_snow.original.csv';Copy-Item -LiteralPath $targetTilePath -Destination (Join-Path $backupRoot $tileBackup) -Force;$tileSha=Get-Sha256 $targetTilePath}
-$manifest=[ordered]@{
-  schema='armyattack-snow-campaign-overlay/v1'
-  source_sha=$ExpectedSha
-  donor_sha=$donorSha
-  config_backup=$configBackup
-  config_sha256=(Get-Sha256 $targetConfigPath)
-  tile_existed=$tileExisted
-  tile_backup=$tileBackup
-  tile_sha256=$tileSha
-}
-$manifest|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+[ordered]@{schema='armyattack-snow-campaign-overlay/v2';source_sha=$ExpectedSha;donor_sha=$donorSha;config_backup=$configBackup;config_sha256=(Get-Sha256 $targetConfigPath);tile_existed=$tileExisted;tile_backup=$tileBackup;tile_sha256=$tileSha}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 try{
   $donor=Get-Content -LiteralPath $donorConfigPath -Raw|ConvertFrom-Json
@@ -108,6 +96,7 @@ try{
   if($null -eq $donor.MapSetup -or $null -eq $donor.MapSetup.Snow){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL donor_mapsetup_snow_missing'}
   if($null -eq $donor.MapArea){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL donor_maparea_missing'}
 
+  # Keep the published Snow campaign semantics, but remove only entry gating for test builds.
   $snow=Clone-JsonValue $donor.MapSetup.Snow
   Set-JsonProperty $snow 'UnlockLevel' '0'
   Set-JsonProperty $snow 'ZoomLevelsMobile' '120, 180'
@@ -118,13 +107,12 @@ try{
   $snowAreas=0
   foreach($areaProperty in @($donor.MapArea.PSObject.Properties)){
     $area=$areaProperty.Value
-    if($null -ne $area -and [string]$area.MapID -eq 'Snow'){
-      Set-JsonProperty $target.MapArea $areaProperty.Name (Clone-JsonValue $area)
-      $snowAreas++
-    }
+    if($null -ne $area -and [string]$area.MapID -eq 'Snow'){Set-JsonProperty $target.MapArea $areaProperty.Name (Clone-JsonValue $area);$snowAreas++}
   }
   if($snowAreas -lt 9){throw "SNOW_CAMPAIGN_OVERLAY=FAIL snow_areas expected_min=9 actual=$snowAreas"}
 
+  # Bring every direct v23 config entry explicitly tied to Snow/Polar/Nordurland.
+  # Existing 23.2 entries unrelated to the campaign are never overwritten.
   $mergedEntries=0
   foreach($sectionProperty in @($donor.PSObject.Properties)){
     $sectionName=[string]$sectionProperty.Name
@@ -134,7 +122,7 @@ try{
     $matching=@($donorSection.PSObject.Properties|Where-Object{Test-SnowEntry ([string]$_.Name) $_.Value})
     if($matching.Count -eq 0){continue}
     $targetSectionProperty=$target.PSObject.Properties[$sectionName]
-    if($null -eq $targetSectionProperty){$newSection=[pscustomobject]@{};Set-JsonProperty $target $sectionName $newSection;$targetSection=$newSection}else{$targetSection=$targetSectionProperty.Value}
+    if($null -eq $targetSectionProperty){$targetSection=[pscustomobject]@{};Set-JsonProperty $target $sectionName $targetSection}else{$targetSection=$targetSectionProperty.Value}
     if($null -eq $targetSection -or $targetSection -is [System.Array] -or $targetSection -is [string] -or $targetSection -is [ValueType]){continue}
     foreach($entry in $matching){Set-JsonProperty $targetSection ([string]$entry.Name) (Clone-JsonValue $entry.Value);$mergedEntries++}
   }
