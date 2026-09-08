@@ -2,15 +2,21 @@ Set-StrictMode -Version Latest
 
 function Remove-ArmyLinkOrTree {
   param([Parameter(Mandatory=$true)][string]$Path)
-  if(-not(Test-Path -LiteralPath $Path)){return}
-  $item=Get-Item -LiteralPath $Path -Force
+  $item=Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+  if($null -eq $item){return}
   if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){
     $cmd=(Get-Command cmd.exe -ErrorAction Stop).Source
     & $cmd /d /c ('rmdir "{0}"' -f $Path) | Out-Null
-    if($LASTEXITCODE -ne 0 -and (Test-Path -LiteralPath $Path)){throw "ARMY_WORKSPACE=FAIL remove_junction path=$Path exit=$LASTEXITCODE"}
+    if($LASTEXITCODE -ne 0 -and $null -ne (Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)){throw "ARMY_WORKSPACE=FAIL remove_junction path=$Path exit=$LASTEXITCODE"}
+  } elseif($item.PSIsContainer) {
+    foreach($child in @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop)){
+      Remove-ArmyLinkOrTree -Path $child.FullName
+    }
+    Remove-Item -LiteralPath $Path -Force
   } else {
-    Remove-Item -LiteralPath $Path -Recurse -Force
+    Remove-Item -LiteralPath $Path -Force
   }
+  if($null -ne (Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)){throw "ARMY_WORKSPACE=FAIL remove_residue path=$Path"}
 }
 
 function Ensure-ArmyJunction {
