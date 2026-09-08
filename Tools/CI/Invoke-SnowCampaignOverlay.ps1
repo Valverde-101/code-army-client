@@ -55,15 +55,14 @@ if($Mode -eq 'Restore'){
     if(-not(Test-Path -LiteralPath $tileBackup -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_backup_missing=$tileBackup"}
     Copy-Item -LiteralPath $tileBackup -Destination $targetTilePath -Force
     if((Get-Sha256 $targetTilePath) -ne [string]$manifest.tile_sha256){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_hash'}
-  }elseif(Test-Path -LiteralPath $targetTilePath){Remove-Item -LiteralPath $targetTilePath -Force}
+  }elseif(Test-Path -LiteralPath $targetTilePath){
+    Remove-Item -LiteralPath $targetTilePath -Force
+  }
   & $GitPath -C $RepoRoot diff --quiet -- 'src/config/army_config_base.json'
   if($LASTEXITCODE -ne 0){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL restore_config_not_exact'}
-  $trackedTile=@(& $GitPath -C $RepoRoot ls-files --error-unmatch -- 'src/config/tile_map_snow.csv' 2>$null)
-  $tileTracked=($LASTEXITCODE -eq 0 -and $trackedTile.Count -gt 0)
-  if($tileTracked){
-    & $GitPath -C $RepoRoot diff --quiet -- 'src/config/tile_map_snow.csv'
-    if($LASTEXITCODE -ne 0){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_not_exact'}
-  }elseif(Test-Path -LiteralPath $targetTilePath){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL restore_untracked_tile_leftover'}
+  $tileStatus=@(& $GitPath -C $RepoRoot status --porcelain -- 'src/config/tile_map_snow.csv')
+  if($LASTEXITCODE -ne 0){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_status exit=$LASTEXITCODE"}
+  if($tileStatus.Count -gt 0){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_not_exact status=$($tileStatus -join ';')"}
   Remove-Item -LiteralPath $backupRoot -Recurse -Force
   Write-Host "SNOW_CAMPAIGN_OVERLAY=PASS mode=restore exact_source_restored=true sha=$ExpectedSha"
   return
@@ -88,7 +87,7 @@ Copy-Item -LiteralPath $targetConfigPath -Destination (Join-Path $backupRoot $co
 $tileExisted=Test-Path -LiteralPath $targetTilePath -PathType Leaf
 $tileBackup=$null;$tileSha=$null
 if($tileExisted){$tileBackup='tile_map_snow.original.csv';Copy-Item -LiteralPath $targetTilePath -Destination (Join-Path $backupRoot $tileBackup) -Force;$tileSha=Get-Sha256 $targetTilePath}
-[ordered]@{schema='armyattack-snow-campaign-overlay/v2';source_sha=$ExpectedSha;donor_sha=$donorSha;config_backup=$configBackup;config_sha256=(Get-Sha256 $targetConfigPath);tile_existed=$tileExisted;tile_backup=$tileBackup;tile_sha256=$tileSha}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+[ordered]@{schema='armyattack-snow-campaign-overlay/v3';source_sha=$ExpectedSha;donor_sha=$donorSha;config_backup=$configBackup;config_sha256=(Get-Sha256 $targetConfigPath);tile_existed=$tileExisted;tile_backup=$tileBackup;tile_sha256=$tileSha}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 try{
   $donor=Get-Content -LiteralPath $donorConfigPath -Raw|ConvertFrom-Json
