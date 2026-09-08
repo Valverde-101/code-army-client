@@ -23,9 +23,11 @@ permissions:
   contents: read
   pull-requests: read
 
+# Android and Windows both synchronize and temporarily overlay the same canonical
+# AndroidBuild repository. They must never mutate that tree concurrently.
 concurrency:
-  group: army-attack-windows-candidate-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  group: army-attack-core-build
+  cancel-in-progress: false
 
 jobs:
   windows-candidate:
@@ -81,6 +83,7 @@ jobs:
           Write-Host "RUNNER_ASSIGNMENT=PASS runner=$env:RUNNER_NAME"
           Write-Host "EXACT_ACTIONS_HEAD=PASS sha=$checkoutSha"
           Write-Host "CORE_REPOSITORY_SYNC=PASS sha=$($sync.actual_sha) repo=$repo"
+          Write-Host 'CANONICAL_REPOSITORY_MUTATION_LOCK=PASS group=army-attack-core-build shared_with=android-candidate'
 
       - name: Resolve PC runtime policy
         shell: powershell
@@ -121,7 +124,6 @@ jobs:
           }
 
       - name: Validate exact-source upstream Windows reference
-        id: upstream_reference
         shell: powershell
         run: |
           $skip=($env:RUN_PC_RUNTIME -ne 'true')
@@ -139,47 +141,37 @@ jobs:
 
       - name: Diagnostic source-only recompilation
         id: source_rebuild
-        continue-on-error: true
         shell: powershell
         run: |
-          & '.\Tools\CI\Build-Windows.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT
+          $skip=($env:RUN_PC_RUNTIME -ne 'true')
+          & '.\Tools\CI\Build-Windows.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT -SkipRuntime:$skip
 
       - name: Build shared SWF without launching PC
         id: static_swf
         shell: powershell
         run: |
-          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
-          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
-          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
-          $seed=Join-Path $env:ARMY_RUNTIME_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\windows-upstream-v23\23\iArmyAirOfflineSavingv21_2.swf"
-          if(-not(Test-Path -LiteralPath $seed -PathType Leaf)){throw "WINDOWS_STATIC_SWF=FAIL seed_missing=$seed"}
-          $outRoot=Join-Path $env:ARMY_RUNTIME_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\windows-static-swf"
-          New-Item -ItemType Directory -Force -Path $outRoot|Out-Null
-          $output=Join-Path $outRoot 'iArmyAirOfflineSavingv21_2.windows-head-patched.swf'
-          $manifest=Join-Path $outRoot 'SWF-WINDOWS-STATIC-PATCH.json'
-          & (Join-Path $env:PHYSICAL_REPO_ROOT 'Tools\CI\Patch-WindowsSharedSwf.ps1') -RepoRoot $env:PHYSICAL_REPO_ROOT -InputSwf $seed -OutputSwf $output -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $git -ManifestPath $manifest
-          if(-not(Test-Path -LiteralPath $output -PathType Leaf)){throw 'WINDOWS_STATIC_SWF=FAIL output_missing'}
-          $seedHash=(Get-FileHash -LiteralPath $seed -Algorithm SHA256).Hash.ToLowerInvariant()
-          $outHash=(Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash.ToLowerInvariant()
-          if($seedHash -eq $outHash){throw 'WINDOWS_STATIC_SWF=FAIL patched_equals_seed'}
-          Write-Host "WINDOWS_STATIC_SWF=PASS source_sha=$env:EXPECTED_SOURCE_SHA seed_sha256=$seedHash patched_sha256=$outHash manifest=$manifest"
+          $ErrorActionPreference='Stop'
+          & '.\Tools\CI\Patch-WindowsSharedSwf.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT
 
       - name: Assemble and launch consolidated Windows candidate
         id: full_candidate
         if: env.RUN_PC_RUNTIME == 'true'
         shell: powershell
         run: |
-          & '.\Tools\CI\Build-WindowsFullCandidate.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT
+          $ErrorActionPreference='Stop'
+          & '.\Tools\CI\Build-WindowsFullCandidate.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT -StabilitySeconds 45
 
       - name: Measure consolidated Windows candidate performance
         id: performance
         if: env.RUN_PC_RUNTIME == 'true'
         shell: powershell
         run: |
-          & '.\Tools\CI\Measure-WindowsPerformance.ps1' -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -DurationSeconds 20 -SampleSeconds 2
+          $ErrorActionPreference='Stop'
+          $candidate=Join-Path $env:ARMY_RUNTIME_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\windows-full-candidate\ArmyAttack\Army Attack.exe"
+          & '.\Tools\CI\Measure-WindowsPerformance.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -CandidateExe $candidate -StabilitySeconds 60
 
       - name: Restore exact source after Snow overlay
-        if: always() && env.PHYSICAL_REPO_ROOT != ''
+        if: always()
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
