@@ -93,8 +93,19 @@ jobs:
           $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
           $runRuntime=$false
           if('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.run_pc_runtime }}' -eq 'true'){$runRuntime=$true}
-          $message=((& $git -C $env:PHYSICAL_REPO_ROOT show -s --format=%B $env:EXPECTED_SOURCE_SHA) -join "`n")
-          if($LASTEXITCODE -ne 0){throw 'PC_RUNTIME_POLICY=FAIL commit_message_read'}
+          $message=''
+          $checkoutRoot=$env:GITHUB_WORKSPACE
+          if($checkoutRoot -and (Test-Path -LiteralPath (Join-Path $checkoutRoot '.git'))){
+            $message=((& $git -C $checkoutRoot show -s --format=%B $env:EXPECTED_SOURCE_SHA 2>$null) -join "`n")
+            if($LASTEXITCODE -ne 0){
+              $message=''
+              Write-Host 'PC_RUNTIME_POLICY_COMMIT_MESSAGE=UNAVAILABLE source=actions_checkout fallback=iterative_validation'
+            }else{
+              Write-Host 'PC_RUNTIME_POLICY_COMMIT_MESSAGE=PASS source=actions_checkout'
+            }
+          }else{
+            Write-Host 'PC_RUNTIME_POLICY_COMMIT_MESSAGE=UNAVAILABLE source=actions_checkout_missing fallback=iterative_validation'
+          }
           if($message -match '(?i)\[pc-runtime\]'){$runRuntime=$true}
           $value=if($runRuntime){'true'}else{'false'}
           "RUN_PC_RUNTIME=$value"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
