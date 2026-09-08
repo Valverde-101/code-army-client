@@ -8,15 +8,30 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $RepoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 $internal=Join-Path $PSScriptRoot 'Invoke-AndroidRuntimePerformanceOverlay.Internal.ps1'
-if(-not(Test-Path -LiteralPath $internal -PathType Leaf)){throw "ANDROID_PERF_OVERLAY=FAIL internal_missing=$internal"}
-
-if($Mode -eq 'Apply'){
-  & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
-  return
+$bootOverlay=Join-Path $PSScriptRoot 'Invoke-AndroidBootResourceOverlay.ps1'
+foreach($script in @($internal,$bootOverlay)){
+  if(-not(Test-Path -LiteralPath $script -PathType Leaf)){throw "ANDROID_PERF_OVERLAY=FAIL dependency_missing=$script"}
 }
 
+if($Mode -eq 'Apply'){
+  try{
+    & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
+    & $bootOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
+    Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=apply performance=true boot_resource=true sha=$ExpectedSha"
+    return
+  }catch{
+    $failure=$_
+    try{& $PSCommandPath -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore}catch{Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE_RESTORE_AFTER_FAILURE=FAIL message=$($_.Exception.Message)"}
+    throw $failure
+  }
+}
+
+# Restore nested overlays in reverse order. The outer Snow overlay is still active,
+# so the internal performance restore may legitimately observe a non-HEAD worktree.
+& $bootOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
 try{
   & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
+  Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true boot_resource=true sha=$ExpectedSha"
   return
 }catch{
   $message=[string]$_.Exception.Message
@@ -42,3 +57,4 @@ foreach($entry in @($manifest.files)){
 }
 Remove-Item -LiteralPath $backupRoot -Recurse -Force
 Write-Host "ANDROID_PERF_OVERLAY=PASS mode=restore baseline_restored=true composable=true outer_exact_head_gate=snow sha=$ExpectedSha"
+Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true boot_resource=true sha=$ExpectedSha"
