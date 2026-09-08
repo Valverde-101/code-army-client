@@ -18,6 +18,11 @@ $donorConfigPath=Join-Path $donorRoot 'army_config_base.json'
 $targetConfigPath=Join-Path $targetRoot 'army_config_base.json'
 $donorTilePath=Join-Path $donorRoot 'tile_map_snow.csv'
 $targetTilePath=Join-Path $targetRoot 'tile_map_snow.csv'
+$sourceTargets=@(
+  'src\game\states\GameState.as',
+  'src\game\gui\popups\WorldMapWindow.as',
+  'src\game\isometric\IsometricScene.as'
+)
 $backupRoot=Join-Path $RepoRoot ('.work\scratch\snow-campaign-overlay\'+$ExpectedSha)
 $manifestPath=Join-Path $backupRoot 'manifest.json'
 $expectedDonorSha='306bccc7db5b1ce34dd68a3bc80093648c9224bd'
@@ -42,6 +47,12 @@ function Get-NormalizedTileCellCount([string]$Path){
   }
   return $count
 }
+function Replace-OneRegex([string]$Text,[string]$Pattern,[string]$Replacement,[string]$Name){
+  $matches=[regex]::Matches($Text,$Pattern)
+  if($matches.Count -ne 1){throw "SNOW_CAMPAIGN_OVERLAY=FAIL source_patch=$Name matches=$($matches.Count)"}
+  return [regex]::Replace($Text,$Pattern,$Replacement,1)
+}
+function Write-Utf8Bom([string]$Path,[string]$Text){[IO.File]::WriteAllText($Path,$Text,(New-Object System.Text.UTF8Encoding($true)))}
 
 if($Mode -eq 'Restore'){
   if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){Write-Host "SNOW_CAMPAIGN_OVERLAY=PASS mode=restore status=no_overlay sha=$ExpectedSha";return}
@@ -58,8 +69,17 @@ if($Mode -eq 'Restore'){
   }elseif(Test-Path -LiteralPath $targetTilePath){
     Remove-Item -LiteralPath $targetTilePath -Force
   }
-  & $GitPath -C $RepoRoot diff --quiet -- 'src/config/army_config_base.json'
-  if($LASTEXITCODE -ne 0){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL restore_config_not_exact'}
+  foreach($entry in @($manifest.source_files)){
+    $backup=Join-Path $backupRoot ([string]$entry.backup)
+    $target=Join-Path $RepoRoot ([string]$entry.path)
+    if(-not(Test-Path -LiteralPath $backup -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_source_backup_missing=$backup"}
+    Copy-Item -LiteralPath $backup -Destination $target -Force
+    if((Get-Sha256 $target) -ne [string]$entry.sha256){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_source_hash path=$($entry.path)"}
+  }
+  foreach($tracked in @('src/config/army_config_base.json')+$sourceTargets){
+    & $GitPath -C $RepoRoot diff --quiet -- $tracked
+    if($LASTEXITCODE -ne 0){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_not_exact path=$tracked"}
+  }
   $tileStatus=@(& $GitPath -C $RepoRoot status --porcelain -- 'src/config/tile_map_snow.csv')
   if($LASTEXITCODE -ne 0){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_status exit=$LASTEXITCODE"}
   if($tileStatus.Count -gt 0){throw "SNOW_CAMPAIGN_OVERLAY=FAIL restore_tile_not_exact status=$($tileStatus -join ';')"}
@@ -68,8 +88,6 @@ if($Mode -eq 'Restore'){
   return
 }
 
-# Snow is sourced from the exact pinned v23 submodule. Materialize it here as well
-# so Windows candidates never depend on a previous Android run having populated it.
 & $GitPath -C $RepoRoot submodule sync -- 'vendor/Test_army_attack' | Out-Host
 if($LASTEXITCODE -ne 0){throw "SNOW_DONOR=FAIL operation=submodule_sync exit=$LASTEXITCODE"}
 & $GitPath -C $RepoRoot submodule update --init --recursive -- 'vendor/Test_army_attack' | Out-Host
@@ -78,6 +96,7 @@ if(-not(Test-Path -LiteralPath $donorRepo -PathType Container)){throw "SNOW_DONO
 $donorSha=(& $GitPath -C $donorRepo rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $donorSha -ne $expectedDonorSha){throw "SNOW_DONOR=FAIL expected_sha=$expectedDonorSha actual=$donorSha"}
 foreach($required in @($donorConfigPath,$targetConfigPath,$donorTilePath)){if(-not(Test-Path -LiteralPath $required -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL required_missing=$required"}}
+foreach($rel in $sourceTargets){if(-not(Test-Path -LiteralPath (Join-Path $RepoRoot $rel) -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL source_missing=$rel"}}
 Write-Host "SNOW_DONOR=PASS sha=$donorSha config=$donorConfigPath tilemap=$donorTilePath"
 
 if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Recurse -Force}
@@ -87,7 +106,14 @@ Copy-Item -LiteralPath $targetConfigPath -Destination (Join-Path $backupRoot $co
 $tileExisted=Test-Path -LiteralPath $targetTilePath -PathType Leaf
 $tileBackup=$null;$tileSha=$null
 if($tileExisted){$tileBackup='tile_map_snow.original.csv';Copy-Item -LiteralPath $targetTilePath -Destination (Join-Path $backupRoot $tileBackup) -Force;$tileSha=Get-Sha256 $targetTilePath}
-[ordered]@{schema='armyattack-snow-campaign-overlay/v3';source_sha=$ExpectedSha;donor_sha=$donorSha;config_backup=$configBackup;config_sha256=(Get-Sha256 $targetConfigPath);tile_existed=$tileExisted;tile_backup=$tileBackup;tile_sha256=$tileSha}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+$sourceManifest=@()
+foreach($rel in $sourceTargets){
+  $src=Join-Path $RepoRoot $rel
+  $backup=($rel -replace '[\\/]','__')+'.original'
+  Copy-Item -LiteralPath $src -Destination (Join-Path $backupRoot $backup) -Force
+  $sourceManifest+=@([ordered]@{path=$rel;backup=$backup;sha256=(Get-Sha256 $src)})
+}
+[ordered]@{schema='armyattack-snow-campaign-overlay/v4';source_sha=$ExpectedSha;donor_sha=$donorSha;config_backup=$configBackup;config_sha256=(Get-Sha256 $targetConfigPath);tile_existed=$tileExisted;tile_backup=$tileBackup;tile_sha256=$tileSha;source_files=$sourceManifest}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 try{
   $donor=Get-Content -LiteralPath $donorConfigPath -Raw|ConvertFrom-Json
@@ -95,13 +121,21 @@ try{
   if($null -eq $donor.MapSetup -or $null -eq $donor.MapSetup.Snow){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL donor_mapsetup_snow_missing'}
   if($null -eq $donor.MapArea){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL donor_maparea_missing'}
 
-  # Keep the published Snow campaign semantics, but remove only entry gating for test builds.
   $snow=Clone-JsonValue $donor.MapSetup.Snow
   Set-JsonProperty $snow 'UnlockLevel' '0'
   Set-JsonProperty $snow 'ZoomLevelsMobile' '120, 180'
   Remove-JsonProperty $snow 'UnlockMission'
   Remove-JsonProperty $snow 'RequiredMission'
   Set-JsonProperty $target.MapSetup 'Snow' $snow
+
+  $pvpZoomMaps=0
+  foreach($mapProperty in @($target.MapSetup.PSObject.Properties)){
+    if([string]$mapProperty.Name -like 'pvp_*'){
+      Set-JsonProperty $mapProperty.Value 'ZoomLevelsMobile' '40, 75, 100'
+      $pvpZoomMaps++
+    }
+  }
+  if($pvpZoomMaps -lt 1){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL pvp_mapsetup_missing'}
 
   $snowAreas=0
   foreach($areaProperty in @($donor.MapArea.PSObject.Properties)){
@@ -110,8 +144,6 @@ try{
   }
   if($snowAreas -lt 9){throw "SNOW_CAMPAIGN_OVERLAY=FAIL snow_areas expected_min=9 actual=$snowAreas"}
 
-  # Bring every direct v23 config entry explicitly tied to Snow/Polar/Nordurland.
-  # Existing 23.2 entries unrelated to the campaign are never overwritten.
   $mergedEntries=0
   foreach($sectionProperty in @($donor.PSObject.Properties)){
     $sectionName=[string]$sectionProperty.Name
@@ -128,6 +160,29 @@ try{
 
   $target|ConvertTo-Json -Depth 100|Set-Content -LiteralPath $targetConfigPath -Encoding UTF8
   Copy-Item -LiteralPath $donorTilePath -Destination $targetTilePath -Force
+
+  $gamePath=Join-Path $RepoRoot 'src\game\states\GameState.as'
+  $game=[IO.File]::ReadAllText($gamePath)
+  $game=Replace-OneRegex $game 'public static const GRAPHICS_MAP_ID_LIST:\s*Array\s*=\s*\["Home",\s*"Desert"\];' 'public static const GRAPHICS_MAP_ID_LIST: Array = ["Home", "Desert", "Snow"];' 'game_map_registry'
+  Write-Utf8Bom $gamePath $game
+
+  $worldPath=Join-Path $RepoRoot 'src\game\gui\popups\WorldMapWindow.as'
+  $world=[IO.File]::ReadAllText($worldPath)
+  $world=Replace-OneRegex $world 'public static const WORLD_MAP_ID_LIST:\s*Array\s*=\s*\["Home",\s*"Desert",\s*""\];' 'public static const WORLD_MAP_ID_LIST: Array = ["Home", "Desert", "Snow"];' 'world_map_registry'
+  $world=Replace-OneRegex $world '(?m)^\s*this\.setAreaAvailability\(2,\s*false\);\s*\r?\n?' '' 'world_map_snow_forced_disable'
+  $world=Replace-OneRegex $world 'if \(Config\.OFFLINE_MODE && \(param1 == 0 \|\| param1 == 1\)\) \{' 'if (Config.OFFLINE_MODE) {' 'world_map_offline_availability'
+  $snowTooltipReplacement='this.mCampaignTexts.push("Snow Campaign");'+"`r`n`t`t`t"+'this.mCampaignTexts.push("Enter the polar campaign.");'+"`r`n`t`t`t"+'this.mCampaignTexts.push(GameState.getText("MAP_TOOLTIP_LIBERY_LOCKED"));'
+  $world=Replace-OneRegex $world 'this\.mCampaignTexts\.push\(GameState\.getText\("MAP_TOOLTIP_COMING_SOON"\)\);\s*this\.mCampaignTexts\.push\(""\);\s*this\.mCampaignTexts\.push\(""\);' $snowTooltipReplacement 'world_map_snow_tooltip'
+  Write-Utf8Bom $worldPath $world
+
+  $scenePath=Join-Path $RepoRoot 'src\game\isometric\IsometricScene.as'
+  $scene=[IO.File]::ReadAllText($scenePath)
+  $scene=Replace-OneRegex $scene 'import flash\.display\.DisplayObjectContainer;\s*' "import flash.display.DisplayObjectContainer;`r`n`timport flash.display.InteractiveObject;`r`n`t" 'interactive_object_import'
+  $scene=Replace-OneRegex $scene 'var pvpButton:\s*DisplayObject\s*=\s*null;' 'var pvpButton: InteractiveObject = null;' 'pvp_button_type'
+  $scene=Replace-OneRegex $scene 'var mapButton:\s*DisplayObject\s*=\s*null;' 'var mapButton: InteractiveObject = null;' 'map_button_type'
+  $scene=Replace-OneRegex $scene 'pvpButton\s*=\s*bottom\.getChildByName\("Button_Pvp"\);' 'pvpButton = bottom.getChildByName("Button_Pvp") as InteractiveObject;' 'pvp_button_cast'
+  $scene=Replace-OneRegex $scene 'mapButton\s*=\s*bottom\.getChildByName\("Button_Map"\);' 'mapButton = bottom.getChildByName("Button_Map") as InteractiveObject;' 'map_button_cast'
+  Write-Utf8Bom $scenePath $scene
 
   $verify=Get-Content -LiteralPath $targetConfigPath -Raw|ConvertFrom-Json
   $snowVerify=$verify.MapSetup.Snow
@@ -155,6 +210,56 @@ try{
     $polarEntries+=@($section.PSObject.Properties|Where-Object{Test-SnowEntry ([string]$_.Name) $_.Value}).Count
   }
   if($polarEntries -lt 10){throw "SNOW_CAMPAIGN_OVERLAY=FAIL polar_content_too_small count=$polarEntries"}
+  foreach($pvp in @($verify.MapSetup.PSObject.Properties|Where-Object{[string]$_.Name -like 'pvp_*'})){
+    if([string]$pvp.Value.ZoomLevelsMobile -ne '40, 75, 100'){throw "SNOW_CAMPAIGN_OVERLAY=FAIL pvp_mobile_zoom map=$($pvp.Name) actual=$($pvp.Value.ZoomLevelsMobile)"}
+  }
+
+  $allMapChecks=@('Home','Desert','Snow')
+  foreach($mapName in $allMapChecks){
+    $mapProperty=$verify.MapSetup.PSObject.Properties[$mapName]
+    if($null -eq $mapProperty){throw "MAP_SYSTEM=FAIL mapsetup_missing=$mapName"}
+    $mapSetup=$mapProperty.Value
+    $tileName=[string]$mapSetup.TilemapFileName
+    $tilePath=Join-Path $targetRoot $tileName
+    if([string]::IsNullOrWhiteSpace($tileName) -or -not(Test-Path -LiteralPath $tilePath -PathType Leaf)){throw "MAP_SYSTEM=FAIL tilemap_missing map=$mapName file=$tileName"}
+    $expectedCells=[int]$mapSetup.Width * [int]$mapSetup.Height
+    $actualCells=Get-NormalizedTileCellCount $tilePath
+    if($actualCells -lt $expectedCells){throw "MAP_SYSTEM=FAIL tilemap_cells map=$mapName expected_min=$expectedCells actual=$actualCells"}
+    $mapSwfs=@($mapSetup.SWFFile)
+    if($mapSwfs.Count -lt 1 -or @($mapSwfs|Where-Object{[string]::IsNullOrWhiteSpace([string]$_)}).Count -gt 0){throw "MAP_SYSTEM=FAIL logical_swf_missing map=$mapName"}
+    Write-Host "MAP_TILE=PASS map=$mapName tile=$tileName expected=$expectedCells actual=$actualCells swfs=$($mapSwfs -join ',')"
+  }
+  $pvpEntries=@($verify.MapSetup.PSObject.Properties|Where-Object{[string]$_.Name -like 'pvp_*'})
+  if($pvpEntries.Count -lt 1){throw 'MAP_SYSTEM=FAIL pvp_maps_missing'}
+  foreach($pvp in $pvpEntries){
+    if([string]$pvp.Value.ZoomLevelsMobile -ne '40, 75, 100'){throw "MAP_SYSTEM=FAIL pvp_mobile_zoom map=$($pvp.Name) actual=$($pvp.Value.ZoomLevelsMobile)"}
+  }
+  $firstPvp=$pvpEntries|Where-Object{[string]$_.Value.TilemapFileName}|Select-Object -First 1
+  if($null -eq $firstPvp){throw 'MAP_SYSTEM=FAIL pvp_tilemap_reference_missing'}
+  $pvpTileName=[string]$firstPvp.Value.TilemapFileName
+  $pvpTilePath=Join-Path $targetRoot $pvpTileName
+  if(-not(Test-Path -LiteralPath $pvpTilePath -PathType Leaf)){throw "MAP_SYSTEM=FAIL pvp_tilemap_missing map=$($firstPvp.Name) file=$pvpTileName"}
+  $pvpExpected=[int]$firstPvp.Value.Width * [int]$firstPvp.Value.Height
+  $pvpActual=Get-NormalizedTileCellCount $pvpTilePath
+  if($pvpActual -lt $pvpExpected){throw "MAP_SYSTEM=FAIL pvp_tilemap_cells map=$($firstPvp.Name) expected_min=$pvpExpected actual=$pvpActual"}
+  Write-Host "MAP_TILE=PASS map=$($firstPvp.Name) tile=$pvpTileName expected=$pvpExpected actual=$pvpActual"
+
+  $gameVerify=[IO.File]::ReadAllText($gamePath)
+  $worldVerify=[IO.File]::ReadAllText($worldPath)
+  $sceneVerify=[IO.File]::ReadAllText($scenePath)
+  $offlineVerify=[IO.File]::ReadAllText((Join-Path $RepoRoot 'src\game\utils\OfflineSave.as'))
+  if($gameVerify -notmatch 'GRAPHICS_MAP_ID_LIST\s*:\s*Array\s*=\s*\[\s*"Home"\s*,\s*"Desert"\s*,\s*"Snow"\s*\]'){throw 'MAP_SYSTEM=FAIL graphics_map_registry'}
+  if($worldVerify -notmatch 'WORLD_MAP_ID_LIST\s*:\s*Array\s*=\s*\[\s*"Home"\s*,\s*"Desert"\s*,\s*"Snow"\s*\]'){throw 'MAP_SYSTEM=FAIL world_map_registry'}
+  if($worldVerify.Contains('this.setAreaAvailability(2, false);') -or $worldVerify.Contains('MAP_TOOLTIP_COMING_SOON')){throw 'MAP_SYSTEM=FAIL world_map_snow_disabled'}
+  if($worldVerify -notmatch 'requestWorldMapSwitch\(param1\)'){throw 'MAP_SYSTEM=FAIL world_map_switch_route'}
+  if($offlineVerify -notmatch 'savedata\["active_map_id"\]\s*=\s*map_id\.indexOf\("pvp_"\)\s*==\s*-1\s*\?\s*map_id\s*:\s*"Home"'){throw 'MAP_SYSTEM=FAIL offline_active_map_save'}
+  if($offlineVerify -notmatch 'executeSwitchMap\(activeMapId,\s*null\)'){throw 'MAP_SYSTEM=FAIL offline_active_map_restore'}
+  if($sceneVerify -notmatch 'import\s+flash\.display\.InteractiveObject\s*;' -or $sceneVerify -notmatch 'var\s+pvpButton\s*:\s*InteractiveObject' -or $sceneVerify -notmatch 'var\s+mapButton\s*:\s*InteractiveObject'){throw 'MAP_SYSTEM=FAIL interactive_button_compile_contract'}
+  Write-Host 'MAP_REGISTRY=PASS ids=Home,Desert,Snow'
+  Write-Host 'WORLD_MAP_ROUTING=PASS ids=Home,Desert,Snow switch=requestWorldMapSwitch'
+  Write-Host 'OFFLINE_MAP_PERSISTENCE=PASS stable_maps=Home,Desert,Snow pvp_fallback=Home restore=executeSwitchMap'
+  Write-Host 'WINDOWS_SOURCE_TYPE_FIX=PASS buttons=InteractiveObject'
+  Write-Host "MAP_SYSTEM_REGRESSION=PASS campaign_maps=3 pvp_maps=$($pvpEntries.Count)"
 
   Write-Host "SNOW_MAP_SETUP=PASS id=Snow type=$($snowVerify.Type) size=$($snowVerify.Width)x$($snowVerify.Height) tilemap=$($snowVerify.TilemapFileName) music=$($snowVerify.MusicFile)"
   Write-Host "SNOW_UNLOCK=PASS level=$($snowVerify.UnlockLevel) mission_gate=none test_access=immediate"
@@ -162,6 +267,8 @@ try{
   Write-Host "SNOW_TILEMAP=PASS normalized_cells=$tileCells expected=2601"
   Write-Host "SNOW_CONTENT_MERGE=PASS donor_sha=$donorSha merged_entries=$mergedEntries polar_related_entries=$polarEntries"
   Write-Host "SNOW_SINGLE_SWF=PASS logical_resource=$($logicalSwfs[0]) physical_extra_swf=false"
+  Write-Host "PVP_MOBILE_ZOOM=PASS maps=$pvpZoomMaps zoom=40,75,100"
+  Write-Host 'MAP_RUNTIME_SOURCE_OVERLAY=PASS ids=Home,Desert,Snow persistence=generic world_map=enabled source_compile_fix=InteractiveObject'
   Write-Host "SNOW_CAMPAIGN_OVERLAY=PASS mode=apply sha=$ExpectedSha donor_sha=$donorSha"
 }catch{
   $failure=$_
