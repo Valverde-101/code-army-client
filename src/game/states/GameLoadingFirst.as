@@ -30,10 +30,9 @@
 
 		public static var LoadingScreen: Class = resolveLoadingScreen();
 
-
 		private var mGameState: GameState;
-
 		private var mFileCountToLoad: int;
+		private var mFinishStarted: Boolean = false;
 
 		public function GameLoadingFirst(param1: StateMachine, param2: Stage, param3: FSMState, param4: GameState) {
 			super(param1, param2, param3, new LoadingScreen());
@@ -45,6 +44,8 @@
 			var _loc3_: String = null;
 			var _loc6_: String = null;
 			super.enter();
+			this.mFinishStarted = false;
+			Utils.DiagEvent("BOOT_PHASE", "phase=first;state=enter");
 			var _loc1_: DCResourceManager = DCResourceManager.getInstance();
 			for each(_loc2_ in AssetManager.JSON_FILES_TO_LOAD) {
 				_loc1_.load(Config.DIR_CONFIG + _loc2_ + ".json", _loc2_);
@@ -66,6 +67,7 @@
 			ArmySoundManager.getInstance();
 			ArmySoundManager.load();
 			this.mFileCountToLoad = _loc1_.getFileCountToLoad();
+			Utils.DiagEvent("BOOT_RESOURCE_SET", "phase=first;pending=" + this.mFileCountToLoad + ";csv=" + AssetManager.CVS_FILES_TO_LOAD.join(","));
 			var _loc5_: TextField;
 			var _loc4_: MovieClip;
 			(_loc5_ = (_loc4_ = mLoadingClip.getChildByName("Fill_Bar") as MovieClip).getChildByName("Text_Description") as TextField).text = Config.smLoadingDescription;
@@ -85,7 +87,15 @@
 			var _loc6_: Object = null;
 			var _loc7_: MyServer = null;
 			if (mPercent >= 100) {
-				this.loadingFinished();
+				if (!this.mFinishStarted) {
+					this.mFinishStarted = true;
+					try {
+						Utils.DiagEvent("BOOT_PHASE", "phase=first;state=finalize_begin");
+						this.loadingFinished();
+					} catch (error: Error) {
+						Utils.DiagEvent("BOOT_TRANSITION_FAILURE", "phase=first;error=" + error.errorID + ";message=" + error.message);
+					}
+				}
 				return;
 			}
 			var _loc2_: DCResourceManager = DCResourceManager.getInstance();
@@ -133,6 +143,7 @@
 				this.mGameState.mShowFreeUnitsReceived = _loc2_ != null && _loc2_.length > 0;
 			}
 			goToNextState();
+			Utils.DiagEvent("BOOT_PHASE", "phase=first;state=complete;next=second");
 		}
 
 		override protected function setLoadingBarPercent(param1: int): void {

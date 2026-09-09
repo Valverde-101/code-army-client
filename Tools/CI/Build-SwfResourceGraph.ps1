@@ -38,9 +38,12 @@ New-Item -ItemType Directory -Force -Path $OutputRoot|Out-Null
 $srcRoot=Join-Path $repo 'src'
 if(-not(Test-Path -LiteralPath $srcRoot -PathType Container)){throw "SWF_RESOURCE_GRAPH=FAIL src_missing=$srcRoot"}
 $files=@(Get-ChildItem -LiteralPath $srcRoot -Recurse -File -ErrorAction Stop | Where-Object{$_.Extension -in @('.as','.json','.xml','.csv','.txt')})
-$edges=New-Object System.Collections.Generic.List[object]
-$dynamic=New-Object System.Collections.Generic.List[object]
-$literalResources=New-Object System.Collections.Generic.List[object]
+# PowerShell 5.1 can throw "Argument types do not match" while coercing generic
+# List/HashSet instances through @() or ConvertTo-Json. ArrayList + hashtable sets keep
+# this report portable on the Windows self-hosted runners.
+$edges=New-Object System.Collections.ArrayList
+$dynamic=New-Object System.Collections.ArrayList
+$literalResources=New-Object System.Collections.ArrayList
 $symbolsByName=@{}
 $resourcesByName=@{}
 
@@ -57,9 +60,9 @@ foreach($file in $files){
       $row=[pscustomobject]@{
         consumer=$rel;line=(Get-LineNumber $text $m.Index);kind='getSWFClass_static';resource=$resourceExpr;symbol=$symbol;dynamic=$false
       }
-      $edges.Add($row)
-      if(-not $symbolsByName.ContainsKey($symbol)){$symbolsByName[$symbol]=New-Object System.Collections.Generic.HashSet[string]}
-      [void]$symbolsByName[$symbol].Add($resourceExpr)
+      [void]$edges.Add($row)
+      if(-not $symbolsByName.ContainsKey($symbol)){$symbolsByName[$symbol]=@{}}
+      $symbolsByName[$symbol][$resourceExpr]=$true
       if(-not $resourcesByName.ContainsKey($resourceExpr)){$resourcesByName[$resourceExpr]=0}
       $resourcesByName[$resourceExpr]=[int]$resourcesByName[$resourceExpr]+1
     }
@@ -68,22 +71,22 @@ foreach($file in $files){
     foreach($m in $allCalls){
       $args=$m.Groups[1].Value
       if($args -notmatch ',\s*"[^"]+"\s*$'){
-        $dynamic.Add([pscustomobject]@{consumer=$rel;line=(Get-LineNumber $text $m.Index);expression=$args.Trim()})
+        [void]$dynamic.Add([pscustomobject]@{consumer=$rel;line=(Get-LineNumber $text $m.Index);expression=$args.Trim()})
       }
     }
   }
 
   foreach($m in [regex]::Matches($text,'["''](swf/[A-Za-z0-9_./\-]+)["'']')){
     $resource=$m.Groups[1].Value
-    $literalResources.Add([pscustomobject]@{consumer=$rel;line=(Get-LineNumber $text $m.Index);resource=$resource})
+    [void]$literalResources.Add([pscustomobject]@{consumer=$rel;line=(Get-LineNumber $text $m.Index);resource=$resource})
   }
 }
 
-$aliasCandidates=New-Object System.Collections.Generic.List[object]
+$aliasCandidates=New-Object System.Collections.ArrayList
 foreach($symbol in ($symbolsByName.Keys|Sort-Object)){
-  $owners=@($symbolsByName[$symbol])
+  $owners=@($symbolsByName[$symbol].Keys|Sort-Object)
   if($owners.Count -gt 1){
-    $aliasCandidates.Add([pscustomobject]@{symbol=$symbol;resource_expressions=$owners;owner_count=$owners.Count})
+    [void]$aliasCandidates.Add([pscustomobject]@{symbol=$symbol;resource_expressions=$owners;owner_count=$owners.Count})
   }
 }
 

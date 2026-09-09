@@ -18,16 +18,11 @@
    
    public class GameLoadingSecond extends LoadingState
    {
-       
-      
       private var mGameState:GameState;
-      
       private var mFileCountToLoad:int;
-      
+      private var mFinishStarted:Boolean = false;
       private var env:int;
-      
       private var app_id:int;
-      
       private var log_level:int;
       
       public function GameLoadingSecond(param1:StateMachine, param2:Stage, param3:GameState)
@@ -41,6 +36,8 @@
          var _loc4_:TextField = null;
          var _loc5_:TextFormat = null;
          super.enter();
+         this.mFinishStarted = false;
+         Utils.DiagEvent("BOOT_PHASE","phase=second;state=enter;map=" + this.mGameState.mCurrentMapId);
          var _loc1_:* = {"map_id":this.mGameState.mCurrentMapId};
          this.mGameState.mServer.serverCallServiceWithParameters(ServiceIDs.GET_MAP_DATA,_loc1_,true);
          mServerResponsesNeeded.push(ServiceIDs.GET_MAP_DATA);
@@ -48,6 +45,7 @@
          this.mGameState.startMusic();
          var _loc2_:DCResourceManager = DCResourceManager.getInstance();
          this.mFileCountToLoad = _loc2_.getFileCountToLoad();
+         Utils.DiagEvent("BOOT_RESOURCE_SET","phase=second;pending=" + this.mFileCountToLoad + ";map=" + this.mGameState.mCurrentMapId);
          var _loc3_:MovieClip = mLoadingClip.getChildByName("Fill_Bar") as MovieClip;
          (_loc4_ = _loc3_.getChildByName("Text_Description") as TextField).text = Config.smLoadingDescription;
          LocalizationUtils.replaceFont(_loc4_);
@@ -66,7 +64,19 @@
          super.logicUpdate(param1);
          if(mPercent >= 100)
          {
-            this.loadingFinished();
+            if(!this.mFinishStarted)
+            {
+               this.mFinishStarted = true;
+               try
+               {
+                  Utils.DiagEvent("BOOT_PHASE","phase=second;state=finalize_begin;map=" + this.mGameState.mCurrentMapId);
+                  this.loadingFinished();
+               }
+               catch(error:Error)
+               {
+                  Utils.DiagEvent("BOOT_TRANSITION_FAILURE","phase=second;error=" + error.errorID + ";message=" + error.message);
+               }
+            }
             return;
          }
          var _loc3_:MyServer = this.mGameState.mServer;
@@ -193,6 +203,7 @@
          this.mGameState.mLoadingStatesOver = true;
          this.mGameState.initInboxChecker();
          goToNextState();
+         Utils.DiagEvent("BOOT_READY","phase=second;map=" + this.mGameState.mCurrentMapId + ";loading_states_over=true");
       }
       
       override protected function setLoadingBarPercent(param1:int) : void
