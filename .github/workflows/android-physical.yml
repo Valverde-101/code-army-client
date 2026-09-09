@@ -77,12 +77,13 @@ jobs:
           $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
           Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
           $work=Initialize-AndroidBuildProjectWork -RepoRoot $PWD.Path
-          if(-not(Test-Path -LiteralPath (Join-Path $PWD.Path '.work\androidbuild-project-root') -PathType Leaf)){throw 'WORK_ISOLATION=FAIL sentinel_missing_after_initialize'}
           $raw=Join-Path $PWD.Path (".work\evidence-staging\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
           if(Test-Path -LiteralPath $raw){Remove-Item -LiteralPath $raw -Recurse -Force}
           New-Item -ItemType Directory -Force -Path $raw|Out-Null
           "PHYSICAL_RAW_EVIDENCE=$raw"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "WORK_ISOLATION=PASS work_root=$($work.work_root) sentinel=true"
+          $sentinel=Join-Path $PWD.Path '.work\.androidbuild-work-root'
+          if(-not(Test-Path -LiteralPath $sentinel -PathType Leaf)){throw "WORK_ISOLATION=FAIL sentinel_missing_after_initialize expected=$sentinel"}
+          Write-Host "WORK_ISOLATION=PASS work_root=$($work.work_root) sentinel=$sentinel"
           Write-Host "EVIDENCE_STAGING=PASS raw=$raw ownership=repo-work no_legacy_junction=true"
 
       - name: Wait for exact validated APK
@@ -137,7 +138,13 @@ jobs:
           $deviceOutcome='${{ steps.device_test.outcome }}'
           $diagOutcome='${{ steps.runtime_diag.outcome }}'
           $result='FAIL';$reason='upstream_gate_failed'
-          $summaryPath=Join-Path $env:PHYSICAL_RAW_EVIDENCE 'summary.json'
+          $raw=$env:PHYSICAL_RAW_EVIDENCE
+          if([string]::IsNullOrWhiteSpace($raw)){
+            $raw=Join-Path $PWD.Path (".work\evidence-staging\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
+            New-Item -ItemType Directory -Force -Path $raw|Out-Null
+            "PHYSICAL_RAW_EVIDENCE=$raw"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          $summaryPath=Join-Path $raw 'summary.json'
           $summary=$null
           if(Test-Path -LiteralPath $summaryPath){try{$summary=Get-Content -LiteralPath $summaryPath -Raw|ConvertFrom-Json}catch{}}
           if($apkOutcome -ne 'success'){$reason='candidate_apk_unavailable'}
@@ -151,7 +158,7 @@ jobs:
             foreach($gate in $required){$value=[string]$summary.results.$gate;if($value -ne 'PASS'){$bad+="$gate=$value"}}
             if($bad.Count -eq 0){$result='PASS';$reason='all_mandatory_physical_gates_pass'}else{$reason='mandatory_gate_'+($bad -join ',')}
           }
-          [ordered]@{repository=$env:GITHUB_REPOSITORY;tested_sha=$env:EXPECTED_SOURCE_SHA;run_id=$env:GITHUB_RUN_ID;runner=$env:RUNNER_NAME;apk_outcome=$apkOutcome;device_outcome=$deviceOutcome;diagnostics_outcome=$diagOutcome;physical_result=$result;reason=$reason;generated_utc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $env:PHYSICAL_RAW_EVIDENCE 'physical-gate.json') -Encoding UTF8
+          [ordered]@{repository=$env:GITHUB_REPOSITORY;tested_sha=$env:EXPECTED_SOURCE_SHA;run_id=$env:GITHUB_RUN_ID;runner=$env:RUNNER_NAME;apk_outcome=$apkOutcome;device_outcome=$deviceOutcome;diagnostics_outcome=$diagOutcome;physical_result=$result;reason=$reason;generated_utc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $raw 'physical-gate.json') -Encoding UTF8
           "PHYSICAL_RESULT=$result"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "PHYSICAL_REASON=$reason"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "result=$result"|Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -164,11 +171,16 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
-          if(-not(Test-Path -LiteralPath $env:PHYSICAL_RAW_EVIDENCE -PathType Container)){throw 'EVIDENCE_PUBLISH=FAIL raw_missing'}
+          $raw=$env:PHYSICAL_RAW_EVIDENCE
+          if([string]::IsNullOrWhiteSpace($raw)){
+            $raw=Join-Path $PWD.Path (".work\evidence-staging\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
+            New-Item -ItemType Directory -Force -Path $raw|Out-Null
+          }
+          if(-not(Test-Path -LiteralPath $raw -PathType Container)){throw "EVIDENCE_PUBLISH=FAIL raw_missing=$raw"}
           Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
           $cfg=Get-Content -LiteralPath '.\.androidbuild.json' -Raw|ConvertFrom-Json
-          Reduce-AndroidBuildEvidence -Path $env:PHYSICAL_RAW_EVIDENCE|Out-Null
-          $r=Publish-AndroidBuildEvidence -RepoRoot $PWD.Path -RawEvidencePath $env:PHYSICAL_RAW_EVIDENCE -Result $env:PHYSICAL_RESULT -TestedSha $env:EXPECTED_SOURCE_SHA -KeepRuns ([int]$cfg.evidence.keep_runs_global) -MaxFiles ([int]$cfg.evidence.max_files_per_run) -MaxBytes ([int64]$cfg.evidence.max_total_bytes_per_run) -MaxFileBytes ([int64]$cfg.evidence.max_file_bytes) -MaxScreenshots ([int]$cfg.evidence.max_screenshots)
+          Reduce-AndroidBuildEvidence -Path $raw|Out-Null
+          $r=Publish-AndroidBuildEvidence -RepoRoot $PWD.Path -RawEvidencePath $raw -Result $env:PHYSICAL_RESULT -TestedSha $env:EXPECTED_SOURCE_SHA -KeepRuns ([int]$cfg.evidence.keep_runs_global) -MaxFiles ([int]$cfg.evidence.max_files_per_run) -MaxBytes ([int64]$cfg.evidence.max_total_bytes_per_run) -MaxFileBytes ([int64]$cfg.evidence.max_file_bytes) -MaxScreenshots ([int]$cfg.evidence.max_screenshots)
           if([string]$r.status -ne 'PASS'){throw "EVIDENCE_PUBLISH=FAIL status=$($r.status)"}
           "EVIDENCE_PUBLISHED_PATH=$($r.path)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "EVIDENCE_PUBLISH=PASS path=$($r.path) result=$($r.result) tested_sha=$($r.tested_sha) policy=core"
