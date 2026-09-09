@@ -1,4 +1,4 @@
-﻿package: name='air.army.attack' versionCode='23002000' versionName='23.2-android-5fc32011' platformBuildVersionName='13' platformBuildVersionCode='33' compileSdkVersion='33' compileSdkVersionCodename='13'
+﻿package: name='air.army.attack' versionCode='23002000' versionName='23.2-android-7cc9f468' platformBuildVersionName='13' platformBuildVersionCode='33' compileSdkVersion='33' compileSdkVersionCodename='13'
 sdkVersion:'21'
 targetSdkVersion:'33'
 application-label:'Army Attack'
