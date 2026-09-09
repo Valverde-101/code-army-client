@@ -47,8 +47,9 @@ if($ffdec.Extension -eq '.jar'){
 $outDir=Split-Path -Parent $OutputSwf
 New-Item -ItemType Directory -Force -Path $outDir|Out-Null
 if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.json'}
-$patchVersion='mobile-engine-v3.20-pvp-powerup-env-hud-rootfix'
+$patchVersion='mobile-engine-v3.21-android-boot-product-rootfix'
 $patchSpecs=@(
+  [ordered]@{Class='AssetManager';Source='src\AssetManager.as';Log='ffdec-feature-asset-manager.log'},
   [ordered]@{Class='FeatureTuner';Source='src\FeatureTuner.as';Log='ffdec-feature-tuner.log'},
   [ordered]@{Class='game.environment.EnvEffectManager';Source='src\game\environment\EnvEffectManager.as';Log='ffdec-performance-environment.log'},
   [ordered]@{Class='game.battlefield.TileMapGraphic';Source='src\game\battlefield\TileMapGraphic.as';Log='ffdec-performance-tilemap.log'},
@@ -63,6 +64,8 @@ $patchSpecs=@(
   [ordered]@{Class='game.utils.OfflineSave';Source='src\game\utils\OfflineSave.as';Log='ffdec-feature-offlinesave.log'},
   [ordered]@{Class='game.net.PvPMatch';Source='src\game\net\PvPMatch.as';Log='ffdec-feature-pvp-match.log'},
   [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
+  [ordered]@{Class='game.states.GameLoadingFirst';Source='src\game\states\GameLoadingFirst.as';Log='ffdec-feature-loading-first.log'},
+  [ordered]@{Class='game.states.GameLoadingSecond';Source='src\game\states\GameLoadingSecond.as';Log='ffdec-feature-loading-second.log'},
   [ordered]@{Class='game.gameElements.PlayerBuildingObject';Source='src\game\gameElements\PlayerBuildingObject.as';Log='ffdec-performance-player-building.log'},
   [ordered]@{Class='game.gameElements.HFEObject';Source='src\game\gameElements\HFEObject.as';Log='ffdec-feature-hfe-harvest.log'},
   [ordered]@{Class='game.items.PowerUpItem';Source='src\game\items\PowerUpItem.as';Log='ffdec-feature-pvp-powerup-item.log'},
@@ -84,11 +87,30 @@ $patchSpecs=@(
 )
 
 # Root-regression assertions are deliberately in the patcher itself, so a candidate
-# cannot silently build an old constructor contract, old airdrop routing or old LOW policy.
+# cannot silently build an old bootstrap registry, old loading state machine, old
+# constructor contract, old airdrop routing or old LOW policy.
+$assetSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\AssetManager.as') -Raw
 $featureSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\FeatureTuner.as') -Raw
+$loadingFirstSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\states\GameLoadingFirst.as') -Raw
+$loadingSecondSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\states\GameLoadingSecond.as') -Raw
 $envSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\environment\EnvEffectManager.as') -Raw
 $powerSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\PowerUpObject.as') -Raw
 $fireBaseSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\actions\FireMissionAction.as') -Raw
+$csvMatch=[regex]::Match($assetSource,'CVS_FILES_TO_LOAD\s*:\s*Array\s*=\s*\[([^\]]*)\]')
+if(-not $csvMatch.Success){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=csv_registry_unparseable'}
+$csvIds=@([regex]::Matches($csvMatch.Groups[1].Value,'"([^"]+)"')|ForEach-Object{$_.Groups[1].Value})
+if($csvIds -contains 'map_2'){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=legacy_map_2_in_bootstrap'}
+foreach($requiredCsv in @('tile_map','tile_map_desert','pvp_map_1_4valleys_11x11')){
+  if($csvIds -notcontains $requiredCsv){throw "SWF_BOOT_PRODUCT_REGRESSION=FAIL check=required_csv_missing id=$requiredCsv"}
+}
+if($featureSource -notmatch 'sanitizeBootstrapResources' -or $featureSource -notmatch 'String\(resources\[i\]\)\s*==\s*"map_2"'){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=legacy_product_sanitizer_missing'}
+if($loadingFirstSource -notmatch 'BOOT_TRANSITION_FAILURE' -or $loadingFirstSource -notmatch 'mFinishStarted'){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=loading_first_guard_or_trace_missing'}
+if($loadingSecondSource -notmatch 'BOOT_READY' -or $loadingSecondSource -notmatch 'BOOT_TRANSITION_FAILURE' -or $loadingSecondSource -notmatch 'mFinishStarted'){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=loading_second_ready_guard_or_trace_missing'}
+foreach($requiredClass in @('AssetManager','game.states.GameLoadingFirst','game.states.GameLoadingSecond')){
+  if(-not @($patchSpecs|Where-Object{$_.Class -eq $requiredClass})){throw "SWF_BOOT_PRODUCT_REGRESSION=FAIL check=class_not_patched class=$requiredClass"}
+}
+Write-Host "SWF_BOOT_PRODUCT_REGRESSION=PASS classes=AssetManager,GameLoadingFirst,GameLoadingSecond csv=$($csvIds -join ',') legacy_map_2=absent sanitizer=present boot_ready=present"
+
 if($featureSource -notmatch 'USE_ENVIRONMENT_EFFECTS' -or $featureSource -notmatch '!USE_LOW_SWF'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=low_environment_policy'}
 if($envSource -notmatch 'if\(!FeatureTuner\.USE_ENVIRONMENT_EFFECTS\)'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=environment_fast_skip'}
 if($powerSource -notmatch 'resolvePlayerAirdropGraphics' -or $powerSource -notmatch 'PVP_POWERUP_FIREMISSION_PHASE' -or $powerSource -notmatch 'PVP_POWERUP_FIREMISSION_ERROR'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=pvp_powerup_trace'}
@@ -193,7 +215,7 @@ $tempSources=New-Object System.Collections.Generic.List[string]
 for($i=0;$i -lt $patchSpecs.Count;$i++){
   $spec=$patchSpecs[$i]
   $source=Join-Path $RepoRoot $spec.Source
-  if($spec.Class -in @('game.states.GameState','game.gui.GameHUD','game.gui.GiveFilePermissionDialog','game.isometric.IsometricScene')){
+  if($spec.Class -in @('game.states.GameState','game.states.GameLoadingSecond','game.gui.GameHUD','game.gui.GiveFilePermissionDialog','game.isometric.IsometricScene')){
     $leafClass=[System.IO.Path]::GetFileNameWithoutExtension([string]$spec.Source)
     $ffdecSource=Join-Path $outDir ($leafClass + '.mobile.ffdec.as')
     Remove-Item -LiteralPath $ffdecSource -Force -ErrorAction SilentlyContinue
@@ -227,6 +249,10 @@ foreach($spec in $patchSpecs){
   $className=[string]$spec.Class
   if($dumpText -notmatch [regex]::Escape($className)){throw "SWF_PERF_PATCH=FAIL class_missing_after_patch=$className"}
 }
+foreach($bootMarker in @('AssetManager','game.states.GameLoadingFirst','game.states.GameLoadingSecond')){
+  if($dumpText -notmatch [regex]::Escape($bootMarker)){throw "SWF_BOOT_PRODUCT_VALIDATE=FAIL class_missing=$bootMarker"}
+}
+Write-Host "SWF_BOOT_PRODUCT_VALIDATE=PASS patched_classes=AssetManager,GameLoadingFirst,GameLoadingSecond patched_sha256=$outputSha"
 
 $manifest=[ordered]@{
   schema_version=1
@@ -245,7 +271,11 @@ $manifest=[ordered]@{
     'enemy_movement_update_cadence_unchanged',
     'visual_assets_preserved_from_source_swf',
     'audio_assets_preserved_from_source_swf',
-    'animate_linkage_preserved_from_source_swf'
+    'animate_linkage_preserved_from_source_swf',
+    'android_bootstrap_assetmanager_bytecode_replaced',
+    'android_loading_first_bytecode_replaced',
+    'android_loading_second_bytecode_replaced',
+    'legacy_map_2_removed_from_bootstrap_registry'
   )
   feature_patch_version='offline-systems-v5-root-recovery'
   optimizations=@(
@@ -333,7 +363,11 @@ $manifest=[ordered]@{
     'pvp_firemission_missing_debris_safe',
     'pvp_enemy_materialized_class_trace',
     'swf_resolved_class_identity_trace',
-    'hfe_progress_not_mirrored_to_logcat'
+    'hfe_progress_not_mirrored_to_logcat',
+    'android_bootstrap_assetmanager_bytecode_applied',
+    'android_loading_first_bytecode_applied',
+    'android_loading_second_bytecode_applied',
+    'legacy_map_2_bootstrap_removed_from_product_source'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
