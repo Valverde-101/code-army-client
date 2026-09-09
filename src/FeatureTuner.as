@@ -36,7 +36,12 @@ package
       // deliberately keeps its projectile/impact feedback alive even when this is false.
       public static const USE_FIRE_CALL_EFFECTS:Boolean = !DROP_ALL_OPTIONAL_FEATURES && !USE_LOW_SWF;
 
-      public static const LOAD_TILE_MAP_CSV:Boolean = true;
+      // The released v23.2 SWF still contains the legacy map_2 bootstrap id although
+      // map_2.csv does not exist in the shipped config set. Android patches FeatureTuner
+      // into the final SWF, so sanitize the mutable AssetManager bootstrap registry at
+      // class initialization before GameLoadingFirst iterates it. This protects both the
+      // canonical source registry and older embedded bytecode that still carries map_2.
+      public static const LOAD_TILE_MAP_CSV:Boolean = sanitizeBootstrapResources();
       public static const USE_CAMERA_TRANSITION:Boolean = true;
       public static const USE_LIVE_BUILD_PRODUCTION:Boolean = Config.USE_LIVE_BUILD;
       public static const USE_GOOGLE_IN_APP_BILLING:Boolean = false;
@@ -52,6 +57,24 @@ package
       public static const USE_ZOOM_IN_OUT:Boolean = true;
       public static const USE_MOUSE_FOR_PLACE_ITEMS:Boolean = true;
       public static const USE_HINT_HEALTH:Boolean = true;
+
+      private static function sanitizeBootstrapResources() : Boolean
+      {
+         var resources:Array = AssetManager.CVS_FILES_TO_LOAD;
+         if(resources != null)
+         {
+            var i:int = resources.length - 1;
+            while(i >= 0)
+            {
+               if(String(resources[i]) == "map_2")
+               {
+                  resources.splice(i,1);
+               }
+               i--;
+            }
+         }
+         return true;
+      }
 
       public function FeatureTuner()
       {
