@@ -226,3 +226,17 @@ jobs:
           Write-Host 'MANUAL_PHYSICAL_PROFILE=Recording starts automatically; PERF only opens or closes the metrics panel'
           Write-Host 'MANUAL_PHYSICAL_ZIP=Press ZIP to share a snapshot without stopping the recording'
           Write-Host 'FINAL_VALIDATION=VALIDATION_INCOMPLETE physical_validation_required'
+
+      - name: Dispatch physical validation after candidate PASS
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          if($env:SOURCE_BRANCH -eq 'main'){
+            Write-Host 'PHYSICAL_DISPATCH=SKIPPED_WITH_REASON main_branch_same_pr_evidence_unavailable'
+            exit 0
+          }
+          $headers=@{Authorization="Bearer $env:GITHUB_TOKEN";Accept='application/vnd.github+json';'X-GitHub-Api-Version'='2022-11-28'}
+          $uri="https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/android-physical.yml/dispatches"
+          $body=[ordered]@{ref=$env:SOURCE_BRANCH;inputs=[ordered]@{expected_sha=$env:EXPECTED_SOURCE_SHA;source_branch=$env:SOURCE_BRANCH}}|ConvertTo-Json -Depth 4
+          Invoke-RestMethod -Headers $headers -Uri $uri -Method Post -Body $body -ContentType 'application/json'|Out-Null
+          Write-Host "PHYSICAL_DISPATCH=PASS trigger=candidate_success tested_sha=$env:EXPECTED_SOURCE_SHA branch=$env:SOURCE_BRANCH workflow=android-physical.yml"
