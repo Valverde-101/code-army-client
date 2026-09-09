@@ -10,6 +10,22 @@ on:
         default: false
   pull_request:
     branches: [main]
+    types: [opened, reopened, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'Tools/CI/**'
+      - 'Tools/SWF/**'
+      - '.github/scripts/**'
+      - '.github/workflows/windows-candidate.yml'
+      - '.androidbuild.json'
+      - 'vendor/Test_army_attack'
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+      - 'test/**'
+      - 'chore/**'
     paths:
       - 'src/**'
       - 'Tools/CI/**'
