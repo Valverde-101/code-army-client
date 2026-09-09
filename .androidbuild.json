@@ -67,10 +67,10 @@
     "minimum_battery_percent": 15,
     "minimum_storage_bytes": 1073741824,
     "ready": true,
-    "activation": "pull_request_and_manual_workflow_dispatch",
+    "activation": "trusted_branch_push_and_manual_workflow_dispatch",
     "workflow": ".github/workflows/android-physical.yml",
     "final_apk_requires_physical_pass": false,
-    "current_state": "active_on_pr",
+    "current_state": "active_on_trusted_branch_push",
     "workflow_timeout_minutes": 40
   },
   "evidence": {
