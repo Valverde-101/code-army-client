@@ -1,5 +1,6 @@
 package game.actions
 {
+   import flash.utils.getTimer;
    import game.actions.FireMissionAction;
    import game.characters.PlayerUnit;
    import game.characters.PvPEnemyUnit;
@@ -19,11 +20,27 @@ package game.actions
    
    public class PvPFireMissionAction extends FireMissionAction
    {
-       
-      
-      public function PvPFireMissionAction(param1:GridCell, param2:FireMissionItem, param3:String = null)
+      private static var smTraceCounter:int = 0;
+      private var mTraceId:String;
+
+      public function PvPFireMissionAction(param1:GridCell, param2:FireMissionItem, param3:String = null, param4:String = null)
       {
          super(param1,param2,param3);
+         if(param4 && param4.length > 0)
+         {
+            this.mTraceId = param4;
+         }
+         else
+         {
+            smTraceCounter++;
+            this.mTraceId = "FM-" + getTimer() + "-" + smTraceCounter;
+            Utils.DiagEvent("TRACE_BEGIN","trace=" + this.mTraceId + ";domain=PVP_FIREMISSION;source=direct_action;mission=" + (param2 ? param2.mId : "null"));
+         }
+      }
+
+      private function td(param1:String):String
+      {
+         return "trace=" + this.mTraceId + ";" + param1;
       }
       
       override protected function hasIngredients() : Boolean
@@ -33,16 +50,18 @@ package game.actions
 
       override public function start() : void
       {
-         Utils.DiagEvent("PVP_FIREMISSION_START","mission=" + (mItem ? mItem.mId : "null") + ";cell=" + (mGC ? mGC.mPosI + "," + mGC.mPosJ : "null") + ";graphics_override=" + (mGraphicsOverride ? mGraphicsOverride : "default"));
+         Utils.DiagEvent("PVP_FIREMISSION_START",this.td("mission=" + (mItem ? mItem.mId : "null") + ";cell=" + (mGC ? mGC.mPosI + "," + mGC.mPosJ : "null") + ";graphics_override=" + (mGraphicsOverride ? mGraphicsOverride : "default")));
          try
          {
             super.start();
          }
          catch(error:Error)
          {
-            Utils.DiagEvent("PVP_FIREMISSION_START_ERROR","mission=" + (mItem ? mItem.mId : "null") + ";error=" + error.errorID + ";message=" + error.message);
+            Utils.DiagEvent("PVP_FIREMISSION_START_ERROR",this.td("mission=" + (mItem ? mItem.mId : "null") + ";error=" + error.errorID + ";message=" + error.message));
+            Utils.DiagEvent("DIAG_FAILURE",this.td("classification=PVP_FIREMISSION_RUNTIME_ERROR;event=PVP_FIREMISSION_START_ERROR;mission=" + (mItem ? mItem.mId : "null") + ";error=" + error.errorID + ";message=" + error.message));
             this.executeFallback();
             skip();
+            Utils.DiagEvent("TRACE_END",this.td("domain=PVP_FIREMISSION;result=start_error_fallback"));
          }
       }
 
@@ -63,7 +82,7 @@ package game.actions
                targetSource = "object";
             }
          }
-         Utils.DiagEvent("PVP_FIREMISSION_PHASE","phase=fallback_select;mission=" + (mItem ? mItem.mId : "null") + ";cell=" + (mGC ? mGC.mPosI + "," + mGC.mPosJ : "null") + ";target_source=" + targetSource + ";target=" + (target && target.mItem ? target.mItem.mId : "none"));
+         Utils.DiagEvent("PVP_FIREMISSION_PHASE",this.td("phase=fallback_select;mission=" + (mItem ? mItem.mId : "null") + ";cell=" + (mGC ? mGC.mPosI + "," + mGC.mPosJ : "null") + ";target_source=" + targetSource + ";target=" + (target && target.mItem ? target.mItem.mId : "none")));
          if(target is PlayerUnit)
          {
             damageOwnUnit(PlayerUnit(target));
@@ -84,14 +103,18 @@ package game.actions
             this.attackUnit(PvPEnemyUnit(target));
          }
          GameState.mInstance.updateGrid();
-         Utils.DiagEvent("PVP_FIREMISSION_FALLBACK","mission=" + (mItem ? mItem.mId : "null") + ";target_source=" + targetSource + ";target=" + (target && target.mItem ? target.mItem.mId : "none") + ";result=" + (target ? "applied" : "no_target"));
+         Utils.DiagEvent("PVP_FIREMISSION_FALLBACK",this.td("mission=" + (mItem ? mItem.mId : "null") + ";target_source=" + targetSource + ";target=" + (target && target.mItem ? target.mItem.mId : "none") + ";result=" + (target ? "applied" : "no_target")));
+         if(!target)
+         {
+            Utils.DiagEvent("DIAG_FAILURE",this.td("classification=PVP_FIREMISSION_TARGET_MISSING;event=PVP_FIREMISSION_FALLBACK;mission=" + (mItem ? mItem.mId : "null") + ";cell=" + (mGC ? mGC.mPosI + "," + mGC.mPosJ : "null")));
+         }
       }
       
       override protected function execute() : void
       {
          var _loc2_:Renderable = null;
          var _loc1_:GameState = GameState.mInstance;
-         Utils.DiagEvent("PVP_FIREMISSION_EXECUTE","mission=" + (mItem ? mItem.mId : "null") + ";targets=" + (mTargets ? mTargets.length : 0));
+         Utils.DiagEvent("PVP_FIREMISSION_EXECUTE",this.td("mission=" + (mItem ? mItem.mId : "null") + ";targets=" + (mTargets ? mTargets.length : 0)));
          for each(_loc2_ in mTargets)
          {
             if(_loc2_.mScene)
@@ -118,7 +141,8 @@ package game.actions
             }
          }
          _loc1_.updateGrid();
-         Utils.DiagEvent("PVP_FIREMISSION_RESULT","mission=" + (mItem ? mItem.mId : "null") + ";result=applied");
+         Utils.DiagEvent("PVP_FIREMISSION_RESULT",this.td("mission=" + (mItem ? mItem.mId : "null") + ";result=applied;targets=" + (mTargets ? mTargets.length : 0)));
+         Utils.DiagEvent("TRACE_END",this.td("domain=PVP_FIREMISSION;result=applied"));
       }
       
       private function attackUnit(param1:PvPEnemyUnit) : void
@@ -127,12 +151,14 @@ package game.actions
          if(!param1 || !param1.isAlive())
          {
             Utils.LogError("Firemission: Enemy not found");
+            Utils.DiagEvent("DIAG_FAILURE",this.td("classification=PVP_FIREMISSION_TARGET_INVALID;event=PVP_FIREMISSION_TARGET;mission=" + (mItem ? mItem.mId : "null") + ";reason=enemy_missing_or_dead"));
             return;
          }
          var _loc2_:GameState = GameState.mInstance;
          var _loc3_:IsometricScene = _loc2_.mScene;
          var _loc4_:GamePlayerProfile = _loc2_.mPlayerProfile;
-         var _loc5_:* = param1.getHealth() - this.mItem.mDamage <= 0;
+         var healthBefore:int = param1.getHealth();
+         var _loc5_:* = healthBefore - this.mItem.mDamage <= 0;
          var _loc6_:int = param1.mHitRewardXP;
          var _loc7_:int = param1.mHitRewardMoney;
          var _loc8_:int = param1.mHitRewardMaterial;
@@ -150,7 +176,7 @@ package game.actions
          {
             ++mKilledEnemyCount;
             _loc10_ = (param1.mItem as TargetItem).getRandomItemDrop();
-            Utils.DiagEvent("PVP_LOOT_ROLL_FIREMISSION","unit=" + param1.mUnitId + ";item=" + (_loc10_ ? _loc10_.mId : "null") + ";firemission=" + this.mItem.mId);
+            Utils.DiagEvent("PVP_LOOT_ROLL_FIREMISSION",this.td("unit=" + param1.mUnitId + ";item=" + (_loc10_ ? _loc10_.mId : "null") + ";firemission=" + this.mItem.mId));
             if(_loc10_)
             {
                _loc2_.mScene.addLootReward(_loc10_,1,param1.getContainer());
@@ -158,10 +184,11 @@ package game.actions
             }
             else
             {
-               Utils.DiagEvent("PVP_LOOT_ROLL_EMPTY_FIREMISSION","unit=" + param1.mUnitId + ";firemission=" + this.mItem.mId);
+               Utils.DiagEvent("PVP_LOOT_ROLL_EMPTY_FIREMISSION",this.td("unit=" + param1.mUnitId + ";firemission=" + this.mItem.mId));
             }
          }
          param1.reduceHealth(this.mItem.mDamage);
+         Utils.DiagEvent("PVP_FIREMISSION_DAMAGE",this.td("mission=" + this.mItem.mId + ";unit=" + param1.mUnitId + ";damage=" + this.mItem.mDamage + ";health_before=" + healthBefore + ";health_after=" + param1.getHealth() + ";killed=" + _loc5_));
       }
    }
 }
