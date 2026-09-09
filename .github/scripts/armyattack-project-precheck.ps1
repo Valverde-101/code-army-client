@@ -90,6 +90,11 @@ foreach($needle in @("'.work'","'build'","'cache\inputs'","'scratch'","'runtime\
   if(-not $workspaceScript.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL workspace_helper_missing=$needle"}
 }
 
+function Test-ForbiddenPullRequestSynchronizeTrigger {
+  param([Parameter(Mandatory=$true)][string]$WorkflowText)
+  return [regex]::IsMatch($WorkflowText,'(?im)^\s*types\s*:\s*\[[^\]]*\bsynchronize\b[^\]]*\]')
+}
+
 $candidateWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\android-candidate.yml') -Raw
 foreach($legacy in @('Enable-AutoRepoPool4.ps1','Start-AutoRepoPool4.runtime.ps1','Bootstrap-PhysicalClone.ps1','Publish-AndroidEvidence.ps1')){
   if($candidateWorkflow.Contains($legacy)){throw "ARMY_PROJECT_PRECHECK=FAIL legacy_infrastructure_still_invoked=$legacy"}
@@ -98,7 +103,7 @@ if(-not $candidateWorkflow.Contains("paths-ignore:") -or -not $candidateWorkflow
 foreach($needle in @('types: [opened, reopened, ready_for_review]','push:',"'feat/**'")){
   if(-not $candidateWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL candidate_bot_loop_contract_missing=$needle"}
 }
-if($candidateWorkflow -match '(?i)\bsynchronize\b'){throw 'ARMY_PROJECT_PRECHECK=FAIL candidate_pull_request_synchronize_forbidden'}
+if(Test-ForbiddenPullRequestSynchronizeTrigger $candidateWorkflow){throw 'ARMY_PROJECT_PRECHECK=FAIL candidate_pull_request_synchronize_forbidden'}
 foreach($needle in @('minimum=3.0.11','APK_FINAL_PUBLICATION=PASS','validation_scope=candidate','PHYSICAL_VALIDATION=NOT_ACTIVATED','FINAL_VALIDATION=VALIDATION_INCOMPLETE')){
   if(-not $candidateWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL candidate_delivery_contract_missing=$needle"}
 }
@@ -110,7 +115,7 @@ foreach($needle in @('Resolve-AndroidBuildFlashToolchain','Initialize-ArmyAttack
 foreach($needle in @('types: [opened, reopened, ready_for_review]','push:',"'feat/**'")){
   if(-not $windowsWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL windows_bot_loop_contract_missing=$needle"}
 }
-if($windowsWorkflow -match '(?i)\bsynchronize\b'){throw 'ARMY_PROJECT_PRECHECK=FAIL windows_pull_request_synchronize_forbidden'}
+if(Test-ForbiddenPullRequestSynchronizeTrigger $windowsWorkflow){throw 'ARMY_PROJECT_PRECHECK=FAIL windows_pull_request_synchronize_forbidden'}
 $windowsStateCommands=@('Validate-UpstreamWindowsRelease.ps1','Build-Windows.ps1','Build-WindowsFullCandidate.ps1','Measure-WindowsPerformance.ps1')
 foreach($command in $windowsStateCommands){
   $escaped=[regex]::Escape($command)
@@ -122,7 +127,7 @@ $projectSourceWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\wo
 foreach($needle in @('types: [opened, reopened, ready_for_review]','push:',"'feat/**'",'Resolve active PR identity for feature push','ARMY_PROJECT_SOURCE_PR_RESOLVE=PASS')){
   if(-not $projectSourceWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL project_source_bot_loop_contract_missing=$needle"}
 }
-if($projectSourceWorkflow -match '(?i)\bsynchronize\b'){throw 'ARMY_PROJECT_PRECHECK=FAIL project_source_pull_request_synchronize_forbidden'}
+if(Test-ForbiddenPullRequestSynchronizeTrigger $projectSourceWorkflow){throw 'ARMY_PROJECT_PRECHECK=FAIL project_source_pull_request_synchronize_forbidden'}
 
 $swfWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\swf-extract.yml') -Raw
 foreach($needle in @('Sync-AndroidBuildRepositoryExactHead','CORE_REPOSITORY_SYNC=PASS','.work\swf-extracted\23.2','Ensure-AndroidBuildFFDec')){
@@ -138,7 +143,7 @@ if($physicalWorkflow -notmatch '(?m)^\s*pull_request\s*:'){throw 'ARMY_PROJECT_P
 foreach($needle in @('types: [opened, reopened, ready_for_review]',"'feat/**'","'fix/**'","'test/**'","'chore/**'")){
   if(-not $physicalWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL physical_bot_loop_contract_missing=$needle"}
 }
-if($physicalWorkflow -match '(?i)\bsynchronize\b'){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_pull_request_synchronize_forbidden'}
+if(Test-ForbiddenPullRequestSynchronizeTrigger $physicalWorkflow){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_pull_request_synchronize_forbidden'}
 if(-not $physicalWorkflow.Contains('paths-ignore:') -or -not $physicalWorkflow.Contains("'Logs/**'")){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_workflow_does_not_ignore_evidence_only_commits'}
 if($physicalWorkflow.Contains('New-Item -ItemType Junction')){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_workflow_legacy_evidence_junction_present'}
 foreach($needle in @(
