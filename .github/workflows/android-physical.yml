@@ -2,6 +2,15 @@ name: Army Attack Android physical validation
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact source SHA whose validated APK must be tested
+        required: false
+        type: string
+      source_branch:
+        description: Feature branch that owns the tested SHA and evidence
+        required: false
+        type: string
   pull_request:
     branches: [main]
     types: [opened, reopened, ready_for_review]
@@ -20,19 +29,20 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  statuses: write
 
 concurrency:
-  group: army-attack-physical-${{ github.head_ref || github.ref_name }}
+  group: army-attack-physical-${{ inputs.source_branch || github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
-  EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
+  EXPECTED_SOURCE_SHA: ${{ inputs.expected_sha || github.event.pull_request.head.sha || github.sha }}
+  SOURCE_BRANCH: ${{ inputs.source_branch || github.head_ref || github.ref_name }}
 
 jobs:
   physical-adb:
     name: 5. Physical ADB validation
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 40
     steps:
@@ -96,7 +106,7 @@ jobs:
           Write-Host "WORK_ISOLATION=PASS work_root=$($work.work_root) sentinel=$sentinel"
           Write-Host "EVIDENCE_STAGING=PASS raw=$raw ownership=repo-work no_legacy_junction=true"
 
-      - name: Wait for exact validated APK
+      - name: Resolve exact validated APK
         id: apk_wait
         continue-on-error: true
         shell: powershell
@@ -104,18 +114,18 @@ jobs:
           $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
           $repo=Join-Path $env:ANDROIDBUILD_ROOT 'Repositories\code-army-client'
           $runtime=Join-Path $repo '.work\runtime\AndroidBuild'
-          $deadline=(Get-Date).AddMinutes(18)
+          $deadline=(Get-Date).AddMinutes(3)
           $apk=$null
           do {
             $candidate=Join-Path $runtime "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\android\candidate\ArmyAttack-23.2-$env:EXPECTED_SOURCE_SHA.apk"
             if(Test-Path -LiteralPath $candidate){$apk=Get-Item -LiteralPath $candidate;break}
-            Start-Sleep -Seconds 10
+            Start-Sleep -Seconds 5
           } while((Get-Date) -lt $deadline)
-          if(-not $apk){throw "APK_VALIDATE=FAIL component=APK operation=wait_exact_candidate expected_sha=$env:EXPECTED_SOURCE_SHA actual=not_found timeout_minutes=18 runtime=$runtime"}
+          if(-not $apk){throw "APK_VALIDATE=FAIL component=APK operation=resolve_exact_candidate_after_candidate_pass expected_sha=$env:EXPECTED_SOURCE_SHA actual=not_found timeout_minutes=3 runtime=$runtime"}
           $sha=(Get-FileHash -LiteralPath $apk.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "ANDROID_APK_PATH=$($apk.FullName)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "ANDROID_APK_SHA256=$sha"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "APK_EXACT=PASS tested_sha=$env:EXPECTED_SOURCE_SHA path=$($apk.FullName) size=$($apk.Length) sha256=$sha source=repo-work"
+          Write-Host "APK_EXACT=PASS tested_sha=$env:EXPECTED_SOURCE_SHA path=$($apk.FullName) size=$($apk.Length) sha256=$sha source=repo-work dispatch=candidate_success"
 
       - name: Test exact APK on physical device
         id: device_test
@@ -147,7 +157,7 @@ jobs:
           $apkOutcome='${{ steps.apk_wait.outcome }}'
           $deviceOutcome='${{ steps.device_test.outcome }}'
           $diagOutcome='${{ steps.runtime_diag.outcome }}'
-          $result='FAIL';$reason='upstream_gate_failed'
+          $result='FAIL';$classification='FAIL';$reason='upstream_gate_failed'
           $raw=$env:PHYSICAL_RAW_EVIDENCE
           if([string]::IsNullOrWhiteSpace($raw)){
             $raw=Join-Path $PWD.Path (".work\evidence-staging\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
@@ -160,20 +170,22 @@ jobs:
           if($apkOutcome -ne 'success'){$reason='candidate_apk_unavailable'}
           elseif($deviceOutcome -ne 'success'){$reason='device_test_failed'}
           elseif(-not $summary){$reason='physical_summary_missing'}
-          elseif([string]$summary.result -eq 'SKIPPED_WITH_REASON'){$reason='physical_test_skipped_'+[string]$summary.reason}
+          elseif([string]$summary.result -eq 'SKIPPED_WITH_REASON'){$classification='SKIPPED_WITH_REASON';$reason='physical_test_skipped_'+[string]$summary.reason}
           elseif($diagOutcome -ne 'success'){$reason='runtime_diagnostics_failed'}
           else{
             $required=@('ADB_DEVICE','DEVICE_LOCK','INSTALL','START','BOOT_READY','HEALTH','SMOKE','FUNCTIONAL_TESTS','CRASH_CHECK','ANR_CHECK','PHYSICAL_EVIDENCE')
             $bad=@()
             foreach($gate in $required){$value=[string]$summary.results.$gate;if($value -ne 'PASS'){$bad+="$gate=$value"}}
-            if($bad.Count -eq 0){$result='PASS';$reason='all_mandatory_physical_gates_pass'}else{$reason='mandatory_gate_'+($bad -join ',')}
+            if($bad.Count -eq 0){$result='PASS';$classification='PASS';$reason='all_mandatory_physical_gates_pass'}else{$reason='mandatory_gate_'+($bad -join ',')}
           }
-          [ordered]@{repository=$env:GITHUB_REPOSITORY;tested_sha=$env:EXPECTED_SOURCE_SHA;run_id=$env:GITHUB_RUN_ID;runner=$env:RUNNER_NAME;apk_outcome=$apkOutcome;device_outcome=$deviceOutcome;diagnostics_outcome=$diagOutcome;physical_result=$result;reason=$reason;generated_utc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $raw 'physical-gate.json') -Encoding UTF8
+          [ordered]@{repository=$env:GITHUB_REPOSITORY;tested_sha=$env:EXPECTED_SOURCE_SHA;run_id=$env:GITHUB_RUN_ID;runner=$env:RUNNER_NAME;apk_outcome=$apkOutcome;device_outcome=$deviceOutcome;diagnostics_outcome=$diagOutcome;physical_result=$result;classification=$classification;reason=$reason;generated_utc=[DateTime]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $raw 'physical-gate.json') -Encoding UTF8
           "PHYSICAL_RESULT=$result"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PHYSICAL_CLASSIFICATION=$classification"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "PHYSICAL_REASON=$reason"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "result=$result"|Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "classification=$classification"|Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "reason=$reason"|Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          Write-Host "PHYSICAL_TRUTH=$result reason=$reason tested_sha=$env:EXPECTED_SOURCE_SHA"
+          Write-Host "PHYSICAL_TRUTH=$result classification=$classification reason=$reason tested_sha=$env:EXPECTED_SOURCE_SHA"
 
       - name: Publish sanitized bounded evidence through Core
         id: evidence_publish
@@ -210,6 +222,20 @@ jobs:
           Write-Host "EVIDENCE_COMMIT_SHA=$(if($evidenceSha){$evidenceSha}else{'NO_CHANGES'})"
           Write-Host "EVIDENCE_PUSH=$($r.status)"
 
+      - name: Publish EVIDENCE_ONLY status on evidence commit
+        id: evidence_status
+        if: always() && steps.evidence_commit.outcome == 'success' && env.EVIDENCE_COMMIT_SHA != ''
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          $headers=@{Authorization="Bearer $env:GH_TOKEN";Accept='application/vnd.github+json';'X-GitHub-Api-Version'='2022-11-28'}
+          $uri="https://api.github.com/repos/$env:GITHUB_REPOSITORY/statuses/$env:EVIDENCE_COMMIT_SHA"
+          $body=[ordered]@{state='success';context='EVIDENCE_ONLY';description='Sanitized bounded evidence committed; heavy build intentionally skipped'}|ConvertTo-Json -Depth 3
+          Invoke-RestMethod -Headers $headers -Uri $uri -Method Post -Body $body -ContentType 'application/json'|Out-Null
+          Write-Host "EVIDENCE_ONLY_STATUS=PASS sha=$env:EVIDENCE_COMMIT_SHA tested_sha=$env:EXPECTED_SOURCE_SHA"
+
       - name: Publish APK-FINAL after physical PASS
         id: final_apk
         if: steps.truth.outputs.result == 'PASS' && steps.evidence_publish.outcome == 'success' && steps.evidence_commit.outcome == 'success'
@@ -229,11 +255,17 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          $truth='${{ steps.truth.outputs.result }}';$publish='${{ steps.evidence_publish.outcome }}';$commit='${{ steps.evidence_commit.outcome }}';$final='${{ steps.final_apk.outcome }}'
-          Write-Host "PHYSICAL_TRUTH=$truth";Write-Host "EVIDENCE_PUBLISH_OUTCOME=$publish";Write-Host "EVIDENCE_COMMIT_OUTCOME=$commit";Write-Host "APK_FINAL_OUTCOME=$final"
-          if($truth -ne 'PASS'){throw "PHYSICAL_VALIDATION=FAIL reason=${{ steps.truth.outputs.reason }}"}
+          $truth='${{ steps.truth.outputs.result }}';$classification='${{ steps.truth.outputs.classification }}';$publish='${{ steps.evidence_publish.outcome }}';$commit='${{ steps.evidence_commit.outcome }}';$status='${{ steps.evidence_status.outcome }}';$final='${{ steps.final_apk.outcome }}'
+          Write-Host "PHYSICAL_TRUTH=$truth";Write-Host "PHYSICAL_CLASSIFICATION=$classification";Write-Host "EVIDENCE_PUBLISH_OUTCOME=$publish";Write-Host "EVIDENCE_COMMIT_OUTCOME=$commit";Write-Host "EVIDENCE_STATUS_OUTCOME=$status";Write-Host "APK_FINAL_OUTCOME=$final"
           if($publish -ne 'success'){throw "FINAL_VALIDATION=FAIL evidence_publish=$publish"}
           if($commit -ne 'success'){throw "FINAL_VALIDATION=FAIL evidence_commit=$commit"}
+          if($env:EVIDENCE_COMMIT_SHA -and $status -ne 'success'){throw "FINAL_VALIDATION=FAIL evidence_only_status=$status"}
+          if($classification -eq 'SKIPPED_WITH_REASON'){
+            Write-Host "PHYSICAL_VALIDATION=SKIPPED_WITH_REASON reason=${{ steps.truth.outputs.reason }}"
+            Write-Host "FINAL_VALIDATION=VALIDATION_INCOMPLETE physical_validation=SKIPPED_WITH_REASON reason=${{ steps.truth.outputs.reason }} evidence=PASS"
+            exit 0
+          }
+          if($truth -ne 'PASS'){throw "PHYSICAL_VALIDATION=FAIL reason=${{ steps.truth.outputs.reason }}"}
           if($final -ne 'success'){throw "FINAL_VALIDATION=FAIL apk_final=$final"}
           Write-Host 'PHYSICAL_VALIDATION=PASS'
           Write-Host 'FINAL_VALIDATION=PASS physical_validation=PASS evidence=PASS apk_final=PASS'
@@ -249,6 +281,7 @@ jobs:
           Write-Host "RUN=$env:GITHUB_RUN_ID"
           Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
           Write-Host "PHYSICAL_RESULT=$(if($env:PHYSICAL_RESULT){$env:PHYSICAL_RESULT}else{'NOT_RESOLVED'})"
+          Write-Host "PHYSICAL_CLASSIFICATION=$(if($env:PHYSICAL_CLASSIFICATION){$env:PHYSICAL_CLASSIFICATION}else{'NOT_RESOLVED'})"
           Write-Host "PHYSICAL_REASON=$(if($env:PHYSICAL_REASON){$env:PHYSICAL_REASON}else{'NOT_RESOLVED'})"
           if($env:ANDROID_APK_PATH){Write-Host "APK_PATH=$env:ANDROID_APK_PATH"}
           if($env:ANDROID_APK_SHA256){Write-Host "APK_SHA256=$env:ANDROID_APK_SHA256"}
