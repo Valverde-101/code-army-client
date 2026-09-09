@@ -3,10 +3,16 @@ name: Army Attack Android candidate
 on:
   pull_request:
     branches: [main]
+    types: [opened, reopened, ready_for_review]
     paths-ignore:
       - 'Logs/**'
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+      - 'test/**'
+      - 'chore/**'
     paths-ignore:
       - 'Logs/**'
   workflow_dispatch:
