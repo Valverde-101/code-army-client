@@ -1,0 +1,15 @@
+﻿{
+    "tested_sha":  "e347a5590ebfa727393ba464d36ae12e3dffd7b5",
+    "apk_path":  "V:\\AndroidBuild\\Repositories\\code-army-client\\.work\\runtime\\AndroidBuild\\Builds\\code-army-client\\e347a5590ebfa727393ba464d36ae12e3dffd7b5\\android\\candidate\\ArmyAttack-23.2-e347a5590ebfa727393ba464d36ae12e3dffd7b5.apk",
+    "apk_size":  66987501,
+    "apk_sha256":  "2d04c1811947f9891306f9334a25e1467855f5769c864424098a176440e67a30",
+    "package_name":  "air.army.attack",
+    "version_code":  "23002000",
+    "version_name":  "23.2-android-e347a559",
+    "abis":  [
+                 "arm64-v8a"
+             ],
+    "adb_path":  "V:\\AndroidBuild\\AndroidSDK\\platform-tools\\adb.exe",
+    "evidence_root":  "V:\\AndroidBuild\\Runners\\AutoRepos\\slot-4\\_work\\code-army-client\\code-army-client\\.work\\evidence-staging\\e347a5590ebfa727393ba464d36ae12e3dffd7b5\\34386557280"
+}
+
