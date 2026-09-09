@@ -35,7 +35,9 @@ if([string]$cfg.migration.windows_candidate_workflow -ne '.github/workflows/wind
 if([string]$cfg.migration.workspace_adapter -ne '.github/scripts/armyattack-workspace.ps1'){throw "ARMY_PROJECT_PRECHECK=FAIL workspace_adapter=$($cfg.migration.workspace_adapter)"}
 if([string]$cfg.migration.project_state_canonical_root -ne '.work' -or -not [bool]$cfg.migration.external_builds_inputs_scratch_retired){throw 'ARMY_PROJECT_PRECHECK=FAIL project_state_migration_contract'}
 if([bool]$cfg.broker.repository_owned_broker_mutation){throw 'ARMY_PROJECT_PRECHECK=FAIL repository_owned_broker_mutation'}
-if([string]$cfg.physical.activation -ne 'pull_request_and_manual_workflow_dispatch'){throw "ARMY_PROJECT_PRECHECK=FAIL physical_activation=$($cfg.physical.activation)"}
+if([string]$cfg.physical.activation -ne 'trusted_branch_push_and_manual_workflow_dispatch'){throw "ARMY_PROJECT_PRECHECK=FAIL physical_activation=$($cfg.physical.activation)"}
+if([string]$cfg.physical.current_state -ne 'active_on_trusted_branch_push'){throw "ARMY_PROJECT_PRECHECK=FAIL physical_current_state=$($cfg.physical.current_state)"}
+if(-not [bool]$cfg.github.reject_untrusted_forks_on_physical_runner){throw 'ARMY_PROJECT_PRECHECK=FAIL untrusted_fork_rejection_disabled'}
 if(-not [bool]$cfg.physical.required){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_required_must_remain_true'}
 if([bool]$cfg.physical.final_apk_requires_physical_pass){throw 'ARMY_PROJECT_PRECHECK=FAIL candidate_apk_delivery_still_physical_gated'}
 if([string]$cfg.validation.publish_final_apk_after -ne 'CANDIDATE_VALIDATION'){throw "ARMY_PROJECT_PRECHECK=FAIL final_apk_gate=$($cfg.validation.publish_final_apk_after)"}
@@ -93,6 +95,10 @@ foreach($legacy in @('Enable-AutoRepoPool4.ps1','Start-AutoRepoPool4.runtime.ps1
   if($candidateWorkflow.Contains($legacy)){throw "ARMY_PROJECT_PRECHECK=FAIL legacy_infrastructure_still_invoked=$legacy"}
 }
 if(-not $candidateWorkflow.Contains("paths-ignore:") -or -not $candidateWorkflow.Contains("'Logs/**'")){throw 'ARMY_PROJECT_PRECHECK=FAIL candidate_does_not_ignore_evidence_only_commits'}
+foreach($needle in @('types: [opened, reopened, ready_for_review]','push:',"'feat/**'")){
+  if(-not $candidateWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL candidate_bot_loop_contract_missing=$needle"}
+}
+if($candidateWorkflow -match '(?i)\bsynchronize\b'){throw 'ARMY_PROJECT_PRECHECK=FAIL candidate_pull_request_synchronize_forbidden'}
 foreach($needle in @('minimum=3.0.11','APK_FINAL_PUBLICATION=PASS','validation_scope=candidate','PHYSICAL_VALIDATION=NOT_ACTIVATED','FINAL_VALIDATION=VALIDATION_INCOMPLETE')){
   if(-not $candidateWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL candidate_delivery_contract_missing=$needle"}
 }
@@ -101,12 +107,22 @@ $windowsWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflow
 foreach($needle in @('Resolve-AndroidBuildFlashToolchain','Initialize-ArmyAttackWorkspace','ARMY_RUNTIME_ROOT','WINDOWS_WORKSPACE_ISOLATION=PASS')){
   if(-not $windowsWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL windows_workspace_contract_missing=$needle"}
 }
+foreach($needle in @('types: [opened, reopened, ready_for_review]','push:',"'feat/**'")){
+  if(-not $windowsWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL windows_bot_loop_contract_missing=$needle"}
+}
+if($windowsWorkflow -match '(?i)\bsynchronize\b'){throw 'ARMY_PROJECT_PRECHECK=FAIL windows_pull_request_synchronize_forbidden'}
 $windowsStateCommands=@('Validate-UpstreamWindowsRelease.ps1','Build-Windows.ps1','Build-WindowsFullCandidate.ps1','Measure-WindowsPerformance.ps1')
 foreach($command in $windowsStateCommands){
   $escaped=[regex]::Escape($command)
   if($windowsWorkflow -match ($escaped+'.*?-AndroidBuildRoot\s+\$env:ANDROIDBUILD_ROOT')){throw "ARMY_PROJECT_PRECHECK=FAIL windows_command_uses_global_state_root=$command"}
   if($windowsWorkflow -notmatch ($escaped+'.*?-AndroidBuildRoot\s+\$env:ARMY_RUNTIME_ROOT')){throw "ARMY_PROJECT_PRECHECK=FAIL windows_command_missing_repo_runtime=$command"}
 }
+
+$projectSourceWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\publish-project-source.yml') -Raw
+foreach($needle in @('types: [opened, reopened, ready_for_review]','push:',"'feat/**'",'Resolve active PR identity for feature push','ARMY_PROJECT_SOURCE_PR_RESOLVE=PASS')){
+  if(-not $projectSourceWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL project_source_bot_loop_contract_missing=$needle"}
+}
+if($projectSourceWorkflow -match '(?i)\bsynchronize\b'){throw 'ARMY_PROJECT_PRECHECK=FAIL project_source_pull_request_synchronize_forbidden'}
 
 $swfWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\swf-extract.yml') -Raw
 foreach($needle in @('Sync-AndroidBuildRepositoryExactHead','CORE_REPOSITORY_SYNC=PASS','.work\swf-extracted\23.2','Ensure-AndroidBuildFFDec')){
@@ -117,8 +133,12 @@ foreach($legacy in @('Bootstrap-PhysicalClone.ps1','chore/local-army-bootstrap-2
 }
 
 $physicalWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\android-physical.yml') -Raw
-if($physicalWorkflow -match '(?m)^\s*push\s*:'){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_workflow_must_not_run_on_push'}
+if($physicalWorkflow -notmatch '(?m)^\s*push\s*:'){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_workflow_missing_trusted_push_trigger'}
 if($physicalWorkflow -notmatch '(?m)^\s*pull_request\s*:'){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_workflow_missing_pull_request_trigger'}
+foreach($needle in @('types: [opened, reopened, ready_for_review]',"'feat/**'","'fix/**'","'test/**'","'chore/**'")){
+  if(-not $physicalWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL physical_bot_loop_contract_missing=$needle"}
+}
+if($physicalWorkflow -match '(?i)\bsynchronize\b'){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_pull_request_synchronize_forbidden'}
 if(-not $physicalWorkflow.Contains('paths-ignore:') -or -not $physicalWorkflow.Contains("'Logs/**'")){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_workflow_does_not_ignore_evidence_only_commits'}
 if($physicalWorkflow.Contains('New-Item -ItemType Junction')){throw 'ARMY_PROJECT_PRECHECK=FAIL physical_workflow_legacy_evidence_junction_present'}
 foreach($needle in @(
@@ -127,6 +147,7 @@ foreach($needle in @(
 )){
   if(-not $physicalWorkflow.Contains($needle)){throw "ARMY_PROJECT_PRECHECK=FAIL physical_contract_missing=$needle"}
 }
+Write-Host 'GITHUB_BOT_ANTI_LOOP_CONTRACT=PASS pull_request_synchronize=false trusted_branch_push=true evidence_push_heavy_workflows=false'
 
 $evidenceWorkflow=Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\evidence-only.yml') -Raw
 if($evidenceWorkflow.Contains('chore/local-army-bootstrap-20260827')){throw 'ARMY_PROJECT_PRECHECK=FAIL evidence_workflow_hardcoded_legacy_branch'}
@@ -157,4 +178,4 @@ foreach($forbidden in @('APK-FINAL\archive','Set-Content -LiteralPath ($latestDe
   if($publisher.Contains($forbidden)){throw "ARMY_PROJECT_PRECHECK=FAIL apk_final_non_apk_payload_or_legacy_cleanup=$forbidden"}
 }
 
-Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.11 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE project_state=repo-work build_retention=3 input_cache=sha256 scratch=ephemeral windows=repo-work swf_extract=core-synced physical_activation=pull_request+manual physical_required=true evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_delivery=candidate_validated apk_final_payload=apk_only final_without_physical=VALIDATION_INCOMPLETE legacy_evidence_publisher=ABSENT"
+Write-Host "ARMY_PROJECT_PRECHECK=PASS repository=Valverde-101/code-army-client core_min=3.0.11 tested_core=$core adapter=repo-hooks flash_toolchain=androidbuild-global migration=COMPLETE project_state=repo-work build_retention=3 input_cache=sha256 scratch=ephemeral windows=repo-work swf_extract=core-synced physical_activation=trusted_branch_push+manual physical_required=true github_bot_anti_loop=PASS evidence_publisher=androidbuild-core evidence_contract=canonical apk_final_delivery=candidate_validated apk_final_payload=apk_only final_without_physical=VALIDATION_INCOMPLETE legacy_evidence_publisher=ABSENT"
