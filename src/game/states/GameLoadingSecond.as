@@ -1,4 +1,4 @@
-﻿package game.states
+package game.states
 {
    import com.dchoc.graphics.DCResourceManager;
    import com.dchoc.utils.Cookie;
@@ -136,8 +136,8 @@
                this.mGameState.setZoomIndex(0);
             }
          }
-		 CONFIG::BUILD_FOR_MOBILE_AIR {
-			// Set zoom to max
+         CONFIG::BUILD_FOR_MOBILE_AIR {
+            // Set zoom to max
             this.mGameState.setZoomIndex(this.mGameState.mZoomLevels.length - 1);
          }
          MagicBoxTracker.generateEvent(MagicBoxTracker.GROUP_LEVEL,MagicBoxTracker.TYPE_SESSION_STARTED,MagicBoxTracker.LABEL_ON_FLASH);
