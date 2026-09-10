@@ -6,15 +6,15 @@ param(
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $RepoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
-if(-not(Test-Path -LiteralPath $GitPath -PathType Leaf)){throw "SNOW_REFERENCE_CLOSURE=FAIL git_missing=$GitPath"}
+if(-not(Test-Path -LiteralPath $GitPath -PathType Leaf)){throw "SNOW_REFERENCE_CLOSURE=FAIL phase=precheck git_missing=$GitPath"}
 $actual=(& $GitPath -C $RepoRoot rev-parse HEAD).Trim()
-if($LASTEXITCODE -ne 0 -or $actual -ne $ExpectedSha){throw "SNOW_REFERENCE_CLOSURE=FAIL exact_head expected=$ExpectedSha actual=$actual"}
+if($LASTEXITCODE -ne 0 -or $actual -ne $ExpectedSha){throw "SNOW_REFERENCE_CLOSURE=FAIL phase=precheck exact_head expected=$ExpectedSha actual=$actual"}
 
 $targetPath=Join-Path $RepoRoot 'src\config\army_config_base.json'
 $donorPath=Join-Path $RepoRoot 'vendor\Test_army_attack\armyattack\config\army_config_base.json'
 $backupPath=Join-Path $RepoRoot ('.work\scratch\snow-campaign-overlay\'+$ExpectedSha+'\army_config_base.original.json')
 foreach($required in @($targetPath,$donorPath,$backupPath)){
-  if(-not(Test-Path -LiteralPath $required -PathType Leaf)){throw "SNOW_REFERENCE_CLOSURE=FAIL required_missing=$required"}
+  if(-not(Test-Path -LiteralPath $required -PathType Leaf)){throw "SNOW_REFERENCE_CLOSURE=FAIL phase=precheck required_missing=$required"}
 }
 
 function Clone-JsonValue($Value){(($Value|ConvertTo-Json -Depth 100 -Compress)|ConvertFrom-Json)}
@@ -40,8 +40,7 @@ function Test-RowExists($Config,[string]$Section,[string]$Row){
   return ($null -ne $sectionProperty.Value.PSObject.Properties[$Row])
 }
 function Get-ConfigReferences($Config){
-  $results=New-Object System.Collections.Generic.List[object]
-  if($null -eq $Config){return @()}
+  if($null -eq $Config){return}
   foreach($sectionProperty in @($Config.PSObject.Properties)){
     $sourceSection=[string]$sectionProperty.Name
     $section=$sectionProperty.Value
@@ -61,10 +60,10 @@ function Get-ConfigReferences($Config){
         foreach($match in [regex]::Matches($text,'#(?<section>[A-Za-z0-9_]+)\.(?<row>[A-Za-z0-9_\-:]+)')){
           $targetSection=[string]$match.Groups['section'].Value
           $targetRow=[string]$match.Groups['row'].Value
-          # TID is supplied/overlaid by the active language JSON at runtime. Do not
-          # force language rows into the base config dependency graph here.
+          # TID rows are supplied by the active language JSON at runtime. Keep
+          # localized strings out of this base-config dependency closure.
           if($targetSection -eq 'TID'){continue}
-          $results.Add([pscustomobject]@{
+          [pscustomobject]@{
             source_section=$sourceSection
             source_row=$sourceRow
             source_field=$sourceField
@@ -73,76 +72,101 @@ function Get-ConfigReferences($Config){
             target_row=$targetRow
             key=($sourceSection+'|'+$sourceRow+'|'+$sourceField+'|'+$targetSection+'|'+$targetRow)
             target_key=($targetSection+'|'+$targetRow)
-          })
+          }
         }
       }
     }
   }
-  return @($results)
 }
 function Get-UnresolvedReferences($Config){
-  $missing=New-Object System.Collections.Generic.List[object]
   foreach($reference in @(Get-ConfigReferences $Config)){
-    if(-not(Test-RowExists $Config ([string]$reference.target_section) ([string]$reference.target_row))){$missing.Add($reference)}
+    $targetSection=[string]$reference.target_section
+    $targetRow=[string]$reference.target_row
+    if(-not(Test-RowExists $Config $targetSection $targetRow)){$reference}
   }
-  return @($missing)
 }
 
+Write-Host "SNOW_REFERENCE_CLOSURE_PHASE=load_config sha=$ExpectedSha"
 $target=Get-Content -LiteralPath $targetPath -Raw|ConvertFrom-Json
 $donor=Get-Content -LiteralPath $donorPath -Raw|ConvertFrom-Json
 $baseline=Get-Content -LiteralPath $backupPath -Raw|ConvertFrom-Json
+
+Write-Host 'SNOW_REFERENCE_CLOSURE_PHASE=baseline_scan'
 $baselineMissing=@{}
-foreach($reference in @(Get-UnresolvedReferences $baseline)){$baselineMissing[[string]$reference.key]=$true}
+foreach($reference in @(Get-UnresolvedReferences $baseline)){
+  $key=[string]$reference.key
+  $baselineMissing[$key]=$true
+}
+Write-Host "SNOW_REFERENCE_BASELINE=PASS unresolved=$($baselineMissing.Count)"
 
 $dependencyEntries=0
 $round=0
 while($true){
   $round++
-  if($round -gt 100){throw 'SNOW_REFERENCE_CLOSURE=FAIL reason=max_rounds_exceeded'}
-  $newMissing=@(Get-UnresolvedReferences $target|Where-Object{-not $baselineMissing.ContainsKey([string]$_.key)})
+  if($round -gt 100){throw 'SNOW_REFERENCE_CLOSURE=FAIL phase=closure reason=max_rounds_exceeded'}
+  Write-Host "SNOW_REFERENCE_CLOSURE_PHASE=closure_round round=$round"
+  $newMissing=@(Get-UnresolvedReferences $target|Where-Object{
+    $candidateKey=[string]$_.key
+    -not $baselineMissing.ContainsKey($candidateKey)
+  })
+  Write-Host "SNOW_REFERENCE_ROUND=INFO round=$round unresolved_new=$($newMissing.Count)"
   if($newMissing.Count -eq 0){break}
   $addedThisRound=0
   $processedTargets=@{}
   foreach($reference in $newMissing){
+    $targetSection=[string]$reference.target_section
+    $targetRow=[string]$reference.target_row
     $targetKey=[string]$reference.target_key
     if($processedTargets.ContainsKey($targetKey)){continue}
     $processedTargets[$targetKey]=$true
-    if(Test-RowExists $target ([string]$reference.target_section) ([string]$reference.target_row)){continue}
-    $donorRow=Get-Row $donor ([string]$reference.target_section) ([string]$reference.target_row)
+    if(Test-RowExists $target $targetSection $targetRow){continue}
+    $donorRow=Get-Row $donor $targetSection $targetRow
     if($null -eq $donorRow){
-      throw "SNOW_REFERENCE_CLOSURE=FAIL source=$($reference.source_section).$($reference.source_row).$($reference.source_field) reference=$($reference.reference) target=$($reference.target_section).$($reference.target_row) reason=missing_in_target_and_donor"
+      throw "SNOW_REFERENCE_CLOSURE=FAIL phase=closure source=$($reference.source_section).$($reference.source_row).$($reference.source_field) reference=$($reference.reference) target=$targetSection.$targetRow reason=missing_in_target_and_donor"
     }
-    $targetSectionProperty=$target.PSObject.Properties[[string]$reference.target_section]
+    $targetSectionProperty=$target.PSObject.Properties[$targetSection]
     if($null -eq $targetSectionProperty){
-      $targetSection=[pscustomobject]@{}
-      Set-JsonProperty $target ([string]$reference.target_section) $targetSection
+      $targetSectionObject=[pscustomobject]@{}
+      Set-JsonProperty $target $targetSection $targetSectionObject
     }else{
-      $targetSection=$targetSectionProperty.Value
-      if(-not(Test-TableObject $targetSection)){throw "SNOW_REFERENCE_CLOSURE=FAIL target_section_not_object section=$($reference.target_section)"}
+      $targetSectionObject=$targetSectionProperty.Value
+      if(-not(Test-TableObject $targetSectionObject)){throw "SNOW_REFERENCE_CLOSURE=FAIL phase=closure target_section_not_object section=$targetSection"}
     }
-    Set-JsonProperty $targetSection ([string]$reference.target_row) (Clone-JsonValue $donorRow)
+    Set-JsonProperty $targetSectionObject $targetRow (Clone-JsonValue $donorRow)
     $dependencyEntries++
     $addedThisRound++
-    Write-Host "SNOW_REFERENCE_DEPENDENCY=ADD source=$($reference.source_section).$($reference.source_row).$($reference.source_field) reference=$($reference.reference) target=$($reference.target_section).$($reference.target_row)"
+    Write-Host "SNOW_REFERENCE_DEPENDENCY=ADD source=$($reference.source_section).$($reference.source_row).$($reference.source_field) reference=$($reference.reference) target=$targetSection.$targetRow"
   }
   if($addedThisRound -eq 0){
     $sample=$newMissing|Select-Object -First 1
-    throw "SNOW_REFERENCE_CLOSURE=FAIL reason=no_progress source=$($sample.source_section).$($sample.source_row).$($sample.source_field) reference=$($sample.reference)"
+    throw "SNOW_REFERENCE_CLOSURE=FAIL phase=closure reason=no_progress source=$($sample.source_section).$($sample.source_row).$($sample.source_field) reference=$($sample.reference)"
   }
 }
 
-$finalNewMissing=@(Get-UnresolvedReferences $target|Where-Object{-not $baselineMissing.ContainsKey([string]$_.key)})
+Write-Host 'SNOW_REFERENCE_CLOSURE_PHASE=pre_serialize_verify'
+$finalNewMissing=@(Get-UnresolvedReferences $target|Where-Object{
+  $candidateKey=[string]$_.key
+  -not $baselineMissing.ContainsKey($candidateKey)
+})
 if($finalNewMissing.Count -gt 0){
   $sample=$finalNewMissing|Select-Object -First 1
-  throw "SNOW_REFERENCE_CLOSURE=FAIL reason=unresolved_after_closure count=$($finalNewMissing.Count) source=$($sample.source_section).$($sample.source_row).$($sample.source_field) reference=$($sample.reference)"
+  throw "SNOW_REFERENCE_CLOSURE=FAIL phase=pre_serialize_verify reason=unresolved_after_closure count=$($finalNewMissing.Count) source=$($sample.source_section).$($sample.source_row).$($sample.source_field) reference=$($sample.reference)"
 }
 if((Test-RowExists $target 'Mission' 'SaveMission2') -and -not(Test-RowExists $target 'Objective' 'SaveMission2')){
-  throw 'SNOW_REFERENCE_CLOSURE=FAIL regression=SaveMission2_objective_missing'
+  throw 'SNOW_REFERENCE_CLOSURE=FAIL phase=pre_serialize_verify regression=SaveMission2_objective_missing'
 }
 
 $target|ConvertTo-Json -Depth 100|Set-Content -LiteralPath $targetPath -Encoding UTF8
+Write-Host 'SNOW_REFERENCE_CLOSURE_PHASE=post_serialize_verify'
 $verify=Get-Content -LiteralPath $targetPath -Raw|ConvertFrom-Json
-$verifyNewMissing=@(Get-UnresolvedReferences $verify|Where-Object{-not $baselineMissing.ContainsKey([string]$_.key)})
-if($verifyNewMissing.Count -gt 0){throw "SNOW_REFERENCE_CLOSURE=FAIL serialization_regression unresolved=$($verifyNewMissing.Count)"}
+$verifyNewMissing=@(Get-UnresolvedReferences $verify|Where-Object{
+  $candidateKey=[string]$_.key
+  -not $baselineMissing.ContainsKey($candidateKey)
+})
+if($verifyNewMissing.Count -gt 0){
+  $sample=$verifyNewMissing|Select-Object -First 1
+  throw "SNOW_REFERENCE_CLOSURE=FAIL phase=post_serialize_verify serialization_regression unresolved=$($verifyNewMissing.Count) source=$($sample.source_section).$($sample.source_row).$($sample.source_field) reference=$($sample.reference)"
+}
 $saveMission2Status=if(Test-RowExists $verify 'Mission' 'SaveMission2'){if(Test-RowExists $verify 'Objective' 'SaveMission2'){'complete'}else{'broken'}}else{'not_present'}
-Write-Host "SNOW_REFERENCE_CLOSURE=PASS baseline_unresolved=$($baselineMissing.Count) dependency_entries=$dependencyEntries rounds=$round final_new_unresolved=0 save_mission2=$saveMission2Status"
+if($saveMission2Status -eq 'broken'){throw 'SNOW_REFERENCE_CLOSURE=FAIL phase=post_serialize_verify regression=SaveMission2_objective_missing_after_serialization'}
+Write-Host "SNOW_REFERENCE_CLOSURE=PASS baseline_unresolved=$($baselineMissing.Count) dependency_entries=$dependencyEntries rounds=$round final_new_unresolved=0 save_mission2=$saveMission2Status powershell51_native_collections=true"
