@@ -47,7 +47,7 @@ if($Mode -eq 'Restore'){
 
 if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
-$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v3';source_sha=$ExpectedSha;files=@()}
+$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v4';source_sha=$ExpectedSha;files=@()}
 foreach($rel in $targets){
   $src=Join-Path $RepoRoot $rel
   if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL source_missing=$rel"}
@@ -164,15 +164,12 @@ try{
       public function updateCameraViewport() : Boolean
 '@ 'tile_dirty_methods'
 
-  $tile=Replace-Exact $tile '         this.mTargetBitmap = this.mFieldBmp;
-         this.mTargetBitmapArray = this.mFieldBmpArray;
-         this.mTargetMovieClip = this.mFieldMovieClip;
-         //_loc7_ = param1;' @'
-         this.mTargetBitmap = this.mFieldBmp;
-         this.mTargetBitmapArray = this.mFieldBmpArray;
-         this.mTargetMovieClip = this.mFieldMovieClip;
+  # Do not anchor this call to FFDec's neighboring decompiler comments. The
+  # semantic end of drawArea is the permanent-HFE gate, which is unique and
+  # intentionally untouched by the performance overlay.
+  $tile=Replace-Exact $tile '         if(GameState.needToUpdatePermanentHFE)' @'
          this.drawSnowOwnershipOverlayArea(param1,param2,param3,param4);
-         //_loc7_ = param1;
+         if(GameState.needToUpdatePermanentHFE)
 '@ 'snow_overlay_call'
 
   $tile=Replace-Exact $tile '      public function updatePermanentHFEs() : void' @'
@@ -306,6 +303,7 @@ try{
   foreach($token in @('requestFullRedraw()','markOwnershipDirty(param2)','markOwnershipDirty(param1)')){if(-not $sceneVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_scene token=$token"}}
   foreach($token in @('updateVisualHints:Boolean','updateVisualHints && this.mUpdateHintHealth','updateVisualHints && this.mUpdateHintPower')){if(-not $characterVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_character token=$token"}}
   Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_performance_then_gameplay stable_hook=updateUnderCloudEnemyUnits'
+  Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_snow_visual_semantic_hook stable_hook=GameState.needToUpdatePermanentHFE'
   Write-Host 'REGRESSION_CHECK=PASS name=character_logic_not_culled scope=actions_movement_projectiles_timers_healing_death'
   Write-Host 'REGRESSION_CHECK=PASS name=character_culling_defers_visual_hints_only'
   Write-Host 'REGRESSION_CHECK=PASS name=ownership_dirty_region_full_redraw_fallback'
