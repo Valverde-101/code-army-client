@@ -8,16 +8,18 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $RepoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 $internal=Join-Path $PSScriptRoot 'Invoke-AndroidRuntimePerformanceOverlay.Internal.ps1'
+$gameplayOverlay=Join-Path $PSScriptRoot 'Invoke-AndroidGameplayStabilityOverlay.ps1'
 $bootOverlay=Join-Path $PSScriptRoot 'Invoke-AndroidBootResourceOverlay.ps1'
-foreach($script in @($internal,$bootOverlay)){
+foreach($script in @($internal,$gameplayOverlay,$bootOverlay)){
   if(-not(Test-Path -LiteralPath $script -PathType Leaf)){throw "ANDROID_PERF_OVERLAY=FAIL dependency_missing=$script"}
 }
 
 if($Mode -eq 'Apply'){
   try{
     & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
+    & $gameplayOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     & $bootOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
-    Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=apply performance=true boot_resource=true sha=$ExpectedSha"
+    Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=apply performance=true gameplay_stability=true boot_resource=true sha=$ExpectedSha"
     return
   }catch{
     $failure=$_
@@ -26,12 +28,14 @@ if($Mode -eq 'Apply'){
   }
 }
 
-# Restore nested overlays in reverse order. The outer Snow overlay is still active,
-# so the internal performance restore may legitimately observe a non-HEAD worktree.
+# Restore nested overlays in reverse order. Snow is an outer overlay, so these
+# restores verify their recorded baselines instead of assuming a clean worktree
+# until the Snow layer is finally restored by the build hook.
 & $bootOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
+& $gameplayOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
 try{
   & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
-  Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true boot_resource=true sha=$ExpectedSha"
+  Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true boot_resource=true sha=$ExpectedSha"
   return
 }catch{
   $message=[string]$_.Exception.Message
@@ -57,4 +61,4 @@ foreach($entry in @($manifest.files)){
 }
 Remove-Item -LiteralPath $backupRoot -Recurse -Force
 Write-Host "ANDROID_PERF_OVERLAY=PASS mode=restore baseline_restored=true composable=true outer_exact_head_gate=snow sha=$ExpectedSha"
-Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true boot_resource=true sha=$ExpectedSha"
+Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true boot_resource=true sha=$ExpectedSha"
