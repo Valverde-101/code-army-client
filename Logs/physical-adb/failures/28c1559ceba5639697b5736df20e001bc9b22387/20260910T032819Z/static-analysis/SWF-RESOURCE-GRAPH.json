@@ -1,8 +1,8 @@
 ﻿{
     "schema":  "armyattack-swf-resource-graph/v1",
     "repository":  "Valverde-101/code-army-client",
-    "tested_sha":  "d9834d46d14f408f1c1f15015abf0ec93d712264",
-    "generated_utc":  "2026-09-09T05:07:26.1503254Z",
+    "tested_sha":  "28c1559ceba5639697b5736df20e001bc9b22387",
+    "generated_utc":  "2026-09-10T03:28:13.1799047Z",
     "files_scanned":  642,
     "static_symbol_edges":  178,
     "dynamic_symbol_calls":  28,

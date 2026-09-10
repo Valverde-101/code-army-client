@@ -1,9 +1,0 @@
-﻿{
-    "schema":  "armyattack-correlated-diagnostics/v2",
-    "tested_sha":  "d9834d46d14f408f1c1f15015abf0ec93d712264",
-    "apk_sha256":  "bd95f6cd7c302f6a6d1c288f6add73d584b53fff7fb714282c760c139740ab9e",
-    "result":  "SKIPPED_WITH_REASON",
-    "reason":  "no_authorized_device",
-    "generated_utc":  "2026-09-09T05:07:26.2657394Z"
-}
-
