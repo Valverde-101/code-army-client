@@ -8,7 +8,9 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $RepoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 $internal=Join-Path $PSScriptRoot 'Invoke-SnowCampaignOverlay.Internal.ps1'
+$closure=Join-Path $PSScriptRoot 'Close-SnowConfigReferences.ps1'
 if(-not(Test-Path -LiteralPath $internal -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL internal_missing=$internal"}
+if(-not(Test-Path -LiteralPath $closure -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL reference_closure_missing=$closure"}
 
 if($Mode -eq 'Restore'){
   & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
@@ -17,6 +19,13 @@ if($Mode -eq 'Restore'){
 
 try {
   & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
+
+  # The Snow donor is selected by campaign keywords, but those entries can refer to
+  # generic rows whose names/values do not contain Snow/Polar/Nordur (for example
+  # Mission.SaveMission2 -> Objective.SaveMission2). Close the full non-localized
+  # #Table.Row dependency graph before the runtime config is packaged.
+  & $closure -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath
+  Write-Host "SNOW_REFERENCE_CLOSURE_WRAPPER=PASS sha=$ExpectedSha"
 
   # Windows PowerShell 5.1 ConvertTo-Json may emit two spaces after ':'.
   # Canonicalize only the PvP mobile-zoom property so text consumers stay
@@ -42,7 +51,7 @@ try {
   $verify=[IO.File]::ReadAllText($configPath)
   if(-not $verify.Contains('"ZoomLevelsMobile": "40, 75, 100"')){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL pvp_mobile_zoom_canonical_text'}
   Write-Host "PVP_MOBILE_ZOOM_CANONICAL=PASS maps=$($pvpMaps.Count) semantic=true value=40,75,100 powershell_json_spacing=normalized"
-  Write-Host "SNOW_CAMPAIGN_OVERLAY_WRAPPER=PASS mode=apply sha=$ExpectedSha deterministic_json=true"
+  Write-Host "SNOW_CAMPAIGN_OVERLAY_WRAPPER=PASS mode=apply sha=$ExpectedSha deterministic_json=true reference_closure=true"
 } catch {
   $failure=$_
   try { & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore } catch { Write-Host "SNOW_CAMPAIGN_OVERLAY_WRAPPER_RESTORE_AFTER_FAILURE=FAIL message=$($_.Exception.Message)" }
