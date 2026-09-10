@@ -27,6 +27,16 @@ function Replace-RegexOnce([string]$Text,[string]$Pattern,[string]$New,[string]$
   Write-Host "MOVEMENT_SEMANTIC_HOOK=PASS name=$Name matches=1 whitespace=agnostic"
   return $Text.Substring(0,$m.Index)+$New+$Text.Substring($m.Index+$m.Length)
 }
+function Replace-RegexScopedOnce([string]$Text,[string]$Pattern,[string]$Suffix,[string]$Name){
+  $matches=[regex]::Matches($Text,$Pattern)
+  if($matches.Count -eq 0){throw "ANDROID_MOVEMENT_PACING_OVERLAY=FAIL patch=$Name reason=scoped_semantic_pattern_missing"}
+  if($matches.Count -ne 1){throw "ANDROID_MOVEMENT_PACING_OVERLAY=FAIL patch=$Name reason=scoped_semantic_pattern_ambiguous matches=$($matches.Count)"}
+  $m=$matches[0]
+  if($m.Groups.Count -lt 2 -or -not $m.Groups[1].Success){throw "ANDROID_MOVEMENT_PACING_OVERLAY=FAIL patch=$Name reason=scoped_prefix_missing"}
+  Write-Host "MOVEMENT_SEMANTIC_HOOK=PASS name=$Name matches=1 whitespace=agnostic scope=updateMovement"
+  $replacement=$m.Groups[1].Value+$Suffix
+  return $Text.Substring(0,$m.Index)+$replacement+$Text.Substring($m.Index+$m.Length)
+}
 
 if($Mode -eq 'Restore'){
   if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){Write-Host "ANDROID_MOVEMENT_PACING_OVERLAY=PASS mode=restore status=no_overlay sha=$ExpectedSha";return}
@@ -47,7 +57,7 @@ if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Rec
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
 Copy-Item -LiteralPath $target -Destination $backup -Force
 $incomingSha=Get-Sha256 $target
-[ordered]@{schema='armyattack-movement-pacing-overlay/v2';source_sha=$ExpectedSha;path=$rel;sha256=$incomingSha}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+[ordered]@{schema='armyattack-movement-pacing-overlay/v3';source_sha=$ExpectedSha;path=$rel;sha256=$incomingSha}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 try{
   $text=Normalize-Lf ([IO.File]::ReadAllText($target))
@@ -65,13 +75,13 @@ try{
 '@
   $text=Replace-RegexOnce $text $fieldPattern $fieldReplacement 'movement_timing_fields'
 
-  $stopPattern='(?m)^[ \t]*if[ \t]*\([ \t]*this\.mWalkingPath[ \t]*==[ \t]*null[ \t]*\|\|[ \t]*this\.mWalkingPath\.length[ \t]*==[ \t]*0[ \t]*\|\|[ \t]*!this\.mAllowMovement[ \t]*\)[ \t]*\{[ \t]*$'
+  $stopPattern='(?s)(^[ \t]*override[ \t]+public[ \t]+function[ \t]+updateMovement\([ \t]*param1[ \t]*:[ \t]*int[ \t]*\)[ \t]*:[ \t]*void[ \t]*\{.*?^[ \t]*super\.updateMovement\([ \t]*param1[ \t]*\)[ \t]*;[ \t]*\n)[ \t]*if[ \t]*\([ \t]*this\.mWalkingPath[ \t]*==[ \t]*null[ \t]*\|\|[ \t]*this\.mWalkingPath\.length[ \t]*==[ \t]*0[ \t]*\|\|[ \t]*!this\.mAllowMovement[ \t]*\)[ \t]*\{[ \t]*$'
   $stopReplacement=@'
 			if (this.mWalkingPath == null || this.mWalkingPath.length == 0 || !this.mAllowMovement) {
 				// Intentional stops must not leak catch-up into a later move.
 				this.mMovementDebtMs = 0;
 '@
-  $text=Replace-RegexOnce $text $stopPattern $stopReplacement 'movement_debt_reset_when_stopped'
+  $text=Replace-RegexScopedOnce $text $stopPattern $stopReplacement 'movement_debt_reset_when_stopped'
 
   $speedPattern='(?m)^[ \t]*var[ \t]+_loc7_[ \t]*:[ \t]*Number[ \t]*=[ \t]*this\.mSpeed[ \t]*\*[ \t]*Math\.min\([ \t]*param1[ \t]*,[ \t]*200[ \t]*\)[ \t]*/[ \t]*1000[ \t]*;[ \t]*$'
   $speedReplacement=@'
@@ -93,13 +103,16 @@ try{
   foreach($needle in @('MOVEMENT_MAX_FRAME_MS','MOVEMENT_CATCHUP_PER_FRAME_MS','MOVEMENT_MAX_DEBT_MS','mMovementDebtMs','MOVEMENT_CATCHUP')){
     if(-not $text.Contains($needle)){throw "ANDROID_MOVEMENT_PACING_OVERLAY=FAIL verification_missing=$needle"}
   }
+  $debtResetCount=[regex]::Matches($text,'(?m)^[ \t]*this\.mMovementDebtMs[ \t]*=[ \t]*0[ \t]*;[ \t]*$').Count
+  if($debtResetCount -ne 1){throw "ANDROID_MOVEMENT_PACING_OVERLAY=FAIL regression=movement_debt_reset_count actual=$debtResetCount expected=1"}
   Write-Utf8Bom $target $text
-  Write-Host 'REGRESSION_CHECK=PASS name=movement_overlay_semantic_hooks fields=1 stop=1 speed=1 whitespace=agnostic'
+  Write-Host 'REGRESSION_CHECK=PASS name=movement_overlay_semantic_hooks fields=1 stop=1 speed=1 whitespace=agnostic stop_scope=updateMovement'
+  Write-Host 'REGRESSION_CHECK=PASS name=movement_debt_reset_scoped_to_active_movement count=1'
   Write-Host 'REGRESSION_CHECK=PASS name=movement_no_longer_discards_time_above_200ms'
   Write-Host 'REGRESSION_CHECK=PASS name=movement_catchup_is_bounded max_frame_ms=200 catchup_per_frame_ms=50 max_debt_ms=1000'
   Write-Host 'REGRESSION_CHECK=PASS name=movement_debt_resets_when_stopped prevents_future_move_burst=true'
   Write-Host 'REGRESSION_CHECK=PASS name=movement_large_stalls_are_instrumented event=MOVEMENT_CATCHUP'
-  Write-Host "ANDROID_MOVEMENT_PACING_OVERLAY=PASS mode=apply sha=$ExpectedSha incoming_sha256=$incomingSha schema=v2"
+  Write-Host "ANDROID_MOVEMENT_PACING_OVERLAY=PASS mode=apply sha=$ExpectedSha incoming_sha256=$incomingSha schema=v3"
 }catch{
   $failure=$_
   Copy-Item -LiteralPath $backup -Destination $target -Force -ErrorAction SilentlyContinue
