@@ -47,7 +47,7 @@ if($Mode -eq 'Restore'){
 
 if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
-$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v4';source_sha=$ExpectedSha;files=@()}
+$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v5';source_sha=$ExpectedSha;files=@()}
 foreach($rel in $targets){
   $src=Join-Path $RepoRoot $rel
   if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL source_missing=$rel"}
@@ -238,32 +238,15 @@ try{
   $scene=Normalize-Lf ([IO.File]::ReadAllText($scenePath))
   $scene=Replace-Exact $scene "`t`t`tif (this.mFog.mUpdateRequired) {" "`t`t`tif (this.mFog.mUpdateRequired) {`n`t`t`t`tthis.mTilemapGraphic.requestFullRedraw();" 'scene_fog_forces_full_redraw'
   $scene=Replace-Exact $scene "`t`t`tparam2.mOwner = MapData.TILE_OWNER_FRIENDLY;`n`t`t`tthis.mGame.mMapData.mUpdateRequired = true;" "`t`t`tparam2.mOwner = MapData.TILE_OWNER_FRIENDLY;`n`t`t`tif (this.mTilemapGraphic) this.mTilemapGraphic.markOwnershipDirty(param2);`n`t`t`tthis.mGame.mMapData.mUpdateRequired = true;" 'scene_spawn_owner_dirty'
-  $oldConquer=@'
-				if (param1.mOwner == MapData.TILE_OWNER_ENEMY) {
-					param1.mOwner = MapData.TILE_OWNER_FRIENDLY;
-					_loc2_ = new Array(param1.mPosI, param1.mPosJ);
-					MissionManager.increaseCounter("Conquer", _loc2_, 1);
-				} else {
-					param1.mOwner = MapData.TILE_OWNER_ENEMY;
-					_loc2_ = new Array(param1.mPosI, param1.mPosJ);
-					MissionManager.increaseCounter("Conquer", _loc2_, -1);
-				}
-				this.mGame.mMapData.mUpdateRequired = true;
-'@
-  $newConquer=@'
-				if (param1.mOwner == MapData.TILE_OWNER_ENEMY) {
-					param1.mOwner = MapData.TILE_OWNER_FRIENDLY;
-					_loc2_ = new Array(param1.mPosI, param1.mPosJ);
-					MissionManager.increaseCounter("Conquer", _loc2_, 1);
-				} else {
-					param1.mOwner = MapData.TILE_OWNER_ENEMY;
-					_loc2_ = new Array(param1.mPosI, param1.mPosJ);
-					MissionManager.increaseCounter("Conquer", _loc2_, -1);
-				}
-				if (this.mTilemapGraphic) this.mTilemapGraphic.markOwnershipDirty(param1);
-				this.mGame.mMapData.mUpdateRequired = true;
-'@
-  $scene=Replace-Exact $scene $oldConquer $newConquer 'scene_conquer_owner_dirty'
+
+  # The tracked source and outer overlays are allowed to reformat this method.
+  # Scope the ownership invalidation semantically to changeCellOwner + the
+  # Conquer decrement, instead of requiring the whole decompiled block byte-for-byte.
+  $conquerPattern='(?s)(private function changeCellOwner\(param1:\s*GridCell\)\s*:\s*void\s*\{.*?MissionManager\.increaseCounter\("Conquer",\s*_loc2_,\s*-1\);\s*\}\s*)(this\.mGame\.mMapData\.mUpdateRequired\s*=\s*true;)'
+  $conquerMatches=[regex]::Matches($scene,$conquerPattern)
+  if($conquerMatches.Count -ne 1){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL patch=scene_conquer_owner_dirty reason=semantic_match_count actual=$($conquerMatches.Count)"}
+  $conquerReplacement='$1'+'if (this.mTilemapGraphic) this.mTilemapGraphic.markOwnershipDirty(param1);'+"`n`t`t`t`t"+'$2'
+  $scene=[regex]::Replace($scene,$conquerPattern,$conquerReplacement,1)
   Write-Utf8Bom $scenePath $scene
 
   $characterPath=Join-Path $RepoRoot 'src\game\isometric\characters\IsometricCharacter.as'
@@ -304,6 +287,7 @@ try{
   foreach($token in @('updateVisualHints:Boolean','updateVisualHints && this.mUpdateHintHealth','updateVisualHints && this.mUpdateHintPower')){if(-not $characterVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_character token=$token"}}
   Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_performance_then_gameplay stable_hook=updateUnderCloudEnemyUnits'
   Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_snow_visual_semantic_hook stable_hook=GameState.needToUpdatePermanentHFE'
+  Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_conquer_semantic_hook stable_hook=changeCellOwner+Conquer'
   Write-Host 'REGRESSION_CHECK=PASS name=character_logic_not_culled scope=actions_movement_projectiles_timers_healing_death'
   Write-Host 'REGRESSION_CHECK=PASS name=character_culling_defers_visual_hints_only'
   Write-Host 'REGRESSION_CHECK=PASS name=ownership_dirty_region_full_redraw_fallback'
