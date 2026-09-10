@@ -25,6 +25,7 @@ foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContin
   if(Test-Path -LiteralPath $repo){$root=$candidate;break}
 }
 if(-not $root){Fail 'PRECHECK_ANDROIDBUILD_ROOT' 'TOOLCHAIN' 'discover_androidbuild_root' '<drive>:\AndroidBuild' 'missing'}
+$root=(Resolve-Path -LiteralPath $root).Path
 
 $gitCandidates=@()
 $pathGit=Get-Command git.exe -ErrorAction SilentlyContinue
@@ -48,14 +49,28 @@ if(-not(Test-Path -LiteralPath $adb)){Fail 'ADB_DEVICE' 'ADB' 'portable_path' $a
 $adbVersion=@(& $adb version 2>&1)
 if($LASTEXITCODE -ne 0){Fail 'ADB_DEVICE' 'ADB' 'version' 'exit=0' ("exit="+$LASTEXITCODE) $LASTEXITCODE}
 
+# GITHUB_ENV is only loaded by subsequent Actions steps. Keep the same values
+# in the current PowerShell process as well, because this precheck's caller
+# imports Core immediately after the script returns.
+$env:ANDROIDBUILD_ROOT=$root
+$env:ADB_EXE=$adb
+$env:GIT_EXE=$git
 "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 "ADB_EXE=$adb"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 "GIT_EXE=$git"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+if([string]::IsNullOrWhiteSpace($env:ANDROIDBUILD_ROOT) -or -not(Test-Path -LiteralPath $env:ANDROIDBUILD_ROOT -PathType Container)){
+  Fail 'PRECHECK_ENV_SCOPE' 'RUNNER' 'current_process_androidbuild_root' $root ([string]$env:ANDROIDBUILD_ROOT)
+}
+if($env:ADB_EXE -ne $adb -or $env:GIT_EXE -ne $git){
+  Fail 'PRECHECK_ENV_SCOPE' 'RUNNER' 'current_process_tool_paths' "$adb | $git" "$($env:ADB_EXE) | $($env:GIT_EXE)"
+}
 
 Write-Host "PRECHECK_GITHUB=PASS repository=$env:GITHUB_REPOSITORY run=$env:GITHUB_RUN_ID"
 Write-Host "BROKER=PASS runner_assigned=$env:RUNNER_NAME"
 Write-Host "RUNNER_ASSIGNMENT=PASS runner=$env:RUNNER_NAME"
 Write-Host "PRECHECK_ANDROIDBUILD_ROOT=PASS root=$root"
+Write-Host "PRECHECK_ENV_SCOPE=PASS current_process=true github_env=true"
 Write-Host "GIT_PATH=PASS path=$git"
 Write-Host "ADB_PATH=PASS path=$adb"
 Write-Host "ADB_VERSION=PASS $($adbVersion -join ' | ')"

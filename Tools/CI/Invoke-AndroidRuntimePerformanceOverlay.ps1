@@ -13,9 +13,10 @@ if($LASTEXITCODE -ne 0 -or $actual -ne $ExpectedSha){throw "ANDROID_PERF_OVERLAY
 
 $internal=Join-Path $PSScriptRoot 'Invoke-AndroidRuntimePerformanceOverlay.Internal.ps1'
 $gameplayOverlay=Join-Path $PSScriptRoot 'Invoke-AndroidGameplayStabilityOverlay.ps1'
+$movementPacing=Join-Path $PSScriptRoot 'Invoke-AndroidMovementPacingOverlay.ps1'
 $renderHotpath=Join-Path $PSScriptRoot 'Invoke-AndroidRenderHotpathOverlay.ps1'
 $bootOverlay=Join-Path $PSScriptRoot 'Invoke-AndroidBootResourceOverlay.ps1'
-foreach($script in @($internal,$gameplayOverlay,$renderHotpath,$bootOverlay)){
+foreach($script in @($internal,$gameplayOverlay,$movementPacing,$renderHotpath,$bootOverlay)){
   if(-not(Test-Path -LiteralPath $script -PathType Leaf)){throw "ANDROID_PERF_OVERLAY=FAIL dependency_missing=$script"}
 }
 
@@ -70,11 +71,12 @@ if($Mode -eq 'Apply'){
     & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     Apply-CharacterHintCompatibility
     & $gameplayOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
+    & $movementPacing -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     & $renderHotpath -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     & $bootOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     Write-Host 'REGRESSION_CHECK=PASS name=character_hint_overlay_composition semantic_canonicalization=true exact_restore=true'
-    Write-Host 'REGRESSION_CHECK=PASS name=render_hotpath_overlay_composition order=performance+gameplay+render_hotpath+boot'
-    Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=apply performance=true gameplay_stability=true render_hotpath=true boot_resource=true character_hint_compat=true sha=$ExpectedSha"
+    Write-Host 'REGRESSION_CHECK=PASS name=runtime_overlay_composition order=performance+gameplay+movement+render_hotpath+boot'
+    Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=apply performance=true gameplay_stability=true movement_pacing=true render_hotpath=true boot_resource=true character_hint_compat=true sha=$ExpectedSha"
     return
   }catch{
     $failure=$_
@@ -88,11 +90,12 @@ if($Mode -eq 'Apply'){
 # until the Snow layer is finally restored by the build hook.
 & $bootOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
 & $renderHotpath -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
+& $movementPacing -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
 & $gameplayOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
 Restore-CharacterHintCompatibility
 try{
   & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
-  Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true render_hotpath=true boot_resource=true character_hint_compat=true sha=$ExpectedSha"
+  Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true movement_pacing=true render_hotpath=true boot_resource=true character_hint_compat=true sha=$ExpectedSha"
   return
 }catch{
   $message=[string]$_.Exception.Message
@@ -118,4 +121,4 @@ foreach($entry in @($manifest.files)){
 }
 Remove-Item -LiteralPath $backupRoot -Recurse -Force
 Write-Host "ANDROID_PERF_OVERLAY=PASS mode=restore baseline_restored=true composable=true outer_exact_head_gate=snow sha=$ExpectedSha"
-Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true render_hotpath=true boot_resource=true character_hint_compat=true sha=$ExpectedSha"
+Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true movement_pacing=true render_hotpath=true boot_resource=true character_hint_compat=true sha=$ExpectedSha"
