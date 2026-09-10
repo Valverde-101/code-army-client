@@ -57,7 +57,7 @@ if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Rec
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
 Copy-Item -LiteralPath $target -Destination $backup -Force
 $incomingSha=Get-Sha256 $target
-[ordered]@{schema='armyattack-movement-pacing-overlay/v3';source_sha=$ExpectedSha;path=$rel;sha256=$incomingSha}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+[ordered]@{schema='armyattack-movement-pacing-overlay/v4';source_sha=$ExpectedSha;path=$rel;sha256=$incomingSha}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 try{
   $text=Normalize-Lf ([IO.File]::ReadAllText($target))
@@ -75,7 +75,7 @@ try{
 '@
   $text=Replace-RegexOnce $text $fieldPattern $fieldReplacement 'movement_timing_fields'
 
-  $stopPattern='(?s)(^[ \t]*override[ \t]+public[ \t]+function[ \t]+updateMovement\([ \t]*param1[ \t]*:[ \t]*int[ \t]*\)[ \t]*:[ \t]*void[ \t]*\{.*?^[ \t]*super\.updateMovement\([ \t]*param1[ \t]*\)[ \t]*;[ \t]*\n)[ \t]*if[ \t]*\([ \t]*this\.mWalkingPath[ \t]*==[ \t]*null[ \t]*\|\|[ \t]*this\.mWalkingPath\.length[ \t]*==[ \t]*0[ \t]*\|\|[ \t]*!this\.mAllowMovement[ \t]*\)[ \t]*\{[ \t]*$'
+  $stopPattern='(?sm)(^[ \t]*override[ \t]+public[ \t]+function[ \t]+updateMovement\([ \t]*param1[ \t]*:[ \t]*int[ \t]*\)[ \t]*:[ \t]*void[ \t]*\{.*?^[ \t]*super\.updateMovement\([ \t]*param1[ \t]*\)[ \t]*;[ \t]*\n)[ \t]*if[ \t]*\([ \t]*this\.mWalkingPath[ \t]*==[ \t]*null[ \t]*\|\|[ \t]*this\.mWalkingPath\.length[ \t]*==[ \t]*0[ \t]*\|\|[ \t]*!this\.mAllowMovement[ \t]*\)[ \t]*\{[ \t]*$'
   $stopReplacement=@'
 			if (this.mWalkingPath == null || this.mWalkingPath.length == 0 || !this.mAllowMovement) {
 				// Intentional stops must not leak catch-up into a later move.
@@ -106,13 +106,13 @@ try{
   $debtResetCount=[regex]::Matches($text,'(?m)^[ \t]*this\.mMovementDebtMs[ \t]*=[ \t]*0[ \t]*;[ \t]*$').Count
   if($debtResetCount -ne 1){throw "ANDROID_MOVEMENT_PACING_OVERLAY=FAIL regression=movement_debt_reset_count actual=$debtResetCount expected=1"}
   Write-Utf8Bom $target $text
-  Write-Host 'REGRESSION_CHECK=PASS name=movement_overlay_semantic_hooks fields=1 stop=1 speed=1 whitespace=agnostic stop_scope=updateMovement'
+  Write-Host 'REGRESSION_CHECK=PASS name=movement_overlay_semantic_hooks fields=1 stop=1 speed=1 whitespace=agnostic stop_scope=updateMovement multiline=true'
   Write-Host 'REGRESSION_CHECK=PASS name=movement_debt_reset_scoped_to_active_movement count=1'
   Write-Host 'REGRESSION_CHECK=PASS name=movement_no_longer_discards_time_above_200ms'
   Write-Host 'REGRESSION_CHECK=PASS name=movement_catchup_is_bounded max_frame_ms=200 catchup_per_frame_ms=50 max_debt_ms=1000'
   Write-Host 'REGRESSION_CHECK=PASS name=movement_debt_resets_when_stopped prevents_future_move_burst=true'
   Write-Host 'REGRESSION_CHECK=PASS name=movement_large_stalls_are_instrumented event=MOVEMENT_CATCHUP'
-  Write-Host "ANDROID_MOVEMENT_PACING_OVERLAY=PASS mode=apply sha=$ExpectedSha incoming_sha256=$incomingSha schema=v3"
+  Write-Host "ANDROID_MOVEMENT_PACING_OVERLAY=PASS mode=apply sha=$ExpectedSha incoming_sha256=$incomingSha schema=v4"
 }catch{
   $failure=$_
   Copy-Item -LiteralPath $backup -Destination $target -Force -ErrorAction SilentlyContinue
