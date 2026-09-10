@@ -47,7 +47,7 @@ if($Mode -eq 'Restore'){
 
 if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
-$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v5';source_sha=$ExpectedSha;files=@()}
+$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v6';source_sha=$ExpectedSha;files=@()}
 foreach($rel in $targets){
   $src=Join-Path $RepoRoot $rel
   if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL source_missing=$rel"}
@@ -251,22 +251,15 @@ try{
 
   $characterPath=Join-Path $RepoRoot 'src\game\isometric\characters\IsometricCharacter.as'
   $character=Normalize-Lf ([IO.File]::ReadAllText($characterPath))
-  $oldHints=@'
-		public function update(param1: int): void {
-			var _loc2_: TextEffect = null;
-			var _loc3_: MovieClip = null;
-			if (this.mUpdateHintHealth) {
-				this.updateHintHealth();
-			}
-			if (this.mUpdateHintPower) {
-				this.updateHintPower();
-			}
-'@
-  $newHints=@'
-		public function update(param1: int): void {
-			var _loc2_: TextEffect = null;
-			var _loc3_: MovieClip = null;
-			// These nested SWF walks are visual only. Keep the dirty flags pending
+  # IsometricCharacter may be reformatted by FFDec/outer source transforms. Match
+  # only the update() preamble and the two visual hint traversals semantically;
+  # gameplay logic after those blocks is deliberately outside this match.
+  $characterHintPattern='(?s)(public function update\(param1:\s*int\)\s*:\s*void\s*\{\s*var _loc2_:\s*TextEffect\s*=\s*null;\s*var _loc3_:\s*MovieClip\s*=\s*null;\s*)(if\s*\(this\.mUpdateHintHealth\)\s*\{\s*this\.updateHintHealth\(\);\s*\}\s*if\s*\(this\.mUpdateHintPower\)\s*\{\s*this\.updateHintPower\(\);\s*\})'
+  $characterHintMatches=[regex]::Matches($character,$characterHintPattern)
+  if($characterHintMatches.Count -ne 1){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL patch=character_defer_culled_visual_hints reason=semantic_match_count actual=$($characterHintMatches.Count)"}
+  $hintMatch=$characterHintMatches[0]
+  $hintReplacement=$hintMatch.Groups[1].Value+@'
+// These nested SWF walks are visual only. Keep the dirty flags pending
 			// while culled; all gameplay logic below still executes every tick.
 			var updateVisualHints:Boolean = mContainer == null || mContainer.visible;
 			if (updateVisualHints && this.mUpdateHintHealth) {
@@ -276,7 +269,7 @@ try{
 				this.updateHintPower();
 			}
 '@
-  $character=Replace-Exact $character $oldHints $newHints 'character_defer_culled_visual_hints'
+  $character=$character.Substring(0,$hintMatch.Index)+$hintReplacement+$character.Substring($hintMatch.Index+$hintMatch.Length)
   Write-Utf8Bom $characterPath $character
 
   $tileVerify=[IO.File]::ReadAllText($tilePath)
@@ -288,6 +281,7 @@ try{
   Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_performance_then_gameplay stable_hook=updateUnderCloudEnemyUnits'
   Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_snow_visual_semantic_hook stable_hook=GameState.needToUpdatePermanentHFE'
   Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_conquer_semantic_hook stable_hook=changeCellOwner+Conquer'
+  Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_character_hint_semantic_hook stable_hook=IsometricCharacter.update+visual_hints'
   Write-Host 'REGRESSION_CHECK=PASS name=character_logic_not_culled scope=actions_movement_projectiles_timers_healing_death'
   Write-Host 'REGRESSION_CHECK=PASS name=character_culling_defers_visual_hints_only'
   Write-Host 'REGRESSION_CHECK=PASS name=ownership_dirty_region_full_redraw_fallback'
