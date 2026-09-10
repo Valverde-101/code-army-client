@@ -1,8 +1,8 @@
 ﻿{
     "schema":  "armyattack-swf-resource-graph/v1",
     "repository":  "Valverde-101/code-army-client",
-    "tested_sha":  "e347a5590ebfa727393ba464d36ae12e3dffd7b5",
-    "generated_utc":  "2026-09-09T18:06:46.4629971Z",
+    "tested_sha":  "d5baffabb8ba991c9f2de01d21b3e0a78162580a",
+    "generated_utc":  "2026-09-10T19:38:01.8869648Z",
     "files_scanned":  642,
     "static_symbol_edges":  178,
     "dynamic_symbol_calls":  28,
@@ -1348,7 +1348,7 @@
                   },
                   {
                       "consumer":  "src/game/gui/pvp/PvPDebriefingDialog.as",
-                      "line":  48,
+                      "line":  37,
                       "kind":  "getSWFClass_static",
                       "resource":  "\"swf/popups_pvp\"",
                       "symbol":  "popup_pvp_loot",

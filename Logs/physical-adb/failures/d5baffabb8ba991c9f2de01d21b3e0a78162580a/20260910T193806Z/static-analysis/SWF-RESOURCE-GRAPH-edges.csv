@@ -165,7 +165,7 @@
 "src/game/gui/popups/WelcomeWindow.as","21","getSWFClass_static","Config.SWF_POPUPS_START_NAME","popup_welcome","False"
 "src/game/gui/popups/WorldMapWindow.as","35","getSWFClass_static","""swf/map""","map","False"
 "src/game/gui/pvp/PvPCombatSetupDialog.as","102","getSWFClass_static","""swf/popups_pvp""","popup_pvp_armies","False"
-"src/game/gui/pvp/PvPDebriefingDialog.as","48","getSWFClass_static","""swf/popups_pvp""","popup_pvp_loot","False"
+"src/game/gui/pvp/PvPDebriefingDialog.as","37","getSWFClass_static","""swf/popups_pvp""","popup_pvp_loot","False"
 "src/game/gui/pvp/PvPHUD.as","225","getSWFClass_static","""swf/pvp_interface""","hud_pvp","False"
 "src/game/gui/pvp/PvPHUD.as","283","getSWFClass_static","""swf/pvp_interface""","hud_pvp_turn_shift","False"
 "src/game/gui/pvp/PvPHUD.as","812","getSWFClass_static","""swf/popups_pvp""","popup_pvp_loot","False"
