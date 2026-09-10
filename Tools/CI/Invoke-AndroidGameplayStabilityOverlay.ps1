@@ -47,7 +47,7 @@ if($Mode -eq 'Restore'){
 
 if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
-$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v1';source_sha=$ExpectedSha;files=@()}
+$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v2';source_sha=$ExpectedSha;files=@()}
 foreach($rel in $targets){
   $src=Join-Path $RepoRoot $rel
   if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL source_missing=$rel"}
@@ -65,10 +65,9 @@ try{
   $tile=Replace-Exact $tile '      private var mVectCounter:int = 0;' @'
       private var mVectCounter:int = 0;
       
-      // Ownership invalidation is intentionally independent from the legacy
-      // global mUpdateRequired flag. A normal ownership flip redraws only the
-      // affected neighborhood when the camera cache has not moved; map loads,
-      // fog changes and camera rebuilds still take the full safe path.
+      // Targeted ownership invalidation. Normal ownership flips redraw only a
+      // small neighborhood; map loads, fog changes and moved camera caches use
+      // the existing full rebuild path.
       private var mOwnershipDirty:Boolean = false;
       private var mOwnershipDirtyMinX:int = 2147483647;
       private var mOwnershipDirtyMinY:int = 2147483647;
@@ -134,9 +133,6 @@ try{
          }
          var dx:Number = this.mScene.mContainer.x - this.mCameraCacheAnchorX;
          var dy:Number = this.mScene.mContainer.y - this.mCameraCacheAnchorY;
-         // Existing bitmap pixels are addressed relative to the cache anchor.
-         // If the camera moved, fall back to a normal rebuild rather than risk
-         // writing a dirty region at a stale offset.
          if(Math.abs(dx) > 1 || Math.abs(dy) > 1)
          {
             return false;
@@ -184,8 +180,8 @@ try{
          {
             return;
          }
-         var graphics:* = this.mSnowOwnershipOverlay.graphics;
-         graphics.clear();
+         var overlayGraphics:* = this.mSnowOwnershipOverlay.graphics;
+         overlayGraphics.clear();
          var scaleX:Number = this.mScene.mContainer.scaleX;
          var scaleY:Number = this.mScene.mContainer.scaleY;
          var cellWidth:Number = this.mScene.mGridDimX * scaleX;
@@ -219,9 +215,9 @@ try{
                      color = SNOW_OWNER_NEUTRAL_COLOR;
                      alpha = 0.10;
                   }
-                  graphics.beginFill(color,alpha);
-                  graphics.drawRect(x * cellWidth + this.mScene.mContainer.x + CAMERA_CACHE_MARGIN,y * cellHeight + this.mScene.mContainer.y + CAMERA_CACHE_MARGIN,cellWidth,cellHeight);
-                  graphics.endFill();
+                  overlayGraphics.beginFill(color,alpha);
+                  overlayGraphics.drawRect(x * cellWidth + this.mScene.mContainer.x + CAMERA_CACHE_MARGIN,y * cellHeight + this.mScene.mContainer.y + CAMERA_CACHE_MARGIN,cellWidth,cellHeight);
+                  overlayGraphics.endFill();
                   painted++;
                }
                y++;
@@ -241,9 +237,34 @@ try{
 
   $scenePath=Join-Path $RepoRoot 'src\game\isometric\IsometricScene.as'
   $scene=Normalize-Lf ([IO.File]::ReadAllText($scenePath))
-  $scene=Replace-Exact $scene '`t`t`tif (this.mFog.mUpdateRequired) {' '`t`t`tif (this.mFog.mUpdateRequired) {`n`t`t`t`tthis.mTilemapGraphic.requestFullRedraw();' 'scene_fog_forces_full_redraw'
-  $scene=Replace-Exact $scene '`t`t`tparam2.mOwner = MapData.TILE_OWNER_FRIENDLY;`n`t`t`tthis.mGame.mMapData.mUpdateRequired = true;' '`t`t`tparam2.mOwner = MapData.TILE_OWNER_FRIENDLY;`n`t`t`tif (this.mTilemapGraphic) this.mTilemapGraphic.markOwnershipDirty(param2);`n`t`t`tthis.mGame.mMapData.mUpdateRequired = true;' 'scene_spawn_owner_dirty'
-  $scene=Replace-Exact $scene '`t`t`t`tthis.mGame.mMapData.mUpdateRequired = true;`n`t`t`t}' '`t`t`t`tif (this.mTilemapGraphic) this.mTilemapGraphic.markOwnershipDirty(param1);`n`t`t`t`tthis.mGame.mMapData.mUpdateRequired = true;`n`t`t`t}' 'scene_conquer_owner_dirty'
+  $scene=Replace-Exact $scene "`t`t`tif (this.mFog.mUpdateRequired) {" "`t`t`tif (this.mFog.mUpdateRequired) {`n`t`t`t`tthis.mTilemapGraphic.requestFullRedraw();" 'scene_fog_forces_full_redraw'
+  $scene=Replace-Exact $scene "`t`t`tparam2.mOwner = MapData.TILE_OWNER_FRIENDLY;`n`t`t`tthis.mGame.mMapData.mUpdateRequired = true;" "`t`t`tparam2.mOwner = MapData.TILE_OWNER_FRIENDLY;`n`t`t`tif (this.mTilemapGraphic) this.mTilemapGraphic.markOwnershipDirty(param2);`n`t`t`tthis.mGame.mMapData.mUpdateRequired = true;" 'scene_spawn_owner_dirty'
+  $oldConquer=@'
+				if (param1.mOwner == MapData.TILE_OWNER_ENEMY) {
+					param1.mOwner = MapData.TILE_OWNER_FRIENDLY;
+					_loc2_ = new Array(param1.mPosI, param1.mPosJ);
+					MissionManager.increaseCounter("Conquer", _loc2_, 1);
+				} else {
+					param1.mOwner = MapData.TILE_OWNER_ENEMY;
+					_loc2_ = new Array(param1.mPosI, param1.mPosJ);
+					MissionManager.increaseCounter("Conquer", _loc2_, -1);
+				}
+				this.mGame.mMapData.mUpdateRequired = true;
+'@
+  $newConquer=@'
+				if (param1.mOwner == MapData.TILE_OWNER_ENEMY) {
+					param1.mOwner = MapData.TILE_OWNER_FRIENDLY;
+					_loc2_ = new Array(param1.mPosI, param1.mPosJ);
+					MissionManager.increaseCounter("Conquer", _loc2_, 1);
+				} else {
+					param1.mOwner = MapData.TILE_OWNER_ENEMY;
+					_loc2_ = new Array(param1.mPosI, param1.mPosJ);
+					MissionManager.increaseCounter("Conquer", _loc2_, -1);
+				}
+				if (this.mTilemapGraphic) this.mTilemapGraphic.markOwnershipDirty(param1);
+				this.mGame.mMapData.mUpdateRequired = true;
+'@
+  $scene=Replace-Exact $scene $oldConquer $newConquer 'scene_conquer_owner_dirty'
   Write-Utf8Bom $scenePath $scene
 
   $characterPath=Join-Path $RepoRoot 'src\game\isometric\characters\IsometricCharacter.as'
@@ -263,9 +284,8 @@ try{
 		public function update(param1: int): void {
 			var _loc2_: TextEffect = null;
 			var _loc3_: MovieClip = null;
-			// Health/power hint traversal walks nested SWF children and is purely
-			// visual. Keep the dirty flags set while culled so gameplay logic below
-			// continues every tick and hints refresh immediately when visible again.
+			// These nested SWF walks are visual only. Keep the dirty flags pending
+			// while culled; all gameplay logic below still executes every tick.
 			var updateVisualHints:Boolean = mContainer == null || mContainer.visible;
 			if (updateVisualHints && this.mUpdateHintHealth) {
 				this.updateHintHealth();
@@ -283,10 +303,10 @@ try{
   foreach($token in @('redrawDirtyOwnershipRegion()','markOwnershipDirty(param1:GridCell)','TILEMAP_DIRTY_REDRAW','drawSnowOwnershipOverlayArea','SNOW_OWNER_FRIENDLY_COLOR')){if(-not $tileVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_tile token=$token"}}
   foreach($token in @('requestFullRedraw()','markOwnershipDirty(param2)','markOwnershipDirty(param1)')){if(-not $sceneVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_scene token=$token"}}
   foreach($token in @('updateVisualHints:Boolean','updateVisualHints && this.mUpdateHintHealth','updateVisualHints && this.mUpdateHintPower')){if(-not $characterVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_character token=$token"}}
-  Write-Host 'REGRESSION_CHECK=PASS name=pvp_simulation_logic_not_culled scope=character_actions_movement_projectiles_timers'
+  Write-Host 'REGRESSION_CHECK=PASS name=character_logic_not_culled scope=actions_movement_projectiles_timers_healing_death'
   Write-Host 'REGRESSION_CHECK=PASS name=character_culling_defers_visual_hints_only'
-  Write-Host 'REGRESSION_CHECK=PASS name=ownership_dirty_region_has_full_redraw_fallback'
-  Write-Host 'REGRESSION_CHECK=PASS name=snow_ownership_high_contrast_overlay player=blue enemy=red neutral=gray'
+  Write-Host 'REGRESSION_CHECK=PASS name=ownership_dirty_region_full_redraw_fallback'
+  Write-Host 'REGRESSION_CHECK=PASS name=snow_ownership_high_contrast player=blue enemy=red neutral=gray'
   Write-Host "GAMEPLAY_STABILITY_OVERLAY=PASS mode=apply sha=$ExpectedSha targets=$($targets.Count)"
 }catch{
   $failure=$_
