@@ -47,7 +47,7 @@ if($Mode -eq 'Restore'){
 
 if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
-$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v2';source_sha=$ExpectedSha;files=@()}
+$manifest=[ordered]@{schema='armyattack-gameplay-stability-overlay/v3';source_sha=$ExpectedSha;files=@()}
 foreach($rel in $targets){
   $src=Join-Path $RepoRoot $rel
   if(-not(Test-Path -LiteralPath $src -PathType Leaf)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL source_missing=$rel"}
@@ -61,6 +61,7 @@ try{
   $tilePath=Join-Path $RepoRoot 'src\game\battlefield\TileMapGraphic.as'
   $tile=Normalize-Lf ([IO.File]::ReadAllText($tilePath))
   if(-not $tile.Contains('getLastDrawCellCount()')){throw 'GAMEPLAY_STABILITY_OVERLAY=FAIL order=performance_overlay_must_run_first'}
+  if(-not $tile.Contains('mCameraCacheEffectiveMarginX')){throw 'GAMEPLAY_STABILITY_OVERLAY=FAIL order=performance_cache_contract_missing'}
 
   $tile=Replace-Exact $tile '      private var mVectCounter:int = 0;' @'
       private var mVectCounter:int = 0;
@@ -88,9 +89,10 @@ try{
          this.mUid = !!Config.smUserId ? int(Config.smUserId) : int(GameState.mInstance.mServer.getUid());
 '@ 'tile_partial_redraw_entry'
 
-  $tile=Replace-Exact $tile '         this.drawArea(_loc4_.left,_loc4_.top,_loc4_.right,_loc4_.bottom);
-         this.updateUnderCloudEnemyUnits();' @'
-         this.drawArea(_loc4_.left,_loc4_.top,_loc4_.right,_loc4_.bottom);
+  # Performance runs before this overlay and intentionally rewrites the lines
+  # immediately preceding this call. Hook the unique stable call itself instead
+  # of coupling to those rewritten neighboring lines.
+  $tile=Replace-Exact $tile '         this.updateUnderCloudEnemyUnits();' @'
          this.clearOwnershipDirtyState();
          this.updateUnderCloudEnemyUnits();
 '@ 'tile_full_redraw_clears_dirty'
@@ -300,9 +302,10 @@ try{
   $tileVerify=[IO.File]::ReadAllText($tilePath)
   $sceneVerify=[IO.File]::ReadAllText($scenePath)
   $characterVerify=[IO.File]::ReadAllText($characterPath)
-  foreach($token in @('redrawDirtyOwnershipRegion()','markOwnershipDirty(param1:GridCell)','TILEMAP_DIRTY_REDRAW','drawSnowOwnershipOverlayArea','SNOW_OWNER_FRIENDLY_COLOR')){if(-not $tileVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_tile token=$token"}}
+  foreach($token in @('redrawDirtyOwnershipRegion()','markOwnershipDirty(param1:GridCell)','TILEMAP_DIRTY_REDRAW','drawSnowOwnershipOverlayArea','SNOW_OWNER_FRIENDLY_COLOR','clearOwnershipDirtyState();')){if(-not $tileVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_tile token=$token"}}
   foreach($token in @('requestFullRedraw()','markOwnershipDirty(param2)','markOwnershipDirty(param1)')){if(-not $sceneVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_scene token=$token"}}
   foreach($token in @('updateVisualHints:Boolean','updateVisualHints && this.mUpdateHintHealth','updateVisualHints && this.mUpdateHintPower')){if(-not $characterVerify.Contains($token)){throw "GAMEPLAY_STABILITY_OVERLAY=FAIL verify_character token=$token"}}
+  Write-Host 'REGRESSION_CHECK=PASS name=overlay_composition_performance_then_gameplay stable_hook=updateUnderCloudEnemyUnits'
   Write-Host 'REGRESSION_CHECK=PASS name=character_logic_not_culled scope=actions_movement_projectiles_timers_healing_death'
   Write-Host 'REGRESSION_CHECK=PASS name=character_culling_defers_visual_hints_only'
   Write-Host 'REGRESSION_CHECK=PASS name=ownership_dirty_region_full_redraw_fallback'
