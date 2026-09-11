@@ -46,7 +46,7 @@ if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Rec
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
 Copy-Item -LiteralPath $target -Destination $backup -Force
 $incomingSha=Get-Sha256 $target
-[ordered]@{schema='armyattack-animation-lifecycle-overlay/v1';source_sha=$ExpectedSha;path=$rel;sha256=$incomingSha}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+[ordered]@{schema='armyattack-animation-lifecycle-overlay/v2';source_sha=$ExpectedSha;path=$rel;sha256=$incomingSha}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 try{
   $text=Normalize-Lf ([IO.File]::ReadAllText($target))
@@ -117,10 +117,19 @@ private function stopAnim(param1:DisplayObject, param2:Array) : void
 '@
   $text=Replace-RegexOnce $text $stopPattern $stopReplacement 'destroy_removes_transient_listener'
 
-  $counterMatches=[regex]::Matches($text,'smDeferredSpecials').Count
-  if($counterMatches -lt 3){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=deferred_counter reason=unexpected_count actual=$counterMatches"}
+  # At this point both runtime increment sites were intentionally replaced by the
+  # semantic hooks above. The only legacy identifier occurrences that should remain
+  # are the counter declaration and its stats emission; validating the old pre-patch
+  # count produced a false negative after the lazy-materialization rewrite.
+  $legacyDeferredMatches=[regex]::Matches($text,'\bsmDeferredSpecials\b').Count
+  if($legacyDeferredMatches -ne 2){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=deferred_counter_migration reason=unexpected_legacy_count expected=2 actual=$legacyDeferredMatches"}
   $text=$text.Replace('smDeferredSpecials','smDeferredOnDemand')
   $text=$text.Replace('deferred_specials=','deferred_on_demand=')
+  $legacyAfter=[regex]::Matches($text,'\bsmDeferredSpecials\b').Count
+  $onDemandAfter=[regex]::Matches($text,'\bsmDeferredOnDemand\b').Count
+  if($legacyAfter -ne 0){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=deferred_counter_migration reason=legacy_identifier_remaining actual=$legacyAfter"}
+  if($onDemandAfter -lt 4){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=deferred_counter_migration reason=on_demand_identifier_missing minimum=4 actual=$onDemandAfter"}
+  Write-Host "ANIMATION_LIFECYCLE_COUNTER_MIGRATION=PASS legacy_expected=2 legacy_actual=$legacyDeferredMatches on_demand_actual=$onDemandAfter semantic_runtime_hooks=2"
 
   foreach($needle in @('ANIMATION_TRANSIENT_CLEANUP','index != CHARACTER_ANIMATION_IDLE','index != this.mCurrentAnimation && index != CHARACTER_ANIMATION_IDLE','smDeferredOnDemand')){
     if(-not $text.Contains($needle)){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL verification_missing=$needle"}
@@ -132,7 +141,7 @@ private function stopAnim(param1:DisplayObject, param2:Array) : void
   Write-Host 'REGRESSION_CHECK=PASS name=shoot_fx_listener_is_idempotent stale_listener_removed_before_play=true'
   Write-Host 'REGRESSION_CHECK=PASS name=animation_materialization_is_on_demand eager=idle non_idle=deferred current_after_load=materialized'
   Write-Host 'REGRESSION_CHECK=PASS name=animation_destroy_removes_transient_enter_frame_listener'
-  Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=apply sha=$ExpectedSha incoming_sha256=$incomingSha schema=v1"
+  Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=apply sha=$ExpectedSha incoming_sha256=$incomingSha schema=v2"
 }catch{
   $failure=$_
   Copy-Item -LiteralPath $backup -Destination $target -Force -ErrorAction SilentlyContinue
