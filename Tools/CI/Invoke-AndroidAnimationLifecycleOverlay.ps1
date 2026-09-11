@@ -72,7 +72,9 @@ foreach($key in $targets.Keys){
   Copy-Item -LiteralPath $target -Destination $backup -Force
   $manifestFiles.Add([ordered]@{key=$key;path=[string]$targets[$key];sha256=(Get-Sha256 $target)})
 }
-[ordered]@{schema='armyattack-animation-lifecycle-overlay/v3';source_sha=$ExpectedSha;files=@($manifestFiles)}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+$manifestArray=$manifestFiles.ToArray()
+[ordered]@{schema='armyattack-animation-lifecycle-overlay/v3';source_sha=$ExpectedSha;files=$manifestArray}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+Write-Host "ANIMATION_LIFECYCLE_MANIFEST=PASS files=$($manifestArray.Count) powershell51_safe=true"
 
 try{
   # AnimationController: retain the proven lazy materialization and transient shoot cleanup.
