@@ -257,25 +257,36 @@ private function checkFrame(param1:Event) : void
   if($missile.Contains('parent.parent.removeChild')){throw 'ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL regression=missile_parent_parent_remove_still_present'}
   Write-Utf8Bom $missileTarget $missile
 
-  # Map GUI: cleanup is idempotent and range cache cannot point to removed display objects.
+  # Map GUI: cleanup is idempotent and each unsafe disabled-cell removal is patched in its own method.
   $mapTarget=Get-TargetPath 'mapgui'
   $map=Normalize-Lf ([IO.File]::ReadAllText($mapTarget))
   $rangeResetPattern='(?ms)(this\.mRangeHighlights = new Array\(\);)\s*(\}\s*public function highlightRange)'
   $rangeResetReplacement='$1'+"`n"+'         this.mRangeHighlightRenderable = null;'+"`n"+'      $2'
   $map=Replace-RegexOnce $map $rangeResetPattern $rangeResetReplacement 'range_cache_reset_on_clear'
-  $unsafeNeedle='this.mTopLayer.removeChild(_loc4_);'
-  $unsafeCount=([regex]::Matches($map,[regex]::Escape($unsafeNeedle))).Count
-  if($unsafeCount -ne 2){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=map_gui_parent_safe_cleanup reason=unexpected_count expected=2 actual=$unsafeCount"}
-  $safeReplacement=@'
+
+  $clearHighlightsNeedle='this.mTopLayer.removeChild(_loc4_);'
+  $clearHighlightsReplacement=@'
 if(_loc4_ && _loc4_.parent)
                {
                   _loc4_.parent.removeChild(_loc4_);
                }
 '@
-  $map=$map.Replace($unsafeNeedle,$safeReplacement.TrimEnd())
-  if($map.Contains($unsafeNeedle)){throw 'ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL regression=unsafe_map_gui_remove_remaining'}
+  $map=Replace-LiteralOnce $map $clearHighlightsNeedle $clearHighlightsReplacement.TrimEnd() 'map_gui_clear_highlights_parent_safe'
+
+  $clearMovePattern='(?ms)(public function clearMoveDisabledArea\(\) : void\s*\{.*?_loc1_ = this\.mDisabledCells\[_loc3_\] as MovieClip;\s*)this\.mTopLayer\.removeChild\(_loc1_\);'
+  $clearMoveReplacement=@'
+$1if(_loc1_ && _loc1_.parent)
+               {
+                  _loc1_.parent.removeChild(_loc1_);
+               }
+'@
+  $map=Replace-RegexOnce $map $clearMovePattern $clearMoveReplacement 'map_gui_clear_move_disabled_parent_safe'
+
+  if($map.Contains($clearHighlightsNeedle)){throw 'ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL regression=unsafe_clear_highlights_remove_remaining'}
+  $clearMoveUnsafePattern='(?ms)public function clearMoveDisabledArea\(\) : void\s*\{.*?this\.mTopLayer\.removeChild\(_loc1_\);'
+  if([regex]::IsMatch($map,$clearMoveUnsafePattern)){throw 'ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL regression=unsafe_clear_move_disabled_remove_remaining'}
   Write-Utf8Bom $mapTarget $map
-  Write-Host "MAP_GUI_PARENT_SAFE_CLEANUP=PASS replacements=$unsafeCount"
+  Write-Host 'MAP_GUI_PARENT_SAFE_CLEANUP=PASS clear_highlights=1 clear_move_disabled=1 semantic=true'
 
   # Ensure these source fixes are actually replaced into the Android SWF and version provenance changes.
   $patcherTarget=Get-TargetPath 'patcher'
@@ -304,7 +315,7 @@ $specNeedle
   Write-Host 'REGRESSION_CHECK=PASS name=attack_completion_independent_of_visual_end_label bounded_by=Shooting.Length'
   Write-Host 'REGRESSION_CHECK=PASS name=generic_hit_effect_cleanup bounded_timeout=true final_frame=true end_label=true'
   Write-Host 'REGRESSION_CHECK=PASS name=missile_impact_cleanup parent_safe=true watchdog_frames=90'
-  Write-Host 'REGRESSION_CHECK=PASS name=map_gui_cleanup_idempotent stale_parent_safe=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=map_gui_cleanup_idempotent stale_parent_safe=true methods=clearHighlights,clearMoveDisabledArea'
   Write-Host 'REGRESSION_CHECK=PASS name=range_highlight_cache_reset_on_clear'
   Write-Host 'REGRESSION_CHECK=PASS name=render_hotpath_contract_preserved dirty_region_overlay_untouched=true'
   Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=apply sha=$ExpectedSha schema=v3 combat_lifecycle=true swf_patch_version=mobile-engine-v3.22-combat-lifecycle-rootfix"
