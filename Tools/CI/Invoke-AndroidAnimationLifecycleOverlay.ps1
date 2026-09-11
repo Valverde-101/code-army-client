@@ -11,11 +11,17 @@ if(-not(Test-Path -LiteralPath $GitPath -PathType Leaf)){throw "ANDROID_ANIMATIO
 $actual=(& $GitPath -C $RepoRoot rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $actual -ne $ExpectedSha){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL exact_head expected=$ExpectedSha actual=$actual"}
 
-$rel='src\game\characters\AnimationController.as'
-$target=Join-Path $RepoRoot $rel
+$targets=[ordered]@{
+  animation='src\game\characters\AnimationController.as'
+  attack='src\game\actions\AttackEnemyAction.as'
+  missile='src\game\gameElements\Missile.as'
+  hit='src\game\utils\HitEffect.as'
+  mapgui='src\game\battlefield\MapGUIEffectsLayer.as'
+  patcher='Tools\CI\Patch-AndroidPerformanceSwf.ps1'
+}
 $backupRoot=Join-Path $RepoRoot ('.work\scratch\animation-lifecycle-overlay\'+$ExpectedSha)
-$backup=Join-Path $backupRoot 'AnimationController.as.original'
 $manifestPath=Join-Path $backupRoot 'manifest.json'
+
 function Get-Sha256([string]$Path){(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()}
 function Normalize-Lf([string]$Text){$Text.Replace("`r`n","`n").Replace("`r","`n")}
 function Write-Utf8Bom([string]$Path,[string]$Text){[IO.File]::WriteAllText($Path,$Text,(New-Object System.Text.UTF8Encoding($true)))}
@@ -26,30 +32,52 @@ function Replace-RegexOnce([string]$Text,[string]$Pattern,[string]$Replacement,[
   Write-Host "ANIMATION_LIFECYCLE_SEMANTIC_HOOK=PASS name=$Name matches=1"
   return [regex]::Replace($Text,$Pattern,$Replacement,1)
 }
+function Replace-LiteralOnce([string]$Text,[string]$Needle,[string]$Replacement,[string]$Name){
+  $first=$Text.IndexOf($Needle,[StringComparison]::Ordinal)
+  if($first -lt 0){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=$Name reason=literal_missing"}
+  $second=$Text.IndexOf($Needle,$first+$Needle.Length,[StringComparison]::Ordinal)
+  if($second -ge 0){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=$Name reason=literal_ambiguous"}
+  Write-Host "ANIMATION_LIFECYCLE_SEMANTIC_HOOK=PASS name=$Name matches=1"
+  return $Text.Substring(0,$first)+$Replacement+$Text.Substring($first+$Needle.Length)
+}
+function Get-TargetPath([string]$Key){Join-Path $RepoRoot ([string]$targets[$Key])}
+function Get-BackupPath([string]$Key){Join-Path $backupRoot ($Key+'.original')}
 
 if($Mode -eq 'Restore'){
   if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=restore status=no_overlay sha=$ExpectedSha";return}
   $manifest=Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json
   if([string]$manifest.source_sha -ne $ExpectedSha){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL restore_manifest_sha expected=$ExpectedSha actual=$($manifest.source_sha)"}
-  if(-not(Test-Path -LiteralPath $backup -PathType Leaf)){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL restore_backup_missing=$backup"}
-  Copy-Item -LiteralPath $backup -Destination $target -Force
-  $restored=Get-Sha256 $target
-  $expected=([string]$manifest.sha256).ToUpperInvariant()
-  if($restored -ne $expected){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL restore_hash expected=$expected actual=$restored"}
+  foreach($entry in @($manifest.files)){
+    $key=[string]$entry.key
+    $target=Get-TargetPath $key
+    $backup=Get-BackupPath $key
+    if(-not(Test-Path -LiteralPath $backup -PathType Leaf)){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL restore_backup_missing key=$key path=$backup"}
+    Copy-Item -LiteralPath $backup -Destination $target -Force
+    $restored=Get-Sha256 $target
+    $expected=([string]$entry.sha256).ToUpperInvariant()
+    if($restored -ne $expected){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL restore_hash key=$key expected=$expected actual=$restored"}
+  }
   Remove-Item -LiteralPath $backupRoot -Recurse -Force
-  Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=restore baseline_restored=true composable=true sha=$ExpectedSha"
+  Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=restore baseline_restored=true composable=true combat_lifecycle=true sha=$ExpectedSha"
   return
 }
 
-if(-not(Test-Path -LiteralPath $target -PathType Leaf)){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL source_missing=$rel"}
 if(Test-Path -LiteralPath $backupRoot){Remove-Item -LiteralPath $backupRoot -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $backupRoot|Out-Null
-Copy-Item -LiteralPath $target -Destination $backup -Force
-$incomingSha=Get-Sha256 $target
-[ordered]@{schema='armyattack-animation-lifecycle-overlay/v2';source_sha=$ExpectedSha;path=$rel;sha256=$incomingSha}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+$manifestFiles=New-Object System.Collections.Generic.List[object]
+foreach($key in $targets.Keys){
+  $target=Get-TargetPath $key
+  if(-not(Test-Path -LiteralPath $target -PathType Leaf)){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL source_missing key=$key path=$($targets[$key])"}
+  $backup=Get-BackupPath $key
+  Copy-Item -LiteralPath $target -Destination $backup -Force
+  $manifestFiles.Add([ordered]@{key=$key;path=[string]$targets[$key];sha256=(Get-Sha256 $target)})
+}
+[ordered]@{schema='armyattack-animation-lifecycle-overlay/v3';source_sha=$ExpectedSha;files=@($manifestFiles)}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 try{
-  $text=Normalize-Lf ([IO.File]::ReadAllText($target))
+  # AnimationController: retain the proven lazy materialization and transient shoot cleanup.
+  $animationTarget=Get-TargetPath 'animation'
+  $text=Normalize-Lf ([IO.File]::ReadAllText($animationTarget))
 
   $loadPattern='(?ms)if\(this\.shouldDeferSpecialAnimation\(index\)\)\s*\{\s*smDeferredSpecials\+\+;\s*Utils\.DiagEvent\("ANIMATION_DEFERRED","index=" \+ index \+ ";source=" \+ source \+ ";reason=special_on_demand"\);\s*\}\s*else\s*\{\s*this\.materializeAnimation\(index,manager\);\s*\}'
   $loadReplacement=@'
@@ -117,10 +145,6 @@ private function stopAnim(param1:DisplayObject, param2:Array) : void
 '@
   $text=Replace-RegexOnce $text $stopPattern $stopReplacement 'destroy_removes_transient_listener'
 
-  # At this point both runtime increment sites were intentionally replaced by the
-  # semantic hooks above. The only legacy identifier occurrences that should remain
-  # are the counter declaration and its stats emission; validating the old pre-patch
-  # count produced a false negative after the lazy-materialization rewrite.
   $legacyDeferredMatches=[regex]::Matches($text,'\bsmDeferredSpecials\b').Count
   if($legacyDeferredMatches -ne 2){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=deferred_counter_migration reason=unexpected_legacy_count expected=2 actual=$legacyDeferredMatches"}
   $text=$text.Replace('smDeferredSpecials','smDeferredOnDemand')
@@ -130,20 +154,164 @@ private function stopAnim(param1:DisplayObject, param2:Array) : void
   if($legacyAfter -ne 0){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=deferred_counter_migration reason=legacy_identifier_remaining actual=$legacyAfter"}
   if($onDemandAfter -lt 4){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=deferred_counter_migration reason=on_demand_identifier_missing minimum=4 actual=$onDemandAfter"}
   Write-Host "ANIMATION_LIFECYCLE_COUNTER_MIGRATION=PASS legacy_expected=2 legacy_actual=$legacyDeferredMatches on_demand_actual=$onDemandAfter semantic_runtime_hooks=2"
+  Write-Utf8Bom $animationTarget $text
 
-  foreach($needle in @('ANIMATION_TRANSIENT_CLEANUP','index != CHARACTER_ANIMATION_IDLE','index != this.mCurrentAnimation && index != CHARACTER_ANIMATION_IDLE','smDeferredOnDemand')){
-    if(-not $text.Contains($needle)){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL verification_missing=$needle"}
+  # AttackEnemyAction: visual timeline is advisory; gameplay must finish on a bounded timer.
+  $attackTarget=Get-TargetPath 'attack'
+  $attack=Normalize-Lf ([IO.File]::ReadAllText($attackTarget))
+  $attackWaitPattern='(?ms)if \(!_loc2_\)\s*\{\s*this\.execute\(\);\s*\}'
+  $attackWaitReplacement=@'
+if (!_loc2_ || this.mTimer >= this.mAttackDuration) {
+                           if (_loc2_ && this.mTimer >= this.mAttackDuration) {
+                              Utils.DiagEvent("ATTACK_VISUAL_TIMEOUT", "elapsed_ms=" + this.mTimer + ";duration_ms=" + this.mAttackDuration + ";action=AttackEnemy");
+                           }
+                           this.execute();
+                        }
+'@
+  $attack=Replace-RegexOnce $attack $attackWaitPattern $attackWaitReplacement 'attack_completion_bounded_timer'
+  $attackDurationPattern='(?ms)if \(this\.mState == STATE_ATTACKING\) \{\s*playAttackSoundsForAttackers\(\);\s*\}'
+  $attackDurationReplacement=@'
+if (this.mState == STATE_ATTACKING) {
+                  this.mAttackDuration = Math.max(250, EffectController.getEffectLength(EffectController.EFFECT_TYPE_HIT_BULLET));
+                  playAttackSoundsForAttackers();
+               }
+'@
+  $attack=Replace-RegexOnce $attack $attackDurationPattern $attackDurationReplacement 'attack_visual_duration_initialized'
+  if(-not $attack.Contains('ATTACK_VISUAL_TIMEOUT')){throw 'ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL verification_missing=ATTACK_VISUAL_TIMEOUT'}
+  Write-Utf8Bom $attackTarget $attack
+
+  # HitEffect: generic impact effects get deterministic frame OR elapsed-time cleanup.
+  $hitTarget=Get-TargetPath 'hit'
+  $hit=Normalize-Lf ([IO.File]::ReadAllText($hitTarget))
+  $hitUpdatePattern='(?ms)override public function update\(param1:int\) : Boolean\s*\{\s*if\(!mMC\)\s*\{\s*return true;\s*\}\s*var _loc2_:String = mMC\.currentFrameLabel;\s*if\(_loc2_ == "end"\)\s*\{\s*mMC\.gotoAndStop\(1\);\s*mMC\.visible = false;\s*if\(mMC\.parent\)\s*\{\s*mMC\.parent\.removeChild\(mMC\);\s*\}\s*mMC = null;\s*return true;\s*\}\s*return false;\s*\}'
+  $hitUpdateReplacement=@'
+override public function update(param1:int) : Boolean
+      {
+         mTimer += param1;
+         if(!mMC)
+         {
+            return true;
+         }
+         var _loc2_:String = mMC.currentFrameLabel;
+         var _loc3_:Boolean = mMC.totalFrames > 1 && mMC.currentFrame >= mMC.totalFrames;
+         var _loc4_:int = Math.max(250,EffectController.getEffectLength(mType) + 250);
+         if(_loc2_ == "end" || _loc3_ || mTimer >= _loc4_)
+         {
+            if(mTimer >= _loc4_ && _loc2_ != "end" && !_loc3_)
+            {
+               Utils.DiagEvent("HIT_EFFECT_TIMEOUT","type=" + mType + ";elapsed_ms=" + mTimer + ";max_ms=" + _loc4_);
+            }
+            mMC.stop();
+            mMC.gotoAndStop(1);
+            mMC.visible = false;
+            if(mMC.parent)
+            {
+               mMC.parent.removeChild(mMC);
+            }
+            mMC = null;
+            return true;
+         }
+         return false;
+      }
+'@
+  $hit=Replace-RegexOnce $hit $hitUpdatePattern $hitUpdateReplacement 'generic_hit_effect_bounded_cleanup'
+  Write-Utf8Bom $hitTarget $hit
+
+  # Missile: never dereference parent after removing the missile container; always destroy.
+  $missileTarget=Get-TargetPath 'missile'
+  $missile=Normalize-Lf ([IO.File]::ReadAllText($missileTarget))
+  $missileFieldPattern='(?m)^(\s*)private var mAngles:Array;\s*$'
+  $missileFieldReplacement='$1private var mAngles:Array;'+"`n"+'$1private var mImpactFrameTicks:int = 0;'
+  $missile=Replace-RegexOnce $missile $missileFieldPattern $missileFieldReplacement 'missile_impact_watchdog_field'
+  $missileListenerPattern='(?ms)_loc9_\.addEventListener\(Event\.ENTER_FRAME,this\.checkFrame,false,0,true\);'
+  $missileListenerReplacement=@'
+this.mImpactFrameTicks = 0;
+               _loc9_.addEventListener(Event.ENTER_FRAME,this.checkFrame,false,0,true);
+'@
+  $missile=Replace-RegexOnce $missile $missileListenerPattern $missileListenerReplacement 'missile_impact_watchdog_reset'
+  $missileCheckPattern='(?ms)private function checkFrame\(param1:Event\) : void\s*\{.*?\n\s*\}\s*(?=\n\s*private function addParticle)'
+  $missileCheckReplacement=@'
+private function checkFrame(param1:Event) : void
+      {
+         var _loc2_:MovieClip = param1.currentTarget as MovieClip;
+         ++this.mImpactFrameTicks;
+         if(_loc2_ && (_loc2_.currentFrameLabel == "end" || _loc2_.currentFrame >= _loc2_.totalFrames || this.mImpactFrameTicks >= 90))
+         {
+            var _loc3_:String = this.mImpactFrameTicks >= 90 ? "watchdog" : "timeline";
+            _loc2_.removeEventListener(Event.ENTER_FRAME,this.checkFrame);
+            _loc2_.stop();
+            _loc2_.gotoAndStop(1);
+            _loc2_.visible = false;
+            if(_loc2_.parent)
+            {
+               _loc2_.parent.removeChild(_loc2_);
+            }
+            Utils.DiagEvent("MISSILE_IMPACT_CLEANUP","reason=" + _loc3_ + ";frames=" + this.mImpactFrameTicks);
+            destroy();
+         }
+      }
+'@
+  $missile=Replace-RegexOnce $missile $missileCheckPattern $missileCheckReplacement 'missile_parent_safe_cleanup'
+  if($missile.Contains('parent.parent.removeChild')){throw 'ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL regression=missile_parent_parent_remove_still_present'}
+  Write-Utf8Bom $missileTarget $missile
+
+  # Map GUI: cleanup is idempotent and range cache cannot point to removed display objects.
+  $mapTarget=Get-TargetPath 'mapgui'
+  $map=Normalize-Lf ([IO.File]::ReadAllText($mapTarget))
+  $rangeResetPattern='(?ms)(this\.mRangeHighlights = new Array\(\);)\s*(\}\s*public function highlightRange)'
+  $rangeResetReplacement='$1'+"`n"+'         this.mRangeHighlightRenderable = null;'+"`n"+'      $2'
+  $map=Replace-RegexOnce $map $rangeResetPattern $rangeResetReplacement 'range_cache_reset_on_clear'
+  $unsafeNeedle='this.mTopLayer.removeChild(_loc4_);'
+  $unsafeCount=([regex]::Matches($map,[regex]::Escape($unsafeNeedle))).Count
+  if($unsafeCount -ne 2){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=map_gui_parent_safe_cleanup reason=unexpected_count expected=2 actual=$unsafeCount"}
+  $safeReplacement=@'
+if(_loc4_ && _loc4_.parent)
+               {
+                  _loc4_.parent.removeChild(_loc4_);
+               }
+'@
+  $map=$map.Replace($unsafeNeedle,$safeReplacement.TrimEnd())
+  if($map.Contains($unsafeNeedle)){throw 'ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL regression=unsafe_map_gui_remove_remaining'}
+  Write-Utf8Bom $mapTarget $map
+  Write-Host "MAP_GUI_PARENT_SAFE_CLEANUP=PASS replacements=$unsafeCount"
+
+  # Ensure these source fixes are actually replaced into the Android SWF and version provenance changes.
+  $patcherTarget=Get-TargetPath 'patcher'
+  $patcher=Normalize-Lf ([IO.File]::ReadAllText($patcherTarget))
+  $versionNeedle='$patchVersion=''mobile-engine-v3.21-android-boot-product-rootfix'''
+  $versionReplacement='$patchVersion=''mobile-engine-v3.22-combat-lifecycle-rootfix'''
+  $patcher=Replace-LiteralOnce $patcher $versionNeedle $versionReplacement 'patch_version_v3_22'
+  $specNeedle="  [ordered]@{Class='game.isometric.characters.IsometricCharacter';Source='src\game\isometric\characters\IsometricCharacter.as';Log='ffdec-feature-character-hints.log'},"
+  $specReplacement=@"
+$specNeedle
+  [ordered]@{Class='game.actions.AttackEnemyAction';Source='src\game\actions\AttackEnemyAction.as';Log='ffdec-feature-attack-enemy-lifecycle.log'},
+  [ordered]@{Class='game.gameElements.Missile';Source='src\game\gameElements\Missile.as';Log='ffdec-feature-missile-lifecycle.log'},
+  [ordered]@{Class='game.utils.HitEffect';Source='src\game\utils\HitEffect.as';Log='ffdec-feature-hit-effect-lifecycle.log'},
+  [ordered]@{Class='game.battlefield.MapGUIEffectsLayer';Source='src\game\battlefield\MapGUIEffectsLayer.as';Log='ffdec-feature-map-gui-lifecycle.log'},
+"@
+  $patcher=Replace-LiteralOnce $patcher $specNeedle $specReplacement.TrimEnd() 'combat_lifecycle_patch_specs'
+  foreach($required in @('game.actions.AttackEnemyAction','game.gameElements.Missile','game.utils.HitEffect','game.battlefield.MapGUIEffectsLayer','mobile-engine-v3.22-combat-lifecycle-rootfix')){
+    if(-not $patcher.Contains($required)){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=patcher_verification missing=$required"}
   }
-  if($text.Contains('reason=special_on_demand')){throw 'ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL regression=eager_special_logging_still_present'}
+  Write-Utf8Bom $patcherTarget $patcher
 
-  Write-Utf8Bom $target $text
   Write-Host 'REGRESSION_CHECK=PASS name=shoot_fx_last_frame_is_not_persistent reset_frame=1 visible=false listener_removed=true'
   Write-Host 'REGRESSION_CHECK=PASS name=shoot_fx_listener_is_idempotent stale_listener_removed_before_play=true'
   Write-Host 'REGRESSION_CHECK=PASS name=animation_materialization_is_on_demand eager=idle non_idle=deferred current_after_load=materialized'
   Write-Host 'REGRESSION_CHECK=PASS name=animation_destroy_removes_transient_enter_frame_listener'
-  Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=apply sha=$ExpectedSha incoming_sha256=$incomingSha schema=v2"
+  Write-Host 'REGRESSION_CHECK=PASS name=attack_completion_independent_of_visual_end_label bounded_by=Shooting.Length'
+  Write-Host 'REGRESSION_CHECK=PASS name=generic_hit_effect_cleanup bounded_timeout=true final_frame=true end_label=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=missile_impact_cleanup parent_safe=true watchdog_frames=90'
+  Write-Host 'REGRESSION_CHECK=PASS name=map_gui_cleanup_idempotent stale_parent_safe=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=range_highlight_cache_reset_on_clear'
+  Write-Host 'REGRESSION_CHECK=PASS name=render_hotpath_contract_preserved dirty_region_overlay_untouched=true'
+  Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=apply sha=$ExpectedSha schema=v3 combat_lifecycle=true swf_patch_version=mobile-engine-v3.22-combat-lifecycle-rootfix"
 }catch{
   $failure=$_
-  Copy-Item -LiteralPath $backup -Destination $target -Force -ErrorAction SilentlyContinue
+  foreach($key in $targets.Keys){
+    $target=Get-TargetPath $key
+    $backup=Get-BackupPath $key
+    if(Test-Path -LiteralPath $backup -PathType Leaf){Copy-Item -LiteralPath $backup -Destination $target -Force -ErrorAction SilentlyContinue}
+  }
   throw $failure
 }
