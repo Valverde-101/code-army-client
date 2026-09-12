@@ -19,7 +19,8 @@ $renderHotpath=Join-Path $PSScriptRoot 'Invoke-AndroidRenderHotpathOverlay.ps1'
 $visualCombat=Join-Path $PSScriptRoot 'Invoke-AndroidVisualCombatOverlay.ps1'
 $interactionCorrectness=Join-Path $PSScriptRoot 'Invoke-AndroidInteractionCorrectnessOverlay.ps1'
 $bootOverlay=Join-Path $PSScriptRoot 'Invoke-AndroidBootResourceOverlay.ps1'
-foreach($script in @($internal,$gameplayOverlay,$animationLifecycle,$movementPacing,$renderHotpath,$visualCombat,$interactionCorrectness,$bootOverlay)){
+$evidenceRootFix=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlay.ps1'
+foreach($script in @($internal,$gameplayOverlay,$animationLifecycle,$movementPacing,$renderHotpath,$visualCombat,$interactionCorrectness,$bootOverlay,$evidenceRootFix)){
   if(-not(Test-Path -LiteralPath $script -PathType Leaf)){throw "ANDROID_PERF_OVERLAY=FAIL dependency_missing=$script"}
 }
 
@@ -80,9 +81,10 @@ if($Mode -eq 'Apply'){
     & $visualCombat -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     & $interactionCorrectness -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     & $bootOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
+    & $evidenceRootFix -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     Write-Host 'REGRESSION_CHECK=PASS name=character_hint_overlay_composition semantic_canonicalization=true exact_restore=true'
-    Write-Host 'REGRESSION_CHECK=PASS name=runtime_overlay_composition order=performance+gameplay+animation_lifecycle+movement+render_hotpath+visual_combat+interaction_correctness+boot'
-    Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=apply performance=true gameplay_stability=true animation_lifecycle=true movement_pacing=true render_hotpath=true visual_combat=true interaction_correctness=true boot_resource=true character_hint_compat=true sha=$ExpectedSha"
+    Write-Host 'REGRESSION_CHECK=PASS name=runtime_overlay_composition order=performance+gameplay+animation_lifecycle+movement+render_hotpath+visual_combat+interaction_correctness+boot+evidence_rootfix'
+    Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=apply performance=true gameplay_stability=true animation_lifecycle=true movement_pacing=true render_hotpath=true visual_combat=true interaction_correctness=true boot_resource=true evidence_rootfix=true character_hint_compat=true sha=$ExpectedSha"
     return
   }catch{
     $failure=$_
@@ -94,6 +96,7 @@ if($Mode -eq 'Apply'){
 # Restore nested overlays in reverse order. Snow is an outer overlay, so these
 # restores verify their recorded baselines instead of assuming a clean worktree
 # until the Snow layer is finally restored by the build hook.
+& $evidenceRootFix -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
 & $bootOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
 & $interactionCorrectness -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
 & $visualCombat -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
@@ -104,7 +107,7 @@ if($Mode -eq 'Apply'){
 Restore-CharacterHintCompatibility
 try{
   & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Restore
-  Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true animation_lifecycle=true movement_pacing=true render_hotpath=true visual_combat=true interaction_correctness=true boot_resource=true character_hint_compat=true sha=$ExpectedSha"
+  Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true animation_lifecycle=true movement_pacing=true render_hotpath=true visual_combat=true interaction_correctness=true boot_resource=true evidence_rootfix=true character_hint_compat=true sha=$ExpectedSha"
   return
 }catch{
   $message=[string]$_.Exception.Message
@@ -130,4 +133,4 @@ foreach($entry in @($manifest.files)){
 }
 Remove-Item -LiteralPath $backupRoot -Recurse -Force
 Write-Host "ANDROID_PERF_OVERLAY=PASS mode=restore baseline_restored=true composable=true outer_exact_head_gate=snow sha=$ExpectedSha"
-Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true animation_lifecycle=true movement_pacing=true render_hotpath=true visual_combat=true interaction_correctness=true boot_resource=true character_hint_compat=true sha=$ExpectedSha"
+Write-Host "ANDROID_RUNTIME_OVERLAY_BUNDLE=PASS mode=restore performance=true gameplay_stability=true animation_lifecycle=true movement_pacing=true render_hotpath=true visual_combat=true interaction_correctness=true boot_resource=true evidence_rootfix=true character_hint_compat=true sha=$ExpectedSha"
