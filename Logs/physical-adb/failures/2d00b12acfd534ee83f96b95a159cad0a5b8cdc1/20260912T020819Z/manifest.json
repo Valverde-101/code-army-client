@@ -1,9 +1,9 @@
 ﻿{
     "schema":  "androidbuild-evidence/v1",
     "identity":  {
-                     "timestamp":  "20260910T193806Z",
+                     "timestamp":  "20260912T020819Z",
                      "result":  "FAIL",
-                     "tested_sha":  "d5baffabb8ba991c9f2de01d21b3e0a78162580a"
+                     "tested_sha":  "2d00b12acfd534ee83f96b95a159cad0a5b8cdc1"
                  },
     "files":  [
                   {
@@ -15,49 +15,49 @@
                   {
                       "path":  "apk-badging.txt",
                       "bytes":  2099,
-                      "sha256":  "92b02c4ae2ee03957838ea07fe2e63f793186f9cd83e44b38b8b1baf0140a350",
+                      "sha256":  "4c7bf00a69088e613c6bae8a9cf86838c4c1031f15381eb81ad1d431cf277007",
                       "sanitized":  true
                   },
                   {
                       "path":  "apk-info.json",
                       "bytes":  894,
-                      "sha256":  "a45807bbd74907d3ddbb62a873d310e7918ed64d1178990048dc9188824826d8",
+                      "sha256":  "4de0f0adb4336dd38640a2191b529e48861a4d10df062aecd7d8f783d6942a7c",
                       "sanitized":  true
                   },
                   {
                       "path":  "correlated-diagnostics/correlated-diagnostics.json",
                       "bytes":  352,
-                      "sha256":  "f1595cfef26970a62fdc351d384ed724b491df5ab007832a2fbeca3b2cc5a33a",
+                      "sha256":  "c98724a71aa9e7217a570291a140ba696032753f8399a084bace6bb2aaceaf53",
                       "sanitized":  true
                   },
                   {
                       "path":  "correlated-diagnostics/last-error.json",
                       "bytes":  352,
-                      "sha256":  "f1595cfef26970a62fdc351d384ed724b491df5ab007832a2fbeca3b2cc5a33a",
+                      "sha256":  "c98724a71aa9e7217a570291a140ba696032753f8399a084bace6bb2aaceaf53",
                       "sanitized":  true
                   },
                   {
                       "path":  "physical-gate.json",
                       "bytes":  505,
-                      "sha256":  "17635420339469a1145b163c6330dc8926b70333bf7f2239f30a90815c257b7a",
+                      "sha256":  "8d9a72883f2a59b2bc0d68ac7781f12c6539b9545662911dc0e23d6f556e8775",
                       "sanitized":  true
                   },
                   {
                       "path":  "runtime-diagnostics.json",
                       "bytes":  353,
-                      "sha256":  "b183cb19c34e8174175ae9bb60ff1c6b720f06f9838acb858838931d6603c4a5",
+                      "sha256":  "88344536c6558a1282ae26bdc8a37bb8dccb630f0646c5c7d45080f82204aa68",
                       "sanitized":  true
                   },
                   {
                       "path":  "static-analysis/SWF-RESOURCE-GRAPH.json",
                       "bytes":  375668,
-                      "sha256":  "9b51e6a6c08c831af3b81e0b846b9a8e0b99076fa6e0555651bcd56c98a22a6a",
+                      "sha256":  "96a6fee6edef6d9583f8a8e5eed07a4b4ca18451e903f6a52ce1b409d51f8d59",
                       "sanitized":  true
                   },
                   {
                       "path":  "static-analysis/SWF-RESOURCE-GRAPH.md",
                       "bytes":  503,
-                      "sha256":  "7b1e37d2746f8d81b4f2a1eec20db2f0e242af9d4d05c16a598ce43e77643986",
+                      "sha256":  "1837fdbb55fbb82b8a85af74607160a2aee9893e80b702d6db68c3b79c43e631",
                       "sanitized":  true
                   },
                   {
@@ -69,7 +69,7 @@
                   {
                       "path":  "summary.json",
                       "bytes":  337,
-                      "sha256":  "1c1d95de9ebac39716706e2db14945f3fa534af59b8886f926a03491eeb84d9c",
+                      "sha256":  "82f04ba7ef79b652fa3b2910202e63235febe040f29024c2a9f0c367d0968abd",
                       "sanitized":  true
                   }
               ]
