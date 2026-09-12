@@ -70,6 +70,29 @@ function Restore-CharacterHintCompatibility {
   Write-Host "CHARACTER_HINT_COMPAT=PASS mode=restore exact_incoming_bytes=true sha256=$restored"
 }
 
+# The evidence-rootfix runs after several independent overlays.  FFDec and
+# source transforms may preserve the same materialization semantics while
+# changing indentation/order. Canonicalize just this four-statement seam before
+# handing it to the strict evidence patch, then let the outer overlay restores
+# return the original bytes.
+function Apply-EvidenceRootFixCompatibility {
+  $path=Join-Path $RepoRoot 'src\game\characters\AnimationController.as'
+  if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "EVIDENCE_ROOTFIX_COMPAT=FAIL source_missing=$path"}
+  $text=[IO.File]::ReadAllText($path).Replace("`r`n","`n").Replace("`r","`n")
+  $pattern='(?ms)[ \t]*wrapper\.addChild\(new cls\(\)\);\s*wrapper\.visible\s*=\s*true;\s*(?:(?:smMaterializedClips\+\+;\s*this\.invalidateAnimationTreeCache\(param1\);)|(?:this\.invalidateAnimationTreeCache\(param1\);\s*smMaterializedClips\+\+;))'
+  $matches=[regex]::Matches($text,$pattern)
+  if($matches.Count -ne 1){throw "EVIDENCE_ROOTFIX_COMPAT=FAIL materialize_semantic_match_count actual=$($matches.Count)"}
+  $canonical=@'
+               wrapper.addChild(new cls());
+               wrapper.visible = true;
+               smMaterializedClips++;
+               this.invalidateAnimationTreeCache(param1);
+'@
+  $text=[regex]::Replace($text,$pattern,$canonical,1)
+  Write-Utf8Bom $path $text
+  Write-Host 'EVIDENCE_ROOTFIX_COMPAT=PASS seam=materializeAnimation semantics=preserved canonical=true'
+}
+
 if($Mode -eq 'Apply'){
   try{
     & $internal -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
@@ -81,6 +104,7 @@ if($Mode -eq 'Apply'){
     & $visualCombat -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     & $interactionCorrectness -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     & $bootOverlay -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
+    Apply-EvidenceRootFixCompatibility
     & $evidenceRootFix -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
     Write-Host 'REGRESSION_CHECK=PASS name=character_hint_overlay_composition semantic_canonicalization=true exact_restore=true'
     Write-Host 'REGRESSION_CHECK=PASS name=runtime_overlay_composition order=performance+gameplay+animation_lifecycle+movement+render_hotpath+visual_combat+interaction_correctness+boot+evidence_rootfix'
