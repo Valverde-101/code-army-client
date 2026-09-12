@@ -6,14 +6,14 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-$impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV9.ps1'
+$impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV10.ps1'
 if(-not(Test-Path -LiteralPath $impl -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_OVERLAY=FAIL implementation_missing=$impl"}
 $tokens=$null
 $errors=$null
 [void][System.Management.Automation.Language.Parser]::ParseFile($impl,[ref]$tokens,[ref]$errors)
 if(@($errors).Count -gt 0){
-  $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V9_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
-  throw 'ANDROID_EVIDENCE_ROOTFIX_OVERLAY=FAIL v9_parser_invalid'
+  $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V10_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
+  throw 'ANDROID_EVIDENCE_ROOTFIX_OVERLAY=FAIL v10_parser_invalid'
 }
-Write-Host 'ANDROID_EVIDENCE_ROOTFIX_DRIVER=PASS implementation=v9 static=true self_modifying=false parser=true'
+Write-Host 'ANDROID_EVIDENCE_ROOTFIX_DRIVER=PASS implementation=v10 static=true self_modifying=false parser=true'
 & $impl -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode $Mode
