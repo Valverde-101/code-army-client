@@ -67,7 +67,17 @@ try{
   $perf=Normalize-Lf ([IO.File]::ReadAllText($perfPath))
   $perf=Replace-LiteralOne $perf 'toggleButton = button("PERF");' 'toggleButton = button("PERF\n" + shortBuildId());' 'perf_button_shows_build_id'
   $perf=Replace-LiteralOne $perf 'new FrameLayout.LayoutParams(dp(76), dp(44), Gravity.TOP | Gravity.END);' 'new FrameLayout.LayoutParams(dp(96), dp(54), Gravity.TOP | Gravity.END);' 'perf_button_size_for_build_id'
-  $perf=Replace-LiteralOne $perf 'TextView title = text("Army Perf · runtime instrumentado", 16f, Color.WHITE);' 'TextView title = text("Army Perf · build " + shortBuildId(), 16f, Color.WHITE);' 'perf_panel_title_shows_build_id'
+
+  # Do not depend on the authored title text/encoding. Anchor the build label to the
+  # stable title addView statement instead, so cosmetic title changes cannot break CI.
+  $titleAnchor='        panel.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));'
+  $buildLabel=@'
+        panel.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        TextView buildIdentity = text("Build " + shortBuildId(), 12f, Color.rgb(170, 220, 170));
+        buildIdentity.setContentDescription("army_perf_build_identity");
+        panel.addView(buildIdentity, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+'@
+  $perf=Replace-LiteralOne $perf $titleAnchor $buildLabel.TrimEnd() 'perf_panel_build_label_semantic_anchor'
   $perf=Replace-LiteralOne $perf 'toggleButton.setText(panelVisible ? "CERRAR" : "PERF");' 'toggleButton.setText((panelVisible ? "CERRAR" : "PERF") + "\n" + shortBuildId());' 'perf_toggle_keeps_build_id'
   $identityEvent=@'
 recordGameEvent("AUTO_FLIGHT_RECORDER", "started_on_activity_attach");
@@ -92,20 +102,21 @@ recordGameEvent("AUTO_FLIGHT_RECORDER", "started_on_activity_attach");
   }
   $new=@'
 Require-Contains $perfOverlay 'toggleButton = button("PERF\n" + shortBuildId());' 'perf_button_displays_build_id'
-Require-Contains $perfOverlay 'TextView title = text("Army Perf · build " + shortBuildId()' 'perf_panel_displays_build_id'
+Require-Contains $perfOverlay 'TextView buildIdentity = text("Build " + shortBuildId()' 'perf_panel_displays_build_id'
+Require-Contains $perfOverlay 'buildIdentity.setContentDescription("army_perf_build_identity");' 'perf_build_identity_accessibility_id'
 Require-Contains $perfOverlay 'toggleButton.setText((panelVisible ? "CERRAR" : "PERF") + "\n" + shortBuildId());' 'perf_toggle_preserves_build_id'
 Require-Contains $perfOverlay 'recordGameEvent("BUILD_IDENTITY", "tested_sha=" + testedSha + ";short_sha=" + shortBuildId()' 'perf_runtime_records_build_identity'
 Require-Contains $perfOverlay 'return testedSha.substring(0, 8);' 'perf_build_identity_uses_manifest_tested_sha'
 '@
   $test=Replace-LiteralOne $test $old $new.TrimEnd() 'runtime_test_visible_build_identity_contract'
-  foreach($required in @('perf_button_displays_build_id','perf_panel_displays_build_id','perf_toggle_preserves_build_id','perf_runtime_records_build_identity','perf_build_identity_uses_manifest_tested_sha')){
+  foreach($required in @('perf_button_displays_build_id','perf_panel_displays_build_id','perf_build_identity_accessibility_id','perf_toggle_preserves_build_id','perf_runtime_records_build_identity','perf_build_identity_uses_manifest_tested_sha')){
     if(-not $test.Contains($required)){throw "ANDROID_EVIDENCE_ROOTFIX_V10=FAIL verification_missing=$required"}
   }
   if($test.Contains("'perf_panel_toggle_is_stable'")){throw 'ANDROID_EVIDENCE_ROOTFIX_V10=FAIL stale_perf_toggle_gate_remaining'}
   Write-Utf8Bom $testPath $test
-  Write-Host 'REGRESSION_CHECK=PASS name=visible_build_identity_is_mandatory source=manifest_tested_sha display=PERF+panel runtime_event=BUILD_IDENTITY'
+  Write-Host 'REGRESSION_CHECK=PASS name=visible_build_identity_is_mandatory source=manifest_tested_sha display=PERF+panel accessibility=army_perf_build_identity runtime_event=BUILD_IDENTITY'
   Write-Host "REGRESSION_CHECK=PASS name=stale_apk_confusion_is_observable short_sha=$($ExpectedSha.Substring(0,8)) zip=device.json+game-events"
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V10=PASS mode=apply sha=$ExpectedSha schema=v10 predecessor=v9"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V10=PASS mode=apply sha=$ExpectedSha schema=v10 predecessor=v9 semantic_title_anchor=true"
 }catch{
   $failure=$_
   if(Test-Path -LiteralPath $testBackup -PathType Leaf){Copy-Item -LiteralPath $testBackup -Destination $testPath -Force}
