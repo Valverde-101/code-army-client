@@ -10,11 +10,10 @@ Set-StrictMode -Version Latest
 $impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV2.ps1'
 if(-not(Test-Path -LiteralPath $impl -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_OVERLAY=FAIL implementation_missing=$impl"}
 
-# V2 intentionally owns the composed gameplay fixes, but this driver also
-# validates/canonicalizes the implementation source itself before execution.
-# This is deterministic because it patches only the committed V2 script, never
-# FFDec output or generated AS3. It removes the last two format-sensitive seams:
-# the addParticle method signatures and PowerShell interpolation of $patchVersion.
+# V2 owns the composed gameplay fixes. This driver canonicalizes only the
+# committed V2 implementation source before execution, never FFDec output or
+# generated AS3. That keeps the runtime patch semantic while removing the last
+# format-sensitive seams in method signatures and PowerShell quoting.
 $source=[IO.File]::ReadAllText($impl).Replace("`r`n","`n").Replace("`r","`n")
 $lines=@($source -split "`n",-1)
 $inMissileDestroy=$false
@@ -25,17 +24,26 @@ $missileMatcherFixed=0
 $artilleryMatcherFixed=0
 $patchVersionMatcherFixed=0
 
+$patchVersionPatternLine=@'
+  $patchVersionPattern='(?m)^\s*\$patchVersion=''mobile-engine-v3\.24-placement-wrecking-rootfix''\s*$'
+'@
+$patchVersionReplacementLine=@'
+  $patcher=Replace-RegexOne $patcher $patchVersionPattern '$patchVersion=''mobile-engine-v3.25-evidence-rootfix-v2''' 'patch_version_v3_25_v2'
+'@
+$patchVersionPatternLine=$patchVersionPatternLine.TrimEnd("`r","`n")
+$patchVersionReplacementLine=$patchVersionReplacementLine.TrimEnd("`r","`n")
+
 for($i=0;$i -lt $lines.Count;$i++){
   $line=[string]$lines[$i]
   if($line -eq "  `$missileDestroy=@'"){$inMissileDestroy=$true;continue}
   if($line -eq "  `$artilleryDestroy=@'"){$inArtilleryDestroy=$true;continue}
 
-  if($inMissileDestroy -and $line -eq "      private function addParticle"){
+  if($inMissileDestroy -and $line -eq '      private function addParticle'){
     $lines[$i]='      private function addParticle(param1:int) : void'
     $missileSignatureFixed++
     continue
   }
-  if($inArtilleryDestroy -and $line -eq "      private function addParticle"){
+  if($inArtilleryDestroy -and $line -eq '      private function addParticle'){
     $lines[$i]='      private function addParticle() : void'
     $artillerySignatureFixed++
     continue
@@ -57,8 +65,10 @@ for($i=0;$i -lt $lines.Count;$i++){
     continue
   }
   if($line -match "^\s*\`$patcher=Replace-RegexOne \`$patcher .*patch_version_v3_25_v2'\s*`$"){
-    $lines[$i]="  `$patchVersionPattern='(?m)^\s*\`$patchVersion=''mobile-engine-v3\.24-placement-wrecking-rootfix''\s*`$'"
-    $lines=@($lines[0..$i] + "  `$patcher=Replace-RegexOne `$patcher `$patchVersionPattern '`$patchVersion=''''mobile-engine-v3.25-evidence-rootfix-v2''''' 'patch_version_v3_25_v2'" + $lines[($i+1)..($lines.Count-1)])
+    $lines[$i]=$patchVersionPatternLine
+    $before=if($i -gt 0){@($lines[0..$i])}else{@($lines[0])}
+    $after=if($i+1 -lt $lines.Count){@($lines[($i+1)..($lines.Count-1)])}else{@()}
+    $lines=@($before + $patchVersionReplacementLine + $after)
     $patchVersionMatcherFixed++
     $i++
     continue
