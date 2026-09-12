@@ -92,6 +92,7 @@ $1private var mPlacementConfirmExplicit: Boolean = false;
 private function shouldCommitPlacement():Boolean {
 			var pointerCommit:Boolean = FeatureTuner.USE_MOUSE_FOR_PLACE_ITEMS;
 			CONFIG::BUILD_FOR_MOBILE_AIR {
+				pointerCommit = false;
 				return this.mPlacementConfirmExplicit;
 			}
 			return this.mPlacePressed || pointerCommit;
@@ -117,6 +118,7 @@ $1public function mouseUp(param1: MouseEvent): void {
 '@
   $scene=Replace-RegexOnce $scene $mouseUpPattern $mouseUpReplacement.TrimEnd() 'placement_explicit_confirm_entrypoint'
 
+  if(-not $scene.Contains('pointerCommit = false;')){throw 'ANDROID_INTERACTION_CORRECTNESS_OVERLAY=FAIL verification=mobile_pointer_commit_disabled_missing'}
   if(-not $scene.Contains('return this.mPlacementConfirmExplicit;')){throw 'ANDROID_INTERACTION_CORRECTNESS_OVERLAY=FAIL verification=mobile_explicit_gate_missing'}
   if(-not $scene.Contains('PLACEMENT_CONFIRM_EXPLICIT')){throw 'ANDROID_INTERACTION_CORRECTNESS_OVERLAY=FAIL verification=placement_confirm_diagnostic_missing'}
   Write-Utf8Bom $sceneTarget $scene
