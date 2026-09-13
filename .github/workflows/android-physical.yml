@@ -43,7 +43,7 @@ jobs:
   physical-adb:
     name: 5. Physical ADB validation
     if: github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general, adb-device]
     timeout-minutes: 40
     steps:
       - name: Bootstrap portable Git
@@ -83,13 +83,38 @@ jobs:
           }
           & '.\Tools\CI\Precheck-AndroidPhysical.ps1' -ExpectedSha $env:EXPECTED_SOURCE_SHA
           if($LASTEXITCODE -ne 0){throw "PHYSICAL_PRECHECK=FAIL exit=$LASTEXITCODE"}
-          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $coreManifest=Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1'
+          $coreInstallLock=Join-Path $env:ANDROIDBUILD_ROOT 'State\core\install.lock'
+          $coreDeadline=(Get-Date).AddSeconds(180)
+          $coreWaited=$false
+          $lastWaitState=''
+          do {
+            $ready=$false
+            if(Test-Path -LiteralPath $coreManifest -PathType Leaf){
+              try {
+                $declared=[version]([string](Import-PowerShellDataFile -LiteralPath $coreManifest).ModuleVersion)
+                if($declared -ge [version]'3.0.11'){$ready=$true}
+              } catch {}
+            }
+            if($ready){break}
+            $coreWaited=$true
+            $waitState=if(Test-Path -LiteralPath $coreInstallLock -PathType Leaf){'install_transaction'}else{'current_missing_or_not_ready'}
+            if($waitState -ne $lastWaitState){
+              Write-Host "PHYSICAL_CORE_WAIT=WAIT state=$waitState manifest=$coreManifest lock=$coreInstallLock timeout_seconds=180"
+              $lastWaitState=$waitState
+            }
+            Start-Sleep -Seconds 2
+          } while((Get-Date) -lt $coreDeadline)
+          if(-not(Test-Path -LiteralPath $coreManifest -PathType Leaf)){
+            throw "PHYSICAL_PRECHECK=FAIL component=TOOLCHAIN operation=wait_core_current expected=$coreManifest actual=missing timeout_seconds=180"
+          }
+          Import-Module $coreManifest -DisableNameChecking -Force
           $core=[version](Get-AndroidBuildCoreVersion)
-          if($core -lt [version]'3.0.9'){throw "PHYSICAL_PRECHECK=FAIL core=$core minimum=3.0.9"}
+          if($core -lt [version]'3.0.11'){throw "PHYSICAL_PRECHECK=FAIL component=TOOLCHAIN operation=core_version expected=>=3.0.11 actual=$core"}
           foreach($name in @('Initialize-AndroidBuildProjectWork','Reduce-AndroidBuildEvidence','Publish-AndroidBuildEvidence','Publish-AndroidBuildEvidenceCommit')){
             if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "PHYSICAL_PRECHECK=FAIL core_evidence_capability=$name"}
           }
-          Write-Host "PHYSICAL_CORE_PRECHECK=PASS core=$core evidence_publisher=androidbuild-global branch=$env:SOURCE_BRANCH tested_sha=$env:EXPECTED_SOURCE_SHA"
+          Write-Host "PHYSICAL_CORE_PRECHECK=PASS core=$core minimum=3.0.11 waited=$coreWaited evidence_publisher=androidbuild-global branch=$env:SOURCE_BRANCH tested_sha=$env:EXPECTED_SOURCE_SHA"
 
       - name: Prepare isolated raw evidence staging
         shell: powershell
