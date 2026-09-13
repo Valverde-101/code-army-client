@@ -32,20 +32,22 @@ try {
   $patched=[IO.File]::ReadAllText($v15).Replace("`r`n","`n").Replace("`r","`n")
 
   # Ownership has one owner: V3 already performs partial redraw followed by a
-  # synchronous full redraw fallback. V15 must verify that contract, not rewrite
-  # the complete method a second time after V4 inserts cache helpers around it.
+  # synchronous full redraw fallback. V15 verifies behavior semantically and
+  # deliberately ignores formatter/decompiler whitespace.
   $ownershipApplyOld='  $tile=Replace-RegexOne $tile $commitPattern $commitReplacement.TrimEnd() ''ownership_visual_full_fallback'''
   $ownershipApplyNew=@'
-  foreach($ownershipToken in @(
-    'var committed:Boolean = this.redrawDirtyOwnershipRegion();',
-    'var mode:String = committed ? "partial" : "full";',
-    'this.requestFullRedraw();',
-    'this.updateTilemap();',
-    'return committed;'
-  )){
-    if(-not $tile.Contains($ownershipToken)){throw "ANDROID_EVIDENCE_ROOTFIX_V15=FAIL ownership_predecessor_contract token=$ownershipToken"}
+  $ownershipContractPatterns=[ordered]@{
+    entry='(?ms)public function commitOwnershipVisualNow\(\)\s*:\s*Boolean\s*\{.*?redrawDirtyOwnershipRegion\(\)'
+    mode='(?m)var\s+mode:String\s*=\s*committed\s*\?\s*"partial"\s*:\s*"full"\s*;'
+    fallback='(?ms)if\s*\(!committed\)\s*\{.*?requestFullRedraw\(\)\s*;.*?updateTilemap\(\)\s*;.*?committed\s*=\s*!this\.mOwnershipDirty\s*;.*?\}'
+    return='(?m)return\s+committed\s*;'
   }
-  Write-Host 'EVIDENCE_ROOTFIX_V15_HOOK=PASS name=ownership_visual_full_fallback mode=predecessor_semantic_contract rewrite=false'
+  foreach($ownershipName in $ownershipContractPatterns.Keys){
+    $pattern=[string]$ownershipContractPatterns[$ownershipName]
+    $matches=[regex]::Matches($tile,$pattern)
+    if($matches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V15=FAIL ownership_predecessor_contract name=$ownershipName expected_matches=1 actual=$($matches.Count)"}
+  }
+  Write-Host 'EVIDENCE_ROOTFIX_V15_HOOK=PASS name=ownership_visual_full_fallback mode=predecessor_semantic_contract rewrite=false whitespace_agnostic=true'
 '@
   $patched=Replace-SourceOne $patched $ownershipApplyOld $ownershipApplyNew.TrimEnd() 'ownership_single_owner_contract'
 
@@ -135,24 +137,27 @@ this.mImpactFrameTicks = 0;
 '@
   $patched=Replace-SourceOne $patched $hitOld.TrimEnd() $hitNew.TrimEnd() 'hit_update_semantic_terminal'
 
-  # The regression check must verify the actual V3 ownership implementation.
+  # Runtime regression also uses a whitespace-agnostic semantic assertion.
   $ownershipTestOld="Require-Contains `$tile 'result=full' 'ownership_commit_has_immediate_full_fallback'"
-  $ownershipTestNew="Require-Contains `$tile 'var mode:String = committed ? `"partial`" : `"full`";' 'ownership_commit_has_immediate_full_fallback'"
-  $patched=Replace-SourceOne $patched $ownershipTestOld $ownershipTestNew 'ownership_test_semantic_contract'
+  $ownershipTestNew=@'
+if(-not [regex]::IsMatch($tile,'(?m)var\s+mode:String\s*=\s*committed\s*\?\s*"partial"\s*:\s*"full"\s*;')){throw 'ANDROID_RUNTIME_PATCH_TEST=FAIL ownership_commit_has_immediate_full_fallback'}
+Write-Host 'RUNTIME_PATCH_ASSERT=PASS name=ownership_commit_has_immediate_full_fallback semantic=true whitespace_agnostic=true'
+'@
+  $patched=Replace-SourceOne $patched $ownershipTestOld $ownershipTestNew.TrimEnd() 'ownership_test_semantic_contract'
 
   if($patched.Contains($ownershipApplyOld)){throw 'ANDROID_EVIDENCE_ROOTFIX_V16=FAIL duplicate_ownership_rewrite_remaining'}
   foreach($required in @(
-    'ownership_predecessor_contract',
+    'ownershipContractPatterns=[ordered]',
+    'whitespace_agnostic=true',
     'this.mImpactClip = _loc9_;',
     'this.mImpactClip = _loc3_;',
-    'destroy\(\);\s*\}\s*\}',
-    'var mode:String = committed ? "partial" : "full";'
+    'destroy\(\);\s*\}\s*\}'
   )){
     if(-not $patched.Contains($required)){throw "ANDROID_EVIDENCE_ROOTFIX_V16=FAIL transformed_contract_missing=$required"}
   }
 
   [IO.File]::WriteAllText($runtimeScript,$patched,(New-Object System.Text.UTF8Encoding($true)))
-  Write-Host 'EVIDENCE_ROOTFIX_V16_COMPAT=PASS ownership=reuse_v3_sync_contract missile=semantic artillery=semantic hit=semantic method_adjacency=false duplicate_ownership_rewrite=false parser_safe=true'
+  Write-Host 'EVIDENCE_ROOTFIX_V16_COMPAT=PASS ownership=reuse_v3_sync_contract missile=semantic artillery=semantic hit=semantic method_adjacency=false duplicate_ownership_rewrite=false parser_safe=true whitespace_agnostic=true'
   & $runtimeScript -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode $Mode
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V16=FAIL predecessor_exit=$LASTEXITCODE"}
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V16=PASS mode=$Mode sha=$ExpectedSha predecessor=v15 composition=semantic"
