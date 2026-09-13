@@ -85,8 +85,38 @@ try{
 $swcSha=(Get-FileHash -LiteralPath $swc -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Host "DIAGNOSTICS_ANE_SWC_VALIDATE=PASS library_swf=true swf_version=$rootSwfVersion sha256=$swcSha"
 
-$javaFiles=@(Get-ChildItem -LiteralPath $javaRoot -Recurse -File -Filter '*.java'|Select-Object -ExpandProperty FullName)
-if($javaFiles.Count -lt 3){throw "DIAGNOSTICS_ANE=FAIL java_source_count=$($javaFiles.Count)"}
+$javaSourceFiles=@(Get-ChildItem -LiteralPath $javaRoot -Recurse -File -Filter '*.java'|Select-Object -ExpandProperty FullName)
+if($javaSourceFiles.Count -lt 3){throw "DIAGNOSTICS_ANE=FAIL java_source_count=$($javaSourceFiles.Count)"}
+$javaCompileRoot=Join-Path $work 'java-src'
+New-Item -ItemType Directory -Force -Path $javaCompileRoot|Out-Null
+$javaFiles=@()
+$javaBomNormalized=0
+foreach($sourceFile in $javaSourceFiles){
+  $relative=$sourceFile.Substring($javaRoot.Length).TrimStart([char[]]@('\','/'))
+  $targetFile=Join-Path $javaCompileRoot $relative
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetFile)|Out-Null
+  $sourceBytes=[IO.File]::ReadAllBytes($sourceFile)
+  if($sourceBytes.Length -ge 2 -and (($sourceBytes[0] -eq 0xFF -and $sourceBytes[1] -eq 0xFE) -or ($sourceBytes[0] -eq 0xFE -and $sourceBytes[1] -eq 0xFF))){
+    throw "DIAGNOSTICS_ANE=FAIL java_source_encoding_unsupported file=$relative encoding=utf16"
+  }
+  $hasUtf8Bom=$sourceBytes.Length -ge 3 -and $sourceBytes[0] -eq 0xEF -and $sourceBytes[1] -eq 0xBB -and $sourceBytes[2] -eq 0xBF
+  if($hasUtf8Bom){
+    $payload=New-Object byte[] ($sourceBytes.Length-3)
+    if($payload.Length -gt 0){[Array]::Copy($sourceBytes,3,$payload,0,$payload.Length)}
+    [IO.File]::WriteAllBytes($targetFile,$payload)
+    $javaBomNormalized++
+    Write-Host "DIAGNOSTICS_ANE_JAVA_BOM=NORMALIZED file=$relative"
+  }else{
+    [IO.File]::WriteAllBytes($targetFile,$sourceBytes)
+  }
+  $stagedBytes=[IO.File]::ReadAllBytes($targetFile)
+  if($stagedBytes.Length -ge 3 -and $stagedBytes[0] -eq 0xEF -and $stagedBytes[1] -eq 0xBB -and $stagedBytes[2] -eq 0xBF){
+    throw "DIAGNOSTICS_ANE=FAIL java_staged_bom_remaining file=$relative"
+  }
+  $javaFiles+=$targetFile
+}
+Write-Host "DIAGNOSTICS_ANE_JAVA_ENCODING=PASS source_count=$($javaFiles.Count) utf8_bom_normalized=$javaBomNormalized staged_root=$javaCompileRoot"
+Write-Host "REGRESSION_CHECK=PASS name=diagnostics_ane_java_sources_compile_without_bom staged=true source_mutation=false"
 $classPath=$freJar+';'+$androidJar
 & $javac '-source' '8' '-target' '8' '-encoding' 'UTF-8' '-classpath' $classPath '-d' $classes @javaFiles
 if($LASTEXITCODE -ne 0){throw "DIAGNOSTICS_ANE=FAIL javac_exit=$LASTEXITCODE"}
