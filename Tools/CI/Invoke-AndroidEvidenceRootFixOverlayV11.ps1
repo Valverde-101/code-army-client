@@ -186,12 +186,12 @@ Write-Host "ANDROID_CERT_PROFILE=PASS profile=stable-local-debug-v1 candidate_on
 '@
   $androidBuild=Replace-LiteralOne $androidBuild $oldFinally.TrimEnd() $newFinally.TrimEnd() 'stable_candidate_signing_persist'
   foreach($token in @('stable-local-debug-v1','State\signing\armyattack-candidate','persistent_candidate_key_preserved=true','Never use this key for RELEASE or Play Store signing.')){Require-Token $androidBuild $token 'stable_candidate_signing'}
-  if($androidBuild.Contains("$cert=Join-Path $buildRoot 'android-ci-signing.p12'")){throw 'ANDROID_EVIDENCE_ROOTFIX_V11=FAIL regression=ephemeral_candidate_cert_remaining'}
+  if($androidBuild.Contains('$cert=Join-Path $buildRoot ''android-ci-signing.p12''')){throw 'ANDROID_EVIDENCE_ROOTFIX_V11=FAIL regression=ephemeral_candidate_cert_remaining'}
   Write-Utf8Bom $androidBuildPath $androidBuild
 
   $patcherPath=Target-Path 'patcher'
   $patcher=Normalize-Lf ([IO.File]::ReadAllText($patcherPath))
-  $patcher=Replace-LiteralOne $patcher "$patchVersion='mobile-engine-v3.27-projectile-autotick-hfe-v7'" "$patchVersion='mobile-engine-v3.28-scene-owned-projectile-stable-signing-v11'" 'patch_version_v3_28_v11'
+  $patcher=Replace-LiteralOne $patcher '$patchVersion=''mobile-engine-v3.27-projectile-autotick-hfe-v7''' '$patchVersion=''mobile-engine-v3.28-scene-owned-projectile-stable-signing-v11''' 'patch_version_v3_28_v11'
   Write-Utf8Bom $patcherPath $patcher
 
   # Migrate the regression contract after V8/V9/V10 have composed their checks.
