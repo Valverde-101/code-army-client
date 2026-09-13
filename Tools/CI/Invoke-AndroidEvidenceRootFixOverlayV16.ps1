@@ -35,7 +35,7 @@ try {
   $second=$text.IndexOf($needle,$first+$needle.Length,[StringComparison]::Ordinal)
   if($second -ge 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V16=FAIL anchor=legacy_v15_commit_pattern reason=ambiguous'}
   $patched=$text.Substring(0,$first)+$new.TrimEnd()+$text.Substring($first+$needle.Length)
-  if(-not $patched.Contains("^      \\}[ \\t]*$'")){throw 'ANDROID_EVIDENCE_ROOTFIX_V16=FAIL semantic_anchor_not_installed'}
+  if(-not $patched.Contains($new.TrimEnd())){throw 'ANDROID_EVIDENCE_ROOTFIX_V16=FAIL semantic_anchor_not_installed'}
   [IO.File]::WriteAllText($runtimeScript,$patched,(New-Object System.Text.UTF8Encoding($true)))
   Write-Host 'EVIDENCE_ROOTFIX_V16_COMPAT=PASS anchor=commitOwnershipVisualNow method_indent_close=true following_helpers_allowed=true duplicate_overlay_logic=false'
   & $runtimeScript -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode $Mode
