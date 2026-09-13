@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
-  [Parameter(Mandatory=$true)][string]$AndroidBuildRoot
+  [Parameter(Mandatory=$true)][string]$AndroidBuildRoot,
+  [switch]$SkipRuntime
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,7 +64,6 @@ function Find-Animate {
   }
   return Find-FirstExisting $candidates
 }
-
 
 function Ensure-AirSdk32 {
   $sdkRoot = Join-Path $AndroidBuildRoot 'Tools\AIRSDK-32'
@@ -198,12 +198,21 @@ if ($java) {
   $ErrorActionPreference = $savedPreference
   $javaVersion | Select-Object -First 4 | ForEach-Object { Write-Host "JAVA_VERSION=$_" }
 }
+
+$airNamespaceVersion = $null
 if ($adt) {
   $savedPreference = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
-  $airVersion = & $adt -version 2>&1
+  $airVersionOutput = @(& $adt -version 2>&1)
   $ErrorActionPreference = $savedPreference
-  $airVersion | Select-Object -First 5 | ForEach-Object { Write-Host "AIR_VERSION=$_" }
+  $airVersionOutput | Select-Object -First 5 | ForEach-Object { Write-Host "AIR_VERSION=$_" }
+  $airVersionText = ($airVersionOutput | ForEach-Object { [string]$_ }) -join ' '
+  $airVersionMatch = [regex]::Match($airVersionText, '(?<!\d)(\d{2,3})\.(\d+)(?:\.\d+){0,2}(?!\d)')
+  if (-not $airVersionMatch.Success) {
+    throw "AIR_NAMESPACE=FAIL unable_to_parse_adt_version output=$airVersionText"
+  }
+  $airNamespaceVersion = "$($airVersionMatch.Groups[1].Value).$($airVersionMatch.Groups[2].Value)"
+  Write-Host "AIR_NAMESPACE=PASS version=$airNamespaceVersion adt=$adt"
 }
 
 $src = Join-Path $RepoRoot 'src'
@@ -335,14 +344,25 @@ if (Test-Path -LiteralPath (Join-Path $src 'AppIconsForPublish')) {
   Copy-Item -LiteralPath (Join-Path $src 'AppIconsForPublish') -Destination (Join-Path $stageRoot 'AppIconsForPublish') -Recurse -Force
 }
 
+if (-not $airNamespaceVersion) {
+  throw 'AIR_NAMESPACE=FAIL ADT version unavailable before descriptor generation'
+}
 $descriptor = Join-Path $stageRoot 'ArmyAttack-app.xml'
 $descriptorText = Get-Content -LiteralPath $sourceDescriptor -Raw
-$descriptorText = $descriptorText -replace 'http://ns.adobe.com/air/application/51\.2', 'http://ns.adobe.com/air/application/32.0'
+$namespacePattern = 'http://ns\.adobe\.com/air/application/\d+(?:\.\d+)*'
+$namespaceMatches = [regex]::Matches($descriptorText, $namespacePattern)
+if ($namespaceMatches.Count -ne 1) {
+  throw "AIR_NAMESPACE=FAIL descriptor_namespace_matches=$($namespaceMatches.Count) path=$sourceDescriptor"
+}
+$sourceNamespace = $namespaceMatches[0].Value
+$targetNamespace = "http://ns.adobe.com/air/application/$airNamespaceVersion"
+$descriptorText = [regex]::Replace($descriptorText, $namespacePattern, $targetNamespace, 1)
 $descriptorText = [regex]::Replace($descriptorText, '(?s)<android>.*?</android>', '')
 $descriptorText = [regex]::Replace($descriptorText, '(?s)<iPhone>.*?</iPhone>', '')
 $descriptorText = [regex]::Replace($descriptorText, '(?s)<extensions>.*?</extensions>', '')
 $descriptorText = $descriptorText -replace '<content>.*?</content>', "<content>bin/$swfName</content>"
 $descriptorText | Set-Content -LiteralPath $descriptor -Encoding UTF8
+Write-Host "WINDOWS_DESCRIPTOR_AIR_NAMESPACE=PASS source=$sourceNamespace target=$targetNamespace compiler=$amxmlc adt=$adt"
 
 if (-not $adt) {
   throw "TOOLCHAIN=FAIL SWF generated but ADT not found; cannot create Windows bundle"
@@ -391,13 +411,23 @@ $packageArgs = @(
   '-C', $stageRoot, '.'
 )
 
-$p2 = Start-Process -FilePath $adt -ArgumentList $packageArgs -WorkingDirectory $stageRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $packageLog -RedirectStandardError $packageErr
-$packageExit = $p2.ExitCode
-if ($packageExit -ne 0 -or -not (Test-Path -LiteralPath $bundleRoot)) {
-  Write-Host "WINDOWS_PACKAGE=FAIL exit=$packageExit log=$packageLog"
-  if (Test-Path -LiteralPath $packageLog) { Get-Content -LiteralPath $packageLog -Tail 120 | ForEach-Object { Write-Host $_ } }
-  if (Test-Path -LiteralPath $packageErr) { Get-Content -LiteralPath $packageErr -Tail 120 | ForEach-Object { Write-Host $_ } }
-  throw 'BUILD=FAIL AIR bundle packaging failed'
+$packageExit = $null
+try {
+  $p2 = Start-Process -FilePath $adt -ArgumentList $packageArgs -WorkingDirectory $stageRoot -NoNewWindow -PassThru -Wait -RedirectStandardOutput $packageLog -RedirectStandardError $packageErr
+  $packageExit = $p2.ExitCode
+  if ($packageExit -ne 0 -or -not (Test-Path -LiteralPath $bundleRoot)) {
+    Write-Host "WINDOWS_PACKAGE=FAIL exit=$packageExit log=$packageLog"
+    if (Test-Path -LiteralPath $packageLog) { Get-Content -LiteralPath $packageLog -Tail 120 | ForEach-Object { Write-Host $_ } }
+    if (Test-Path -LiteralPath $packageErr) { Get-Content -LiteralPath $packageErr -Tail 120 | ForEach-Object { Write-Host $_ } }
+    throw 'BUILD=FAIL AIR bundle packaging failed'
+  }
+}
+finally {
+  $certPassword = $null
+  if (Test-Path -LiteralPath $certPath) {
+    Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
+  }
+  Write-Host "SIGNING_CLEANUP=PASS path=$certPath"
 }
 
 $exe = Get-ChildItem -LiteralPath $bundleRoot -Recurse -File -Filter '*.exe' |
@@ -414,21 +444,27 @@ Write-Host "EXE_PATH=$($exe.FullName)"
 Write-Host "EXE_SIZE=$($exe.Length)"
 Write-Host "EXE_SHA256=$exeHash"
 Write-Host "COMPILE_METHOD=$compileMethod"
+Write-Host "SOURCE_REBUILD_VALIDATION=PASS compile=$compileMethod package=bundle air_namespace=$airNamespaceVersion"
 
-$runtimeValidator = Join-Path $RepoRoot 'Tools\CI\Test-WindowsRuntime.ps1'
-$runtimeEvidence = Join-Path $logRoot 'runtime-source'
-& $runtimeValidator `
-  -ExePath $exe.FullName `
-  -WorkingDirectory $bundleRoot `
-  -EvidenceRoot $runtimeEvidence `
-  -Label 'SOURCE_REBUILD' `
-  -StabilitySeconds 30
-Write-Host "SMOKE=PASS criterion=visible_window_visual_stability_30s"
-
-# Remove the ephemeral signing identity after the build is complete.
-$certPassword = $null
-if (Test-Path -LiteralPath $certPath) {
-  Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
+$runRuntime = -not $SkipRuntime
+if ($env:RUN_PC_RUNTIME -and $env:RUN_PC_RUNTIME -ne 'true') {
+  $runRuntime = $false
 }
-Write-Host "SIGNING_CLEANUP=PASS"
-Write-Host "FINAL_VALIDATION=PASS scope=windows_build_window_visual_stability_crashcheck"
+if ($runRuntime) {
+  $runtimeValidator = Join-Path $RepoRoot 'Tools\CI\Test-WindowsRuntime.ps1'
+  $runtimeEvidence = Join-Path $logRoot 'runtime-source'
+  & $runtimeValidator `
+    -ExePath $exe.FullName `
+    -WorkingDirectory $bundleRoot `
+    -EvidenceRoot $runtimeEvidence `
+    -Label 'SOURCE_REBUILD' `
+    -StabilitySeconds 30
+  Write-Host "SMOKE=PASS criterion=visible_window_visual_stability_30s"
+  Write-Host "WINDOWS_SOURCE_RUNTIME=PASS"
+  Write-Host "FINAL_VALIDATION=PASS scope=windows_build_window_visual_stability_crashcheck"
+}
+else {
+  Write-Host "WINDOWS_SOURCE_RUNTIME=SKIPPED_WITH_REASON reason=pc_runtime_policy"
+  Write-Host "SMOKE=SKIPPED_WITH_REASON reason=pc_runtime_policy"
+  Write-Host "FINAL_VALIDATION=SKIPPED_WITH_REASON reason=source_runtime_deferred"
+}

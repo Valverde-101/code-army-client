@@ -114,6 +114,7 @@ package {
             menu.addChild(playButton);
             menu.addChild(diagnostics.makeShareButton(940, 610, 245, 58));
             refresh();
+            diagnostics.record("LAUNCHER_READY", "profile=" + resolveProfileId());
             onResize();
         }
 
@@ -204,7 +205,7 @@ package {
             return "none";
         }
 
-        private function onPlay(e:MouseEvent):void {
+        private function onPlay(e:MouseEvent = null):void {
             var profileId:String = resolveProfileId();
             var p:Object = profiles[profileId];
             if (!p) {
@@ -212,6 +213,7 @@ package {
                 return;
             }
             playButton.mouseEnabled = false;
+            diagnostics.record("LAUNCHER_PLAY_TRIGGER", "profile=" + profileId + ";source=" + (e ? "pointer" : "keyboard"));
             statusText.text = "Cargando " + String(p.name) + "...";
             diagnostics.setProfile(profileId, String(p.name), String(p.swf));
             loadGame(String(p.swf), p);
@@ -293,7 +295,13 @@ package {
         }
 
         private function onKeyDown(e:KeyboardEvent):void {
-            if (e.keyCode == Keyboard.BACK && contains(menu)) {
+            if (!contains(menu)) return;
+            if (e.keyCode == Keyboard.ENTER || e.keyCode == Keyboard.SPACE) {
+                e.preventDefault();
+                if (playButton && playButton.mouseEnabled) onPlay(null);
+                return;
+            }
+            if (e.keyCode == Keyboard.BACK) {
                 e.preventDefault();
                 NativeApplication.nativeApplication.exit();
             }

@@ -2,19 +2,19 @@ name: Army Attack SWF extraction workspace
 
 on:
   push:
-    branches:
-      - chore/local-army-bootstrap-20260827
+    branches: [main]
     paths:
       - 'Tools/SWF/**'
       - 'editable/armyattack-23.2/manifest/**'
       - '.github/workflows/swf-extract.yml'
+      - '.github/scripts/armyattack-workspace.ps1'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: army-attack-swf-extract-${{ github.ref }}
+  group: army-attack-swf-extract
   cancel-in-progress: false
 
 env:
@@ -27,58 +27,44 @@ jobs:
     runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
     timeout-minutes: 120
     steps:
-      - name: Bootstrap portable Git
+      - name: Enable AndroidBuild Core
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $candidates=@()
-          $g=Get-Command git.exe -ErrorAction SilentlyContinue
-          if($g){$candidates+=$g.Source}
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if($drive.Root){$candidates+=@((Join-Path $drive.Root 'AndroidBuild\Tools\Git\cmd\git.exe'),(Join-Path $drive.Root 'AndroidBuild\PortableGit\cmd\git.exe'))}
-          }
-          $git=$candidates|Where-Object{$_ -and (Test-Path -LiteralPath $_)}|Select-Object -First 1
-          if(-not $git){throw 'PRECHECK_GIT=FAIL'}
+          $root=@($env:ANDROIDBUILD_ROOT,'V:\AndroidBuild','D:\AndroidBuild','C:\AndroidBuild')|Where-Object{$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -First 1
+          if(-not $root){throw 'CORE_PRECHECK=FAIL androidbuild_root_not_found'}
+          $root=(Resolve-Path -LiteralPath $root).Path
+          Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $core=[version](Get-AndroidBuildCoreVersion)
+          if($core -lt [version]'3.0.9'){throw "CORE_PRECHECK=FAIL version=$core minimum=3.0.9"}
+          foreach($name in @('Sync-AndroidBuildRepositoryExactHead','Get-AndroidBuildGitPath','Ensure-AndroidBuildFFDec')){if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "CORE_PRECHECK=FAIL capability=$name"}}
+          Enable-AndroidBuildPortableTools -AndroidBuildRoot $root|Out-Null
+          $git=Get-AndroidBuildGitPath $root
           (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
-          $env:PATH="$(Split-Path -Parent $git);$env:PATH"
-          Write-Host "PRECHECK_GIT=PASS path=$git"
+          "ANDROIDBUILD_ROOT=$root"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "CORE_PRECHECK=PASS version=$core git=$git"
 
       - name: Checkout exact workflow HEAD
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.EXPECTED_SOURCE_SHA }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate exact checkout
+      - name: Synchronize canonical repository through Core
         shell: powershell
         run: |
-          $actual=(git rev-parse HEAD).Trim()
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $actual=(& $git -C $PWD.Path rev-parse HEAD).Trim()
           if($actual -ne $env:EXPECTED_SOURCE_SHA){throw "EXACT_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$actual"}
-          Write-Host "EXACT_HEAD=PASS sha=$actual"
-          Write-Host "REPOSITORY=$env:GITHUB_REPOSITORY"
-          Write-Host "BRANCH=$env:SOURCE_BRANCH"
-          Write-Host "RUN=$env:GITHUB_RUN_ID"
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
-
-      - name: Synchronize canonical physical repository
-        shell: powershell
-        run: |
-          & '.\Tools\CI\Bootstrap-PhysicalClone.ps1' -Repository $env:GITHUB_REPOSITORY -ExpectedSha $env:EXPECTED_SOURCE_SHA -SourceBranch $env:SOURCE_BRANCH
-
-      - name: Resolve physical repository
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $repo=$null
-          foreach($drive in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue){
-            if(-not $drive.Root){continue}
-            $candidate=Join-Path $drive.Root 'AndroidBuild\Repositories\code-army-client'
-            if(Test-Path -LiteralPath (Join-Path $candidate '.git')){$repo=$candidate;break}
-          }
-          if(-not $repo){throw 'PHYSICAL_REPO=FAIL not_found'}
+          $repo=Join-Path $env:ANDROIDBUILD_ROOT 'Repositories\code-army-client'
+          $sync=Sync-AndroidBuildRepositoryExactHead -RepoRoot $repo -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -AllowTrackedReset -CleanUntracked -SourceRemote $PWD.Path
+          if([string]$sync.status -ne 'PASS' -or [string]$sync.actual_sha -ne $env:EXPECTED_SOURCE_SHA){throw "REPOSITORY_SYNC=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$($sync.actual_sha)"}
           "PHYSICAL_REPO_ROOT=$repo"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "PHYSICAL_REPO=PASS path=$repo"
+          Write-Host "EXACT_HEAD=PASS sha=$actual"
+          Write-Host "CORE_REPOSITORY_SYNC=PASS sha=$($sync.actual_sha) repo=$repo"
 
       - name: Detect reusable RAW extraction
         shell: powershell
@@ -94,33 +80,26 @@ jobs:
               $from=[string]$manifest.repository_head
               $source=[string]$manifest.source.sha256
               if($manifest.extraction_status -eq 'PASS' -and $source -eq '99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4' -and $from){
-                $sensitive=@(
-                  'vendor/Test_army_attack',
-                  'Tools/SWF/Extract-ArmyAttack.ps1',
-                  'Tools/SWF/Ensure-FFDec.ps1',
-                  'editable/armyattack-23.2/manifest/source-swf.json'
-                )
+                $sensitive=@('vendor/Test_army_attack','Tools/SWF/Extract-ArmyAttack.ps1','Tools/SWF/Ensure-FFDec.ps1','editable/armyattack-23.2/manifest/source-swf.json')
                 $changed=@(git -C $env:PHYSICAL_REPO_ROOT diff --name-only $from $env:EXPECTED_SOURCE_SHA -- $sensitive)
-                if($LASTEXITCODE -eq 0 -and $changed.Count -eq 0){
-                  $reuse=$true
-                  Write-Host "RAW_REUSE=PASS extracted_from_sha=$from validated_sha=$env:EXPECTED_SOURCE_SHA"
-                } else {
-                  $changed|ForEach-Object{Write-Host "RAW_REUSE_CHANGED_INPUT=$_"}
-                }
+                if($LASTEXITCODE -eq 0 -and $changed.Count -eq 0){$reuse=$true;Write-Host "RAW_REUSE=PASS extracted_from_sha=$from validated_sha=$env:EXPECTED_SOURCE_SHA"}
+                else{$changed|ForEach-Object{Write-Host "RAW_REUSE_CHANGED_INPUT=$_"}}
               }
-            }catch{
-              Write-Host "RAW_REUSE=MISS reason=$($_.Exception.Message)"
-            }
+            }catch{Write-Host "RAW_REUSE=MISS reason=$($_.Exception.Message)"}
           }
-          $value=if($reuse){'true'}else{'false'}
-          "RAW_REUSE=$value"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "RAW_REUSE=$(if($reuse){'true'}else{'false'})"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           if(-not $reuse){Write-Host 'RAW_REUSE=MISS extraction_required=true'}
 
-      - name: Provision pinned JPEXS FFDec
+      - name: Provision global pinned JPEXS FFDec
         if: env.RAW_REUSE != 'true'
         shell: powershell
         run: |
+          $ErrorActionPreference='Stop'
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $r=Ensure-AndroidBuildFFDec -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -Version '26.2.1' -ExpectedSha256 '0333b56998a55bd83f4e0deb678a811fcdc45607582b4f5dd438309c8c3ad5ce'
+          if([string]$r.status -ne 'PASS'){throw 'FFDEC_GLOBAL=FAIL'}
           & "$env:PHYSICAL_REPO_ROOT\Tools\SWF\Ensure-FFDec.ps1" -RepositoryRoot $env:PHYSICAL_REPO_ROOT
+          Write-Host "FFDEC_GLOBAL=PASS path=$($r.path)"
 
       - name: Extract SWF 23.2
         if: env.RAW_REUSE != 'true'
@@ -148,4 +127,4 @@ jobs:
           Write-Host "VALIDATION_REPORT=$validation"
           Write-Host "RAW_REUSE=$env:RAW_REUSE"
           Write-Host "HASHED_FILES=$($result.checked_files)"
-          Write-Host 'SWF_FINAL=PASS'
+          Write-Host 'SWF_FINAL=PASS workspace=repo-work sync=androidbuild-core'

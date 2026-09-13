@@ -2,22 +2,59 @@ name: Army Attack Windows full candidate
 
 on:
   workflow_dispatch:
+    inputs:
+      run_pc_runtime:
+        description: 'Launch Army Attack and run Windows runtime/performance validation'
+        required: false
+        type: boolean
+        default: false
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'Tools/CI/**'
+      - 'Tools/SWF/**'
+      - '.github/scripts/**'
+      - '.github/workflows/windows-candidate.yml'
+      - '.androidbuild.json'
+      - 'vendor/Test_army_attack'
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+      - 'test/**'
+      - 'chore/**'
+    paths:
+      - 'src/**'
+      - 'Tools/CI/**'
+      - 'Tools/SWF/**'
+      - '.github/scripts/**'
+      - '.github/workflows/windows-candidate.yml'
+      - '.androidbuild.json'
+      - 'vendor/Test_army_attack'
 
 permissions:
   contents: read
+  pull-requests: read
 
+# Android and Windows both synchronize and temporarily overlay the same canonical
+# AndroidBuild repository. They must never mutate that tree concurrently.
 concurrency:
-  group: army-attack-windows-candidate-${{ github.ref }}
+  group: army-attack-core-build
   cancel-in-progress: false
 
 jobs:
   windows-candidate:
     name: Core-synced Windows full candidate
-    runs-on: [windows-build, android-parallel, pc-willthom, general]
-    timeout-minutes: 30
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 40
     env:
-      EXPECTED_SOURCE_SHA: ${{ github.sha }}
-      SOURCE_BRANCH: ${{ github.ref_name }}
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
+      RUN_PC_RUNTIME: 'false'
 
     steps:
       - name: Enable AndroidBuild Core repository sync
@@ -29,8 +66,8 @@ jobs:
           $root=(Resolve-Path -LiteralPath $root).Path
           Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
           $core=[version](Get-AndroidBuildCoreVersion)
-          if($core -lt [version]'3.0.9'){throw "CORE_PRECHECK=FAIL version=$core minimum=3.0.9"}
-          foreach($name in @('Sync-AndroidBuildRepositoryExactHead','Test-AndroidBuildExactHead','Get-AndroidBuildGitPath')){if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "CORE_PRECHECK=FAIL capability=$name"}}
+          if($core -lt [version]'3.0.11'){throw "CORE_PRECHECK=FAIL version=$core minimum=3.0.11"}
+          foreach($name in @('Sync-AndroidBuildRepositoryExactHead','Test-AndroidBuildExactHead','Get-AndroidBuildGitPath','Resolve-AndroidBuildFlashToolchain')){if(-not(Get-Command $name -ErrorAction SilentlyContinue)){throw "CORE_PRECHECK=FAIL capability=$name"}}
           Enable-AndroidBuildPortableTools -AndroidBuildRoot $root|Out-Null
           $git=Get-AndroidBuildGitPath $root
           (Split-Path -Parent $git)|Out-File $env:GITHUB_PATH -Encoding utf8 -Append
@@ -38,7 +75,7 @@ jobs:
           Write-Host "CORE_REPOSITORY_SYNC_PRECHECK=PASS version=$core git=$git"
 
       - name: Checkout exact workflow HEAD
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.EXPECTED_SOURCE_SHA }}
           fetch-depth: 1
@@ -57,64 +94,168 @@ jobs:
           $sync=Sync-AndroidBuildRepositoryExactHead -RepoRoot $repo -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -AllowTrackedReset -CleanUntracked -SourceRemote $checkout
           if([string]$sync.status -ne 'PASS' -or [string]$sync.actual_sha -ne $env:EXPECTED_SOURCE_SHA){throw "REPOSITORY_SYNC=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$($sync.actual_sha)"}
           "PHYSICAL_REPO_ROOT=$repo"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "PRECHECK_GITHUB=PASS"
+          Write-Host 'PRECHECK_GITHUB=PASS'
           Write-Host "BROKER=PASS runner=$env:RUNNER_NAME"
           Write-Host "RUNNER_ASSIGNMENT=PASS runner=$env:RUNNER_NAME"
           Write-Host "EXACT_ACTIONS_HEAD=PASS sha=$checkoutSha"
           Write-Host "CORE_REPOSITORY_SYNC=PASS sha=$($sync.actual_sha) repo=$repo"
-          Write-Host "REPOSITORY=$env:GITHUB_REPOSITORY"
-          Write-Host "BRANCH=$env:SOURCE_BRANCH"
-          Write-Host "RUN=$env:GITHUB_RUN_ID"
-          Write-Host "RUNNER_NAME=$env:RUNNER_NAME"
+          Write-Host 'CANONICAL_REPOSITORY_MUTATION_LOCK=PASS group=army-attack-core-build shared_with=android-candidate'
+
+      - name: Resolve PC runtime policy
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $runRuntime=$false
+          if('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.run_pc_runtime }}' -eq 'true'){$runRuntime=$true}
+          $message=''
+          $checkoutRoot=$env:GITHUB_WORKSPACE
+          if($checkoutRoot -and (Test-Path -LiteralPath (Join-Path $checkoutRoot '.git'))){
+            $message=((& $git -C $checkoutRoot show -s --format=%B $env:EXPECTED_SOURCE_SHA 2>$null) -join "`n")
+            if($LASTEXITCODE -ne 0){
+              $message=''
+              Write-Host 'PC_RUNTIME_POLICY_COMMIT_MESSAGE=UNAVAILABLE source=actions_checkout fallback=iterative_validation'
+            }else{
+              Write-Host 'PC_RUNTIME_POLICY_COMMIT_MESSAGE=PASS source=actions_checkout'
+            }
+          }else{
+            Write-Host 'PC_RUNTIME_POLICY_COMMIT_MESSAGE=UNAVAILABLE source=actions_checkout_missing fallback=iterative_validation'
+          }
+          if($message -match '(?i)\[pc-runtime\]'){$runRuntime=$true}
+          $value=if($runRuntime){'true'}else{'false'}
+          "RUN_PC_RUNTIME=$value"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          if($runRuntime){Write-Host 'PC_RUNTIME_POLICY=RUN reason=explicit_request'}else{Write-Host 'PC_RUNTIME_POLICY=SKIP reason=iterative_validation'}
+
+      - name: Initialize repo-local Army runtime workspace
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $tc=Resolve-AndroidBuildFlashToolchain -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -AirVersion '50.2.3.6' -FfdecVersion '26.2.1' -TargetApi '33' -BuildTools '33.0.2' -PinnedToolchainId 'AIR50-API33-BT33.0.2'
+          if([string]$tc.status -ne 'PASS'){throw 'WINDOWS_WORKSPACE=FAIL flash_toolchain'}
+          . (Join-Path $env:PHYSICAL_REPO_ROOT '.github\scripts\armyattack-workspace.ps1')
+          $ws=Initialize-ArmyAttackWorkspace -RepoRoot $env:PHYSICAL_REPO_ROOT -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -PinnedAndroidBuildRoot ([string]$tc.pinned_android_build_root) -ExpectedSha $env:EXPECTED_SOURCE_SHA -AirHome ([string]$tc.air_home) -AndroidSdk ([string]$tc.android_sdk) -RetentionGenerations 3
+          "ARMY_RUNTIME_ROOT=$($ws.runtime_root)"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "WINDOWS_WORKSPACE=PASS runtime=$($ws.runtime_root) build=$($ws.build_root) cache=$($ws.input_cache_root)"
+
+      - name: Validate Windows build scripts
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($script in @('.\Tools\CI\Build-WindowsFullCandidate.ps1','.\Tools\CI\Patch-WindowsSharedSwf.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\CI\Measure-WindowsPerformance.ps1','.\Tools\CI\Test-WindowsRuntime.ps1','.\Tools\CI\Invoke-SnowCampaignOverlay.ps1','.\Tools\CI\Validate-UpstreamWindowsRelease.ps1')){
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors)
+            if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$script line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw "PARSER_VALID=FAIL file=$script"}
+            Write-Host "PARSER_VALID=PASS file=$script"
+          }
 
       - name: Validate exact-source upstream Windows reference
         id: upstream_reference
         shell: powershell
         run: |
-          & '.\Tools\CI\Validate-UpstreamWindowsRelease.ps1' `
-            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT `
-            -ExpectedSha $env:EXPECTED_SOURCE_SHA
+          $skip=($env:RUN_PC_RUNTIME -ne 'true')
+          & '.\Tools\CI\Validate-UpstreamWindowsRelease.ps1' -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -SkipRuntime:$skip
+
+      - name: Apply Snow Polar campaign overlay
+        id: snow_overlay
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          & (Join-Path $env:PHYSICAL_REPO_ROOT 'Tools\CI\Invoke-SnowCampaignOverlay.ps1') -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $git -Mode Apply
+          Write-Host 'WINDOWS_SNOW_CAMPAIGN=PASS state=applied unlock_level=0 single_swf=true'
 
       - name: Diagnostic source-only recompilation
         id: source_rebuild
         continue-on-error: true
         shell: powershell
         run: |
-          & '.\Tools\CI\Build-Windows.ps1' `
-            -RepoRoot $env:PHYSICAL_REPO_ROOT `
-            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
-            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
+          & '.\Tools\CI\Build-Windows.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT
 
-      - name: Assemble and validate full Windows candidate
+      - name: Build shared SWF without launching PC
+        id: static_swf
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $seed=Join-Path $env:ARMY_RUNTIME_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\windows-upstream-v23\23\iArmyAirOfflineSavingv21_2.swf"
+          if(-not(Test-Path -LiteralPath $seed -PathType Leaf)){throw "WINDOWS_STATIC_SWF=FAIL seed_missing=$seed"}
+          $outRoot=Join-Path $env:ARMY_RUNTIME_ROOT "Builds\code-army-client\$env:EXPECTED_SOURCE_SHA\windows-static-swf"
+          New-Item -ItemType Directory -Force -Path $outRoot|Out-Null
+          $output=Join-Path $outRoot 'iArmyAirOfflineSavingv21_2.windows-head-patched.swf'
+          $manifest=Join-Path $outRoot 'SWF-WINDOWS-STATIC-PATCH.json'
+          & (Join-Path $env:PHYSICAL_REPO_ROOT 'Tools\CI\Patch-WindowsSharedSwf.ps1') -RepoRoot $env:PHYSICAL_REPO_ROOT -InputSwf $seed -OutputSwf $output -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $git -ManifestPath $manifest
+          if(-not(Test-Path -LiteralPath $output -PathType Leaf)){throw 'WINDOWS_STATIC_SWF=FAIL output_missing'}
+          $seedHash=(Get-FileHash -LiteralPath $seed -Algorithm SHA256).Hash.ToLowerInvariant()
+          $outHash=(Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($seedHash -eq $outHash){throw 'WINDOWS_STATIC_SWF=FAIL patched_equals_seed'}
+          Write-Host "WINDOWS_STATIC_SWF=PASS source_sha=$env:EXPECTED_SOURCE_SHA seed_sha256=$seedHash patched_sha256=$outHash manifest=$manifest"
+
+      - name: Assemble and launch consolidated Windows candidate
         id: full_candidate
+        if: env.RUN_PC_RUNTIME == 'true'
         shell: powershell
         run: |
-          & '.\Tools\CI\Build-WindowsFullCandidate.ps1' `
-            -RepoRoot $env:PHYSICAL_REPO_ROOT `
-            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
-            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT
+          & '.\Tools\CI\Build-WindowsFullCandidate.ps1' -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT
 
-      - name: Measure full candidate performance
+      - name: Measure consolidated Windows candidate performance
         id: performance
+        if: env.RUN_PC_RUNTIME == 'true'
         shell: powershell
         run: |
-          & '.\Tools\CI\Measure-WindowsPerformance.ps1' `
-            -AndroidBuildRoot $env:ANDROIDBUILD_ROOT `
-            -ExpectedSha $env:EXPECTED_SOURCE_SHA `
-            -DurationSeconds 20 `
-            -SampleSeconds 2
+          & '.\Tools\CI\Measure-WindowsPerformance.ps1' -AndroidBuildRoot $env:ARMY_RUNTIME_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -DurationSeconds 20 -SampleSeconds 2
+
+      - name: Restore exact source after Snow overlay
+        if: always() && env.PHYSICAL_REPO_ROOT != ''
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
+          $overlay=Join-Path $env:PHYSICAL_REPO_ROOT 'Tools\CI\Invoke-SnowCampaignOverlay.ps1'
+          if(Test-Path -LiteralPath $overlay -PathType Leaf){& $overlay -RepoRoot $env:PHYSICAL_REPO_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $git -Mode Restore}
+
+      - name: Enforce build retention and workspace isolation
+        if: always()
+        shell: powershell
+        run: |
+          if(-not $env:PHYSICAL_REPO_ROOT){return}
+          . (Join-Path $env:PHYSICAL_REPO_ROOT '.github\scripts\armyattack-workspace.ps1')
+          $buildRoot=Join-Path $env:PHYSICAL_REPO_ROOT '.work\build'
+          Invoke-ArmyAttackBuildRetention -BuildRoot $buildRoot -ExpectedSha $env:EXPECTED_SOURCE_SHA -Keep 3
+          foreach($path in @((Join-Path $env:ANDROIDBUILD_ROOT 'Builds\code-army-client'),(Join-Path $env:ANDROIDBUILD_ROOT 'Inputs\code-army-client'))){if(Test-Path -LiteralPath $path){throw "WINDOWS_WORKSPACE_ISOLATION=FAIL path=$path"}}
+          Write-Host 'WINDOWS_WORKSPACE_ISOLATION=PASS project_state=repo-work'
 
       - name: Final gate
         if: always()
         shell: powershell
         run: |
+          Write-Host "PC_RUNTIME_POLICY=$env:RUN_PC_RUNTIME"
+          Write-Host "SNOW_OVERLAY_OUTCOME=${{ steps.snow_overlay.outcome }}"
           Write-Host "SOURCE_REBUILD_OUTCOME=${{ steps.source_rebuild.outcome }}"
           Write-Host "UPSTREAM_REFERENCE_OUTCOME=${{ steps.upstream_reference.outcome }}"
+          Write-Host "STATIC_SWF_OUTCOME=${{ steps.static_swf.outcome }}"
           Write-Host "FULL_CANDIDATE_OUTCOME=${{ steps.full_candidate.outcome }}"
           Write-Host "PERFORMANCE_OUTCOME=${{ steps.performance.outcome }}"
-          Write-Host "APK_GENERATED=NOT_RUN"
-          Write-Host "PHYSICAL_ANDROID_VALIDATION=NOT_RUN"
-          if ('${{ steps.upstream_reference.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL upstream_reference' }
-          if ('${{ steps.full_candidate.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL full_candidate' }
-          if ('${{ steps.performance.outcome }}' -ne 'success') { throw 'FINAL_VALIDATION=FAIL performance' }
-          Write-Host "FINAL_VALIDATION=PASS windows_full_candidate"
+          Write-Host 'APK_GENERATED=NOT_RUN'
+          Write-Host 'PHYSICAL_ANDROID_VALIDATION=NOT_RUN'
+          if('${{ steps.upstream_reference.outcome }}' -ne 'success'){throw 'WINDOWS_GATE=FAIL upstream_reference'}
+          if('${{ steps.snow_overlay.outcome }}' -ne 'success'){throw 'WINDOWS_GATE=FAIL snow_overlay'}
+          if('${{ steps.source_rebuild.outcome }}' -ne 'success'){throw 'WINDOWS_GATE=FAIL source_rebuild'}
+          if('${{ steps.static_swf.outcome }}' -ne 'success'){throw 'WINDOWS_GATE=FAIL static_swf'}
+          Write-Host 'PC_SHARED_SWF=PASS'
+          Write-Host 'SNOW_CAMPAIGN_WINDOWS_STATIC=PASS unlock_level=0 single_swf=true'
+          if($env:RUN_PC_RUNTIME -eq 'true'){
+            if('${{ steps.full_candidate.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL full_candidate'}
+            if('${{ steps.performance.outcome }}' -ne 'success'){throw 'FINAL_VALIDATION=FAIL performance'}
+            Write-Host 'WINDOWS_RUNTIME=PASS mode=consolidated_explicit'
+            Write-Host 'FINAL_VALIDATION=PASS scope=windows_full_candidate_shared_swf_snow_campaign'
+          }else{
+            Write-Host 'WINDOWS_RUNTIME=SKIPPED_WITH_REASON reason=iterative_validation'
+            Write-Host 'PERFORMANCE=SKIPPED_WITH_REASON reason=iterative_validation'
+            Write-Host 'WINDOWS_STATIC_VALIDATION=PASS scope=source_plus_shared_swf_snow_campaign'
+            Write-Host 'FINAL_VALIDATION=SKIPPED_WITH_REASON reason=pc_runtime_deferred_until_consolidated_validation'
+          }

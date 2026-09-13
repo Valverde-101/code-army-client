@@ -47,7 +47,11 @@ if($ffdec.Extension -eq '.jar'){
 $outDir=Split-Path -Parent $OutputSwf
 New-Item -ItemType Directory -Force -Path $outDir|Out-Null
 if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.json'}
+$patchVersion='mobile-engine-v3.21-android-boot-product-rootfix'
 $patchSpecs=@(
+  [ordered]@{Class='AssetManager';Source='src\AssetManager.as';Log='ffdec-feature-asset-manager.log'},
+  [ordered]@{Class='FeatureTuner';Source='src\FeatureTuner.as';Log='ffdec-feature-tuner.log'},
+  [ordered]@{Class='game.environment.EnvEffectManager';Source='src\game\environment\EnvEffectManager.as';Log='ffdec-performance-environment.log'},
   [ordered]@{Class='game.battlefield.TileMapGraphic';Source='src\game\battlefield\TileMapGraphic.as';Log='ffdec-performance-tilemap.log'},
   [ordered]@{Class='game.isometric.IsometricScene';Source='src\game\isometric\IsometricScene.as';Log='ffdec-performance-scene.log'},
   [ordered]@{Class='game.battlefield.MapData';Source='src\game\battlefield\MapData.as';Log='ffdec-feature-mapdata.log'},
@@ -60,6 +64,8 @@ $patchSpecs=@(
   [ordered]@{Class='game.utils.OfflineSave';Source='src\game\utils\OfflineSave.as';Log='ffdec-feature-offlinesave.log'},
   [ordered]@{Class='game.net.PvPMatch';Source='src\game\net\PvPMatch.as';Log='ffdec-feature-pvp-match.log'},
   [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
+  [ordered]@{Class='game.states.GameLoadingFirst';Source='src\game\states\GameLoadingFirst.as';Log='ffdec-feature-loading-first.log'},
+  [ordered]@{Class='game.states.GameLoadingSecond';Source='src\game\states\GameLoadingSecond.as';Log='ffdec-feature-loading-second.log'},
   [ordered]@{Class='game.gameElements.PlayerBuildingObject';Source='src\game\gameElements\PlayerBuildingObject.as';Log='ffdec-performance-player-building.log'},
   [ordered]@{Class='game.gameElements.HFEObject';Source='src\game\gameElements\HFEObject.as';Log='ffdec-feature-hfe-harvest.log'},
   [ordered]@{Class='game.items.PowerUpItem';Source='src\game\items\PowerUpItem.as';Log='ffdec-feature-pvp-powerup-item.log'},
@@ -68,6 +74,7 @@ $patchSpecs=@(
   [ordered]@{Class='game.gameElements.LootReward';Source='src\game\gameElements\LootReward.as';Log='ffdec-feature-pvp-loot.log'},
   [ordered]@{Class='game.actions.PvPAttackEnemyAction';Source='src\game\actions\PvPAttackEnemyAction.as';Log='ffdec-feature-pvp-attack.log'},
   [ordered]@{Class='game.actions.PvPAttackEnemyInstallationAction';Source='src\game\actions\PvPAttackEnemyInstallationAction.as';Log='ffdec-feature-pvp-installation-attack.log'},
+  [ordered]@{Class='game.actions.FireMissionAction';Source='src\game\actions\FireMissionAction.as';Log='ffdec-feature-firemission-action.log'},
   [ordered]@{Class='game.actions.PvPFireMissionAction';Source='src\game\actions\PvPFireMissionAction.as';Log='ffdec-feature-pvp-firemission.log'},
   [ordered]@{Class='game.gui.GameHUD';Source='src\game\gui\GameHUD.as';Log='ffdec-feature-gamehud.log'},
   [ordered]@{Class='game.gui.pvp.PvPDebriefingDialog';Source='src\game\gui\pvp\PvPDebriefingDialog.as';Log='ffdec-feature-pvp-debriefing.log'},
@@ -78,6 +85,39 @@ $patchSpecs=@(
   [ordered]@{Class='game.gui.pvp.PvPBoosterBar';Source='src\game\gui\pvp\PvPBoosterBar.as';Log='ffdec-feature-pvp-booster.log'},
   [ordered]@{Class='game.gui.pvp.PvPHUD';Source='src\game\gui\pvp\PvPHUD.as';Log='ffdec-feature-pvp-hud.log'}
 )
+
+# Root-regression assertions are deliberately in the patcher itself, so a candidate
+# cannot silently build an old bootstrap registry, old loading state machine, old
+# constructor contract, old airdrop routing or old LOW policy.
+$assetSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\AssetManager.as') -Raw
+$featureSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\FeatureTuner.as') -Raw
+$loadingFirstSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\states\GameLoadingFirst.as') -Raw
+$loadingSecondSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\states\GameLoadingSecond.as') -Raw
+$envSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\environment\EnvEffectManager.as') -Raw
+$powerSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\PowerUpObject.as') -Raw
+$fireBaseSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\actions\FireMissionAction.as') -Raw
+$csvMatch=[regex]::Match($assetSource,'CVS_FILES_TO_LOAD\s*:\s*Array\s*=\s*\[([^\]]*)\]')
+if(-not $csvMatch.Success){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=csv_registry_unparseable'}
+$csvIds=@([regex]::Matches($csvMatch.Groups[1].Value,'"([^"]+)"')|ForEach-Object{$_.Groups[1].Value})
+if($csvIds -contains 'map_2'){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=legacy_map_2_in_bootstrap'}
+foreach($requiredCsv in @('tile_map','tile_map_desert','pvp_map_1_4valleys_11x11')){
+  if($csvIds -notcontains $requiredCsv){throw "SWF_BOOT_PRODUCT_REGRESSION=FAIL check=required_csv_missing id=$requiredCsv"}
+}
+if($featureSource -notmatch 'sanitizeBootstrapResources' -or $featureSource -notmatch 'String\(resources\[i\]\)\s*==\s*"map_2"'){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=legacy_product_sanitizer_missing'}
+if($loadingFirstSource -notmatch 'BOOT_TRANSITION_FAILURE' -or $loadingFirstSource -notmatch 'mFinishStarted'){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=loading_first_guard_or_trace_missing'}
+if($loadingSecondSource -notmatch 'BOOT_READY' -or $loadingSecondSource -notmatch 'BOOT_TRANSITION_FAILURE' -or $loadingSecondSource -notmatch 'mFinishStarted'){throw 'SWF_BOOT_PRODUCT_REGRESSION=FAIL check=loading_second_ready_guard_or_trace_missing'}
+foreach($requiredClass in @('AssetManager','game.states.GameLoadingFirst','game.states.GameLoadingSecond')){
+  if(-not @($patchSpecs|Where-Object{$_.Class -eq $requiredClass})){throw "SWF_BOOT_PRODUCT_REGRESSION=FAIL check=class_not_patched class=$requiredClass"}
+}
+Write-Host "SWF_BOOT_PRODUCT_REGRESSION=PASS classes=AssetManager,GameLoadingFirst,GameLoadingSecond csv=$($csvIds -join ',') legacy_map_2=absent sanitizer=present boot_ready=present"
+
+if($featureSource -notmatch 'USE_ENVIRONMENT_EFFECTS' -or $featureSource -notmatch '!USE_LOW_SWF'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=low_environment_policy'}
+if($envSource -notmatch 'if\(!FeatureTuner\.USE_ENVIRONMENT_EFFECTS\)'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=environment_fast_skip'}
+if($powerSource -notmatch 'resolvePlayerAirdropGraphics' -or $powerSource -notmatch 'PVP_POWERUP_FIREMISSION_PHASE' -or $powerSource -notmatch 'PVP_POWERUP_FIREMISSION_ERROR'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=pvp_powerup_trace'}
+if($fireBaseSource -notmatch 'param3:String\s*=\s*null' -or $fireBaseSource -notmatch 'mGraphicsOverride'){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=firemission_base_contract'}
+if(-not @($patchSpecs|Where-Object{$_.Class -eq 'game.actions.FireMissionAction'})){throw 'SWF_ROOT_FIX_REGRESSION=FAIL check=firemission_base_not_patched'}
+Write-Host 'SWF_ROOT_FIX_REGRESSION=PASS firemission_base=true paratrooper_route=true low_environment=true'
+
 $logRoot=Split-Path -Parent $ManifestPath
 if(-not $logRoot){$logRoot=$outDir}
 New-Item -ItemType Directory -Force -Path $logRoot|Out-Null
@@ -99,6 +139,7 @@ function Invoke-FFDecReplace([string]$In,[string]$Out,[string]$ClassName,[string
   }
   Write-Host "SWF_CLASS_PATCH=PASS class=$ClassName log=$log"
 }
+
 function Convert-MobileAirSourceForFFDec([string]$Source,[string]$Destination,[string]$ClassName){
   $sourceLines=Get-Content -LiteralPath $Source
   $result=New-Object System.Collections.Generic.List[string]
@@ -126,12 +167,40 @@ function Convert-MobileAirSourceForFFDec([string]$Source,[string]$Destination,[s
   if($null -ne $configMode){throw "SWF_PERF_PATCH=FAIL unterminated_config_block source=$Source mode=$configMode"}
   $text=$result -join [Environment]::NewLine
   # FFDec's experimental AS3 compiler does not resolve AIR 24+ permission-only
-  # types from the mobile SDK. Preserve runtime semantics in this temporary
-  # source without changing the canonical GameState implementation.
+  # types from the mobile SDK. Preserve runtime semantics in this temporary source.
   $text=$text -replace '(?m)^\s*import flash\.permissions\.PermissionStatus\s*;?\s*$', ''
   $text=$text -replace 'PermissionEvent\.PERMISSION_STATUS', '"permissionStatus"'
   $text=$text -replace 'PermissionStatus\.GRANTED', '"granted"'
   $text=$text -replace '(?m)(\w+)\s*:\s*PermissionEvent\b', '$1:*'
+
+  # GameHUD's authored mission panel animates its own internal bounds. The previous
+  # mobile clamp accumulated y += delta on every ENTER_FRAME and also clamped during
+  # Close, producing upward drift followed by an abrupt disappearance. Normalize to
+  # a stable base Y every frame and let the authored close timeline run untouched.
+  if($ClassName -eq 'game.gui.GameHUD'){
+    foreach($needle in @(
+      'private var mMobileRightMenuBaseY:Number = 0;',
+      'var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);',
+      'param1.y += deltaY;',
+      'this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);',
+      'this.mPullOutMissionFrame.gotoAndPlay("Open");',
+      'this.mPullOutMissionFrame.gotoAndPlay("Close");'
+    )){if(-not $text.Contains($needle)){throw "SWF_GAMEHUD_FIX=FAIL missing_pattern=$needle"}}
+    $nl=[Environment]::NewLine
+    $tab="`t"
+    $text=$text.Replace('private var mMobileRightMenuBaseY:Number = 0;','private var mMobileRightMenuBaseY:Number = 0;'+$nl+$tab+$tab+'private var mMobileMissionMenuBaseY:Number = 0;')
+    $text=$text.Replace('if(!param1 || !this.mIngameHUDClip_BOTTOM) return;','if(!param1 || !this.mIngameHUDClip_BOTTOM) return;'+$nl+$tab+$tab+$tab+'if(param2 == "missions" && this.mPullOutMissionMenuState == this.STATE_MISSIONS_MENU_CLOSED) return;')
+    $text=$text.Replace('var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);','var baseY:Number = param2 == "missions" ? this.mMobileMissionMenuBaseY : this.mMobileRightMenuBaseY;'+$nl+$tab+$tab+$tab+'param1.y = baseY;'+$nl+$tab+$tab+$tab+'var bounds:Rectangle = param1.getBounds(this.mIngameHUDClip_BOTTOM);')
+    $text=$text.Replace('param1.y += deltaY;','param1.y = baseY + deltaY;')
+    $text=$text.Replace('this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);','this.mPullOutMissionFrame.y = Math.max(0,localHeight - this.mPullOutMissionFrame.height);'+$nl+$tab+$tab+$tab+$tab+'this.mMobileMissionMenuBaseY = this.mPullOutMissionFrame.y;')
+    $text=$text.Replace('this.mPullOutMissionFrame.gotoAndPlay("Open");','this.mPullOutMissionFrame.y = this.mMobileMissionMenuBaseY;'+$nl+$tab+$tab+$tab+$tab+'this.mPullOutMissionFrame.gotoAndPlay("Open");'+$nl+$tab+$tab+$tab+$tab+'Utils.DiagEvent("HUD_MISSION_TRANSITION","phase=open_begin;base_y=" + this.mMobileMissionMenuBaseY + ";y=" + this.mPullOutMissionFrame.y);')
+    $text=$text.Replace('this.mPullOutMissionFrame.gotoAndPlay("Close");','this.mPullOutMissionFrame.gotoAndPlay("Close");'+$nl+$tab+$tab+$tab+$tab+'Utils.DiagEvent("HUD_MISSION_TRANSITION","phase=close_begin;y=" + this.mPullOutMissionFrame.y + ";frame=" + this.mPullOutMissionFrame.currentFrame);')
+    if($text.Contains('param1.y += deltaY;') -or -not $text.Contains('mMobileMissionMenuBaseY') -or -not $text.Contains('param1.y = baseY + deltaY;')){throw 'SWF_GAMEHUD_FIX=FAIL postcondition'}
+    if($text -match '\\t'){throw 'SWF_GAMEHUD_FIX=FAIL literal_backslash_tab_survived'}
+    if($text -match '\btprivate\b'){throw 'SWF_GAMEHUD_FIX=FAIL invalid_namespace_tprivate'}
+    Write-Host 'SWF_GAMEHUD_FIX=PASS mission_clamp=non_accumulating close_clamp=disabled indentation=real_tabs'
+  }
+
   if($text -match 'CONFIG::'){throw "SWF_PERF_PATCH=FAIL config_directive_survived source=$Source"}
   if($text -cmatch '\bPermissionEvent\b|\bPermissionStatus\b'){throw "SWF_PERF_PATCH=FAIL air_permission_type_survived source=$Source"}
   Set-Content -LiteralPath $Destination -Value $text -Encoding UTF8
@@ -146,7 +215,7 @@ $tempSources=New-Object System.Collections.Generic.List[string]
 for($i=0;$i -lt $patchSpecs.Count;$i++){
   $spec=$patchSpecs[$i]
   $source=Join-Path $RepoRoot $spec.Source
-  if($spec.Class -in @('game.states.GameState','game.gui.GameHUD','game.gui.GiveFilePermissionDialog','game.isometric.IsometricScene')){
+  if($spec.Class -in @('game.states.GameState','game.states.GameLoadingSecond','game.gui.GameHUD','game.gui.GiveFilePermissionDialog','game.isometric.IsometricScene')){
     $leafClass=[System.IO.Path]::GetFileNameWithoutExtension([string]$spec.Source)
     $ffdecSource=Join-Path $outDir ($leafClass + '.mobile.ffdec.as')
     Remove-Item -LiteralPath $ffdecSource -Force -ErrorAction SilentlyContinue
@@ -180,12 +249,16 @@ foreach($spec in $patchSpecs){
   $className=[string]$spec.Class
   if($dumpText -notmatch [regex]::Escape($className)){throw "SWF_PERF_PATCH=FAIL class_missing_after_patch=$className"}
 }
+foreach($bootMarker in @('AssetManager','game.states.GameLoadingFirst','game.states.GameLoadingSecond')){
+  if($dumpText -notmatch [regex]::Escape($bootMarker)){throw "SWF_BOOT_PRODUCT_VALIDATE=FAIL class_missing=$bootMarker"}
+}
+Write-Host "SWF_BOOT_PRODUCT_VALIDATE=PASS patched_classes=AssetManager,GameLoadingFirst,GameLoadingSecond patched_sha256=$outputSha"
 
 $manifest=[ordered]@{
   schema_version=1
   repository='Valverde-101/code-army-client'
   tested_sha=$ExpectedSha
-  patch_version='mobile-engine-v3.19-pvp-embedded-visual-fallback-deep-map-profile'
+  patch_version=$patchVersion
   source_swf=[ordered]@{path=$InputSwf;size=(Get-Item $InputSwf).Length;sha256=$inputSha}
   output_swf=[ordered]@{path=$OutputSwf;size=$outputInfo.Length;sha256=$outputSha}
   classes=@($patchSpecs|ForEach-Object{
@@ -198,7 +271,11 @@ $manifest=[ordered]@{
     'enemy_movement_update_cadence_unchanged',
     'visual_assets_preserved_from_source_swf',
     'audio_assets_preserved_from_source_swf',
-    'animate_linkage_preserved_from_source_swf'
+    'animate_linkage_preserved_from_source_swf',
+    'android_bootstrap_assetmanager_bytecode_replaced',
+    'android_loading_first_bytecode_replaced',
+    'android_loading_second_bytecode_replaced',
+    'legacy_map_2_removed_from_bootstrap_registry'
   )
   feature_patch_version='offline-systems-v5-root-recovery'
   optimizations=@(
@@ -238,10 +315,10 @@ $manifest=[ordered]@{
     'offline_pvp_opponents_bounded_to_valid_ranks',
     'offline_pvp_booster_store_populated',
     'canonical_config_bytecode_preserved',
-    'canonical_gamehud_bytecode_preserved',
+    'canonical_gamehud_source_with_mobile_runtime_normalization',
     'canonical_armybutton_bytecode_preserved',
-    'canonical_animationcontroller_bytecode_preserved',
-    'canonical_enveffectmanager_bytecode_preserved',
+    'animationcontroller_cached_movieclip_targets',
+    'low_swf_decorative_environment_disabled',
     'canonical_menu_button_lifecycle_preserved',
     'canonical_audio_lifecycle_preserved',
     'pvp_enemy_exact_config_swf_paths',
@@ -258,6 +335,7 @@ $manifest=[ordered]@{
     'mainmap_viewport_fallback_recull_20_frames',
     'mainmap_spatial_audio_refresh_10hz',
     'mobile_hud_pullout_visible_bounds_clamp',
+    'mobile_left_pullout_non_accumulating_clamp',
     'placement_immediate_visibility_commit',
     'pvp_move_visual_runtime_trace',
     'pvp_loot_runtime_trace',
@@ -274,6 +352,9 @@ $manifest=[ordered]@{
     'pvp_powerup_item_bytecode_applied',
     'pvp_powerup_object_bytecode_applied',
     'pvp_firemission_object_bytecode_applied',
+    'pvp_firemission_base_constructor_patched',
+    'pvp_player_paratrooper_deterministic_embedded_airdrop',
+    'pvp_powerup_phase_stack_trace',
     'pvp_firemission_null_visual_safe',
     'pvp_firemission_single_destroy_lifecycle',
     'hfe_wallclock_resync_30fps',
@@ -282,10 +363,14 @@ $manifest=[ordered]@{
     'pvp_firemission_missing_debris_safe',
     'pvp_enemy_materialized_class_trace',
     'swf_resolved_class_identity_trace',
-    'hfe_progress_not_mirrored_to_logcat'
+    'hfe_progress_not_mirrored_to_logcat',
+    'android_bootstrap_assetmanager_bytecode_applied',
+    'android_loading_first_bytecode_applied',
+    'android_loading_second_bytecode_applied',
+    'legacy_map_2_bootstrap_removed_from_product_source'
   )
   generated_utc=[DateTime]::UtcNow.ToString('o')
 }
 $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $ManifestPath -Encoding UTF8
-Write-Host "SWF_PERFORMANCE_PATCH=PASS version=mobile-engine-v3.16-hfe-firemission-materialized-trace source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
+Write-Host "SWF_PERFORMANCE_PATCH=PASS version=$patchVersion source_sha256=$inputSha patched_sha256=$outputSha size=$($outputInfo.Length) manifest=$ManifestPath"
 Write-Output $OutputSwf
