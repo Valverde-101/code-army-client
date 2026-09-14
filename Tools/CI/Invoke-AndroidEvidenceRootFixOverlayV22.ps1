@@ -28,28 +28,16 @@ if($Mode -eq 'Restore'){
   return
 }
 
-# V21's external-import helper originally anchored on the bare token
-# CONFIG::BUILD_FOR_AIR {. PauseDialog contains that token multiple times
-# (imports, permission handler and file-selection handler), so the strict
-# literal-one guard correctly failed before mutation. Compile a unique semantic
-# anchor around the AIR onPermission method for this execution only.
 $original=[IO.File]::ReadAllBytes($v21)
 try {
-  $text=[Text.Encoding]::UTF8.GetString($original)
-  $old=@'
-$pause=Replace-LiteralOne $pause 'CONFIG::BUILD_FOR_AIR {' $importHelper.TrimEnd() 'external_import_validate_persist'
-'@.Trim()
-  $new=@'
-$importAnchor=@'
-CONFIG::BUILD_FOR_AIR {
-			public function onPermission(e: PermissionEvent): void {
-'@.TrimEnd()
-  $importReplacement=$importHelper.TrimEnd()+"`n`t`t`tpublic function onPermission(e: PermissionEvent): void {"
-  $pause=Replace-LiteralOne $pause $importAnchor $importReplacement 'external_import_validate_persist'
-'@.Trim()
-  $count=([regex]::Matches($text,[regex]::Escape($old))).Count
-  if($count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_import_anchor expected=1 actual=$count"}
-  $text=$text.Replace($old,$new)
+  $text=[IO.File]::ReadAllText($v21)
+  $oldLine="  `$pause=Replace-LiteralOne `$pause 'CONFIG::BUILD_FOR_AIR {' `$importHelper.TrimEnd() 'external_import_validate_persist'"
+  $sq=[char]39
+  $pattern='(?ms)CONFIG::BUILD_FOR_AIR\s*\{\s*public function onPermission\(e:\s*PermissionEvent\):\s*void\s*\{'
+  $newLine='  $pause=Replace-RegexOne $pause '+$sq+$pattern+$sq+' ($importHelper.TrimEnd()+"`n`t`t`tpublic function onPermission(e: PermissionEvent): void {") '+$sq+'external_import_validate_persist'+$sq
+  $count=([regex]::Matches($text,[regex]::Escape($oldLine))).Count
+  if($count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_import_anchor_line expected=1 actual=$count"}
+  $text=$text.Replace($oldLine,$newLine)
   [IO.File]::WriteAllText($v21,$text,(New-Object System.Text.UTF8Encoding($true)))
 
   $tokens=$null
@@ -59,11 +47,11 @@ CONFIG::BUILD_FOR_AIR {
     $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V22_PATCHED_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
     throw 'ANDROID_EVIDENCE_ROOTFIX_V22=FAIL patched_v21_parser_invalid'
   }
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS root_cause=ambiguous_bare_config_anchor boundary=onPermission semantic=true parser=true'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS root_cause=ambiguous_import_anchor fix=semantic_onPermission parser=true'
 
   & $v21 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL predecessor_apply_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha external_import_anchor=onPermission"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha external_import_anchor=semantic_onPermission"
 }
 finally {
   [IO.File]::WriteAllBytes($v21,$original)
