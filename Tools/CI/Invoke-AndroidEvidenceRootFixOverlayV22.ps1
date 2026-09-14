@@ -32,6 +32,8 @@ $original=[IO.File]::ReadAllBytes($v21)
 try {
   $text=[IO.File]::ReadAllText($v21)
 
+  # V21 originally anchored its imported-save helper to a generic AIR CONFIG block.
+  # Compile the unique onPermission seam for this execution only.
   $oldLine="  `$pause=Replace-LiteralOne `$pause 'CONFIG::BUILD_FOR_AIR {' `$importHelper.TrimEnd() 'external_import_validate_persist'"
   $sq=[char]39
   $pattern='(?ms)CONFIG::BUILD_FOR_AIR\s*\{\s*public function onPermission\(e:\s*PermissionEvent\):\s*void\s*\{'
@@ -40,11 +42,24 @@ try {
   if($count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_import_anchor_line expected=1 actual=$count"}
   $text=$text.Replace($oldLine,$newLine)
 
+  # PowerShell single/double quoted strings do not treat backslash as an escape.
+  # V21's GameHUD patch-spec needle therefore searched for two literal slashes while
+  # Patch-AndroidPerformanceSwf.ps1 contains one. Normalize exactly that one needle.
   $oldPauseSpec="Source='src\\game\\gui\\GameHUD.as'"
   $newPauseSpec="Source='src\game\gui\GameHUD.as'"
   $pauseSpecCount=([regex]::Matches($text,[regex]::Escape($oldPauseSpec))).Count
   if($pauseSpecCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_pause_dialog_swf_spec expected=1 actual=$pauseSpecCount"}
   $text=$text.Replace($oldPauseSpec,$newPauseSpec)
+
+  # V21 upgrades the emitted save from literal version 7 to CURRENT_SAVE_VERSION=8.
+  # The predecessor runtime regression still asserted the removed literal v7 line,
+  # so it could only fail after a correct V21 apply. Migrate that single assertion
+  # to the semantic current-version assignment while retaining all old migrations.
+  $oldSaveAssertion="Require-Contains `$offline 'savedata[\"saveversion\"] = 7;' 'offline_save_version_bumped_for_active_map'"
+  $newSaveAssertion="Require-Contains `$offline 'savedata[\"saveversion\"] = CURRENT_SAVE_VERSION;' 'offline_save_version_bumped_for_active_map'"
+  $saveAssertionCount=([regex]::Matches($text,[regex]::Escape($oldSaveAssertion))).Count
+  if($saveAssertionCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_stale_save_version_regression expected=1 actual=$saveAssertionCount"}
+  $text=$text.Replace($oldSaveAssertion,$newSaveAssertion)
 
   [IO.File]::WriteAllText($v21,$text,(New-Object System.Text.UTF8Encoding($true)))
 
@@ -55,11 +70,11 @@ try {
     $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V22_PATCHED_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
     throw 'ANDROID_EVIDENCE_ROOTFIX_V22=FAIL patched_v21_parser_invalid'
   }
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path parser=true'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+save_v8_regression parser=true'
 
   & $v21 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL predecessor_apply_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+save_v8_regression"
 }
 finally {
   [IO.File]::WriteAllBytes($v21,$original)
