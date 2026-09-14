@@ -50,6 +50,31 @@ try {
   if($pauseSpecCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_pause_dialog_swf_spec expected=1 actual=$pauseSpecCount"}
   $text=$text.Replace($oldPauseSpec,$newPauseSpec)
 
+  # Root cause from 6e85947: V21's mobile picker regex stopped at the first nested
+  # closing brace inside the legacy documents/legacy branch. That left a dangling
+  # `else if` in the FFDec-preprocessed PauseDialog. Anchor the removable mobile
+  # block to its terminal file.requestPermission() call so the whole nested block
+  # is consumed before inserting the external document picker.
+  $oldPickerPattern="  `$pickerPattern='(?ms)(public function startSelectingFile\\(\\):\\s*void\\s*\\{.*?CONFIG::NOT_BUILD_FOR_AIR\\s*\\{.*?^\\s*\\})(\\s*CONFIG::BUILD_FOR_MOBILE_AIR\\s*\\{.*?^\\s*\\})(\\s*^\\s*\\})'"
+  $newPickerPattern="  `$pickerPattern='(?ms)(public function startSelectingFile\\(\\):\\s*void\\s*\\{.*?CONFIG::NOT_BUILD_FOR_AIR\\s*\\{.*?^\\s*\\})(\\s*CONFIG::BUILD_FOR_MOBILE_AIR\\s*\\{.*?file\\.requestPermission\\(\\);\\s*^\\s*\\})(\\s*^\\s*\\})'"
+  $pickerPatternCount=([regex]::Matches($text,[regex]::Escape($oldPickerPattern))).Count
+  if($pickerPatternCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_mobile_picker_pattern expected=1 actual=$pickerPatternCount"}
+  $text=$text.Replace($oldPickerPattern,$newPickerPattern)
+
+  # Fail before FFDec if the legacy nested Android save-location branch survived
+  # the picker replacement. This converts a compiler-only failure into a precise
+  # source-contract failure at the responsible seam.
+  $pickerApplyLine="  `$pause=Replace-RegexOne `$pause `$pickerPattern `$pickerReplacement.TrimEnd() 'mobile_external_save_picker'"
+  $pickerApplyCount=([regex]::Matches($text,[regex]::Escape($pickerApplyLine))).Count
+  if($pickerApplyCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_mobile_picker_apply_anchor expected=1 actual=$pickerApplyCount"}
+  $pickerGuard=@'
+  if($pause.Contains('GameState.mInstance.mSaveLocation == "documents"') -or $pause.Contains('else if (GameState.mInstance.mSaveLocation == "legacy")')){throw 'ANDROID_EVIDENCE_ROOTFIX_V21=FAIL mobile_external_save_picker legacy_branch_survived'}
+  Write-Host 'EVIDENCE_ROOTFIX_V21_HOOK=PASS name=mobile_external_save_picker_full_block_removed semantic=true nested_braces=true'
+'@.TrimEnd()
+  $pickerApplyIndex=$text.IndexOf($pickerApplyLine,[StringComparison]::Ordinal)
+  $pickerInsertAt=$pickerApplyIndex+$pickerApplyLine.Length
+  $text=$text.Substring(0,$pickerInsertAt)+"`n"+$pickerGuard+$text.Substring($pickerInsertAt)
+
   # V21 upgrades emitted saves to CURRENT_SAVE_VERSION=8, while V20's runtime test
   # still asserts the literal v7 assignment. The stale assertion lives in the TEST
   # FILE that V21 patches at runtime, not in V21's own source. Inject a V21 runtime
@@ -74,11 +99,11 @@ try {
     $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V22_PATCHED_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
     throw 'ANDROID_EVIDENCE_ROOTFIX_V22=FAIL patched_v21_parser_invalid'
   }
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+runtime_save_v8_regression parser=true'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+mobile_picker_nested_block+runtime_save_v8_regression parser=true'
 
   & $v21 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL predecessor_apply_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+runtime_save_v8_regression"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+mobile_picker_nested_block+runtime_save_v8_regression"
 }
 finally {
   [IO.File]::WriteAllBytes($v21,$original)
