@@ -50,14 +50,20 @@ try {
   if($pauseSpecCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_pause_dialog_swf_spec expected=1 actual=$pauseSpecCount"}
   $text=$text.Replace($oldPauseSpec,$newPauseSpec)
 
-  # V21 upgrades emitted saves to CURRENT_SAVE_VERSION=8. Its predecessor test still
-  # asserted the removed literal v7 assignment. Use single-quoted PowerShell strings
-  # with doubled inner quotes so this compatibility edit is parser-safe and exact.
-  $oldSaveAssertion='Require-Contains $offline ''savedata["saveversion"] = 7;'' ''offline_save_version_bumped_for_active_map'''
-  $newSaveAssertion='Require-Contains $offline ''savedata["saveversion"] = CURRENT_SAVE_VERSION;'' ''offline_save_version_bumped_for_active_map'''
-  $saveAssertionCount=([regex]::Matches($text,[regex]::Escape($oldSaveAssertion))).Count
-  if($saveAssertionCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_stale_save_version_regression expected=1 actual=$saveAssertionCount"}
-  $text=$text.Replace($oldSaveAssertion,$newSaveAssertion)
+  # V21 upgrades emitted saves to CURRENT_SAVE_VERSION=8, while V20's runtime test
+  # still asserts the literal v7 assignment. The stale assertion lives in the TEST
+  # FILE that V21 patches at runtime, not in V21's own source. Inject a V21 runtime
+  # migration immediately after its stable patch-version hook instead of searching
+  # V21 for a line that can never exist there.
+  $runtimePatchPattern="(?m)^\s*\`$test=Replace-LiteralOne \`$test .*'runtime_test_patch_version_v21'\s*$"
+  $runtimeMatches=[regex]::Matches($text,$runtimePatchPattern)
+  if($runtimeMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_runtime_patch_anchor expected=1 actual=$($runtimeMatches.Count)"}
+  $runtimeFixLine=@'
+  $test=Replace-LiteralOne $test "Require-Contains `$offline 'savedata[`"saveversion`"] = 7;' 'offline_save_version_bumped_for_active_map'" "Require-Contains `$offline 'savedata[`"saveversion`"] = CURRENT_SAVE_VERSION;' 'offline_save_version_bumped_for_active_map'" 'runtime_test_save_version_v8'
+'@.TrimEnd()
+  $runtimeMatch=$runtimeMatches[0]
+  $insertAt=$runtimeMatch.Index+$runtimeMatch.Length
+  $text=$text.Substring(0,$insertAt)+"`n"+$runtimeFixLine+$text.Substring($insertAt)
 
   [IO.File]::WriteAllText($v21,$text,(New-Object System.Text.UTF8Encoding($true)))
 
@@ -68,11 +74,11 @@ try {
     $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V22_PATCHED_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
     throw 'ANDROID_EVIDENCE_ROOTFIX_V22=FAIL patched_v21_parser_invalid'
   }
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+save_v8_regression parser=true'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+runtime_save_v8_regression parser=true'
 
   & $v21 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL predecessor_apply_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+save_v8_regression"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+runtime_save_v8_regression"
 }
 finally {
   [IO.File]::WriteAllBytes($v21,$original)
