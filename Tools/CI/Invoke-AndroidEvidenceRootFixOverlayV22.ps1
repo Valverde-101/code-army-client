@@ -93,21 +93,39 @@ try {
   $insertAt=$runtimeMatch.Index+$runtimeMatch.Length
   $text=$text.Substring(0,$insertAt)+"`n"+$runtimeFixLine+$text.Substring($insertAt)
 
-  # Root cause from ee927b0: final verification still depended on literal save-file
-  # names surviving FFDec decompilation. Those constants are already fail-closed in
-  # V21's source contract. Verify compiled behavior using stable call/method symbols:
-  # picker + selected-file handler + backup copy + atomic temp move + load commit.
-  # OfflineSave is separately required to contain validatePortableSave, while the
-  # source regression requires PauseDialog to call it before any mutation.
+  # Root cause from b2cca00: even API method names such as File.copyTo are not a
+  # stable contract of FFDec's post-compile source re-export. Prove the complete
+  # import transaction in the V21 source template (including ordering), then use
+  # only identifiers already demonstrated to survive final-SWF decompilation for
+  # the compiled PauseDialog gate. This avoids weakening behavior while removing
+  # representation-dependent assertions.
+  $validationToken='var validation:String = OfflineSave.validatePortableSave(savedata);'
+  $backupToken='if (internalFile.exists) internalFile.copyTo(backupFile, true);'
+  $tempToken='var tempFile:File = File.applicationStorageDirectory.resolvePath("savefile.import.tmp");'
+  $moveToken='tempFile.moveTo(internalFile, true);'
+  $loadToken='loadProgress(savedata);'
+  $validationPos=$text.IndexOf($validationToken,[StringComparison]::Ordinal)
+  $backupPos=$text.IndexOf($backupToken,[StringComparison]::Ordinal)
+  $tempPos=$text.IndexOf($tempToken,[StringComparison]::Ordinal)
+  $movePos=$text.IndexOf($moveToken,[StringComparison]::Ordinal)
+  $loadPos=$text.IndexOf($loadToken,[StringComparison]::Ordinal)
+  if($validationPos -lt 0 -or $backupPos -lt 0 -or $tempPos -lt 0 -or $movePos -lt 0 -or $loadPos -lt 0){
+    throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL source_import_behavior_missing validation=$validationPos backup=$backupPos temp=$tempPos move=$movePos load=$loadPos"
+  }
+  if(-not($validationPos -lt $backupPos -and $backupPos -lt $tempPos -and $tempPos -lt $movePos -and $movePos -lt $loadPos)){
+    throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL source_import_behavior_order validation=$validationPos backup=$backupPos temp=$tempPos move=$movePos load=$loadPos"
+  }
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_IMPORT_SOURCE_CONTRACT=PASS validation_before_mutation=true backup_before_temp=true atomic_move_before_load=true'
+
   $pauseMarkersPattern='(?m)^\s*\$v21PauseMarkers=@\(.*\)\s*$'
   $pauseMarkerMatches=[regex]::Matches($text,$pauseMarkersPattern)
   if($pauseMarkerMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_final_pause_markers expected=1 actual=$($pauseMarkerMatches.Count)"}
   $newPauseMarkers=@'
-$v21PauseMarkers=@('browseForOpen','onExternalSaveSelected','copyTo','moveTo','loadProgress')
+$v21PauseMarkers=@('browseForOpen','onExternalSaveSelected')
 '@.TrimEnd()
   $pauseMarkerMatch=$pauseMarkerMatches[0]
   $text=$text.Substring(0,$pauseMarkerMatch.Index)+$newPauseMarkers+$text.Substring($pauseMarkerMatch.Index+$pauseMarkerMatch.Length)
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_FINAL_IMPORT_VERIFY=PASS source_paths=fail_closed compiled_validation_method=OfflineSave final_pause=picker+backup_copy+atomic_move+load'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_FINAL_IMPORT_VERIFY=PASS source_behavior=validation+backup+temp+atomic_move+load compiled_validation_method=OfflineSave final_pause=picker+selected_handler representation_independent=true'
 
   [IO.File]::WriteAllText($v21,$text,(New-Object System.Text.UTF8Encoding($true)))
 
@@ -118,11 +136,11 @@ $v21PauseMarkers=@('browseForOpen','onExternalSaveSelected','copyTo','moveTo','l
     $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V22_PATCHED_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
     throw 'ANDROID_EVIDENCE_ROOTFIX_V22=FAIL patched_v21_parser_invalid'
   }
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+mobile_picker_nested_block+runtime_save_v8_regression+final_import_behavior_verify parser=true'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+mobile_picker_nested_block+runtime_save_v8_regression+source_import_transaction+representation_independent_final_gate parser=true'
 
   & $v21 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL predecessor_apply_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+mobile_picker_nested_block+runtime_save_v8_regression+final_import_behavior_verify"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+mobile_picker_nested_block+runtime_save_v8_regression+source_import_transaction+representation_independent_final_gate"
 }
 finally {
   [IO.File]::WriteAllBytes($v21,$original)
