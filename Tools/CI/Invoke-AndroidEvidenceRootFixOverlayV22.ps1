@@ -31,6 +31,7 @@ if($Mode -eq 'Restore'){
 $original=[IO.File]::ReadAllBytes($v21)
 try {
   $text=[IO.File]::ReadAllText($v21)
+
   $oldLine="  `$pause=Replace-LiteralOne `$pause 'CONFIG::BUILD_FOR_AIR {' `$importHelper.TrimEnd() 'external_import_validate_persist'"
   $sq=[char]39
   $pattern='(?ms)CONFIG::BUILD_FOR_AIR\s*\{\s*public function onPermission\(e:\s*PermissionEvent\):\s*void\s*\{'
@@ -38,6 +39,13 @@ try {
   $count=([regex]::Matches($text,[regex]::Escape($oldLine))).Count
   if($count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_import_anchor_line expected=1 actual=$count"}
   $text=$text.Replace($oldLine,$newLine)
+
+  $oldPauseSpec="Source='src\\game\\gui\\GameHUD.as'"
+  $newPauseSpec="Source='src\game\gui\GameHUD.as'"
+  $pauseSpecCount=([regex]::Matches($text,[regex]::Escape($oldPauseSpec))).Count
+  if($pauseSpecCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_pause_dialog_swf_spec expected=1 actual=$pauseSpecCount"}
+  $text=$text.Replace($oldPauseSpec,$newPauseSpec)
+
   [IO.File]::WriteAllText($v21,$text,(New-Object System.Text.UTF8Encoding($true)))
 
   $tokens=$null
@@ -47,11 +55,11 @@ try {
     $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V22_PATCHED_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
     throw 'ANDROID_EVIDENCE_ROOTFIX_V22=FAIL patched_v21_parser_invalid'
   }
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS root_cause=ambiguous_import_anchor fix=semantic_onPermission parser=true'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path parser=true'
 
   & $v21 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL predecessor_apply_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha external_import_anchor=semantic_onPermission"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path"
 }
 finally {
   [IO.File]::WriteAllBytes($v21,$original)
