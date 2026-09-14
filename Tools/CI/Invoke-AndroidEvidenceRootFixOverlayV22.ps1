@@ -51,15 +51,18 @@ try {
   $text=$text.Replace($oldPauseSpec,$newPauseSpec)
 
   # Root cause from 6e85947: V21's mobile picker regex stopped at the first nested
-  # closing brace inside the legacy documents/legacy branch. That left a dangling
-  # `else if` in the FFDec-preprocessed PauseDialog. Anchor the removable mobile
-  # block to its terminal file.requestPermission() call so the whole nested block
-  # is consumed before inserting the external document picker.
-  $oldPickerPattern="  `$pickerPattern='(?ms)(public function startSelectingFile\\(\\):\\s*void\\s*\\{.*?CONFIG::NOT_BUILD_FOR_AIR\\s*\\{.*?^\\s*\\})(\\s*CONFIG::BUILD_FOR_MOBILE_AIR\\s*\\{.*?^\\s*\\})(\\s*^\\s*\\})'"
-  $newPickerPattern="  `$pickerPattern='(?ms)(public function startSelectingFile\\(\\):\\s*void\\s*\\{.*?CONFIG::NOT_BUILD_FOR_AIR\\s*\\{.*?^\\s*\\})(\\s*CONFIG::BUILD_FOR_MOBILE_AIR\\s*\\{.*?file\\.requestPermission\\(\\);\\s*^\\s*\\})(\\s*^\\s*\\})'"
-  $pickerPatternCount=([regex]::Matches($text,[regex]::Escape($oldPickerPattern))).Count
-  if($pickerPatternCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_mobile_picker_pattern expected=1 actual=$pickerPatternCount"}
-  $text=$text.Replace($oldPickerPattern,$newPickerPattern)
+  # closing brace inside the legacy documents/legacy branch. Do not match the old
+  # assignment byte-for-byte: its regex escaping is itself representation-sensitive.
+  # Locate the unique picker assignment semantically, then replace only that line.
+  $pickerAssignmentPattern='(?m)^\s*\$pickerPattern=.*startSelectingFile.*$'
+  $pickerAssignmentMatches=[regex]::Matches($text,$pickerAssignmentPattern)
+  if($pickerAssignmentMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_mobile_picker_assignment expected=1 actual=$($pickerAssignmentMatches.Count)"}
+  $newPickerLine=@'
+  $pickerPattern='(?ms)(public function startSelectingFile\(\):\s*void\s*\{.*?CONFIG::NOT_BUILD_FOR_AIR\s*\{.*?^\s*\})(\s*CONFIG::BUILD_FOR_MOBILE_AIR\s*\{.*?file\.requestPermission\(\);\s*^\s*\})(\s*^\s*\})'
+'@.TrimEnd()
+  $pickerAssignment=$pickerAssignmentMatches[0]
+  $text=$text.Substring(0,$pickerAssignment.Index)+$newPickerLine+$text.Substring($pickerAssignment.Index+$pickerAssignment.Length)
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_PICKER_ASSIGNMENT=PASS semantic=true representation_independent=true'
 
   # Fail before FFDec if the legacy nested Android save-location branch survived
   # the picker replacement. This converts a compiler-only failure into a precise
