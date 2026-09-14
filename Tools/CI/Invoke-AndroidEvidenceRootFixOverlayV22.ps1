@@ -42,21 +42,19 @@ try {
   if($count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_import_anchor_line expected=1 actual=$count"}
   $text=$text.Replace($oldLine,$newLine)
 
-  # PowerShell single/double quoted strings do not treat backslash as an escape.
-  # V21's GameHUD patch-spec needle therefore searched for two literal slashes while
-  # Patch-AndroidPerformanceSwf.ps1 contains one. Normalize exactly that one needle.
+  # PowerShell does not treat backslash as a string escape. Normalize exactly the
+  # over-escaped V21 GameHUD patch-spec needle to the real repository path.
   $oldPauseSpec="Source='src\\game\\gui\\GameHUD.as'"
   $newPauseSpec="Source='src\game\gui\GameHUD.as'"
   $pauseSpecCount=([regex]::Matches($text,[regex]::Escape($oldPauseSpec))).Count
   if($pauseSpecCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_pause_dialog_swf_spec expected=1 actual=$pauseSpecCount"}
   $text=$text.Replace($oldPauseSpec,$newPauseSpec)
 
-  # V21 upgrades the emitted save from literal version 7 to CURRENT_SAVE_VERSION=8.
-  # The predecessor runtime regression still asserted the removed literal v7 line,
-  # so it could only fail after a correct V21 apply. Migrate that single assertion
-  # to the semantic current-version assignment while retaining all old migrations.
-  $oldSaveAssertion="Require-Contains `$offline 'savedata[\"saveversion\"] = 7;' 'offline_save_version_bumped_for_active_map'"
-  $newSaveAssertion="Require-Contains `$offline 'savedata[\"saveversion\"] = CURRENT_SAVE_VERSION;' 'offline_save_version_bumped_for_active_map'"
+  # V21 upgrades emitted saves to CURRENT_SAVE_VERSION=8. Its predecessor test still
+  # asserted the removed literal v7 assignment. Use single-quoted PowerShell strings
+  # with doubled inner quotes so this compatibility edit is parser-safe and exact.
+  $oldSaveAssertion='Require-Contains $offline ''savedata["saveversion"] = 7;'' ''offline_save_version_bumped_for_active_map'''
+  $newSaveAssertion='Require-Contains $offline ''savedata["saveversion"] = CURRENT_SAVE_VERSION;'' ''offline_save_version_bumped_for_active_map'''
   $saveAssertionCount=([regex]::Matches($text,[regex]::Escape($oldSaveAssertion))).Count
   if($saveAssertionCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_stale_save_version_regression expected=1 actual=$saveAssertionCount"}
   $text=$text.Replace($oldSaveAssertion,$newSaveAssertion)
