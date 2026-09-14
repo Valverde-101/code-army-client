@@ -93,6 +93,21 @@ try {
   $insertAt=$runtimeMatch.Index+$runtimeMatch.Length
   $text=$text.Substring(0,$insertAt)+"`n"+$runtimeFixLine+$text.Substring($insertAt)
 
+  # The source-level regression suite already proves SAVE_IMPORT_COMMIT and
+  # SAVE_IMPORT_REJECTED telemetry exist. The final-SWF gate must prove the import
+  # behavior itself was compiled, not require diagnostic string literals that FFDec
+  # may not reproduce verbatim when exporting decompiled source. Verify the mobile
+  # picker, validation, temporary/backup persistence and load commit semantics.
+  $pauseMarkersPattern='(?m)^\s*\$v21PauseMarkers=@\(.*\)\s*$'
+  $pauseMarkerMatches=[regex]::Matches($text,$pauseMarkersPattern)
+  if($pauseMarkerMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_final_pause_markers expected=1 actual=$($pauseMarkerMatches.Count)"}
+  $newPauseMarkers=@'
+$v21PauseMarkers=@('browseForOpen','onExternalSaveSelected','validatePortableSave','savefile.import.tmp','savefile.before-import.txt','loadProgress')
+'@.TrimEnd()
+  $pauseMarkerMatch=$pauseMarkerMatches[0]
+  $text=$text.Substring(0,$pauseMarkerMatch.Index)+$newPauseMarkers+$text.Substring($pauseMarkerMatch.Index+$pauseMarkerMatch.Length)
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_FINAL_IMPORT_VERIFY=PASS source_telemetry=regression final_swf=semantic_behavior'
+
   [IO.File]::WriteAllText($v21,$text,(New-Object System.Text.UTF8Encoding($true)))
 
   $tokens=$null
@@ -102,11 +117,11 @@ try {
     $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V22_PATCHED_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
     throw 'ANDROID_EVIDENCE_ROOTFIX_V22=FAIL patched_v21_parser_invalid'
   }
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+mobile_picker_nested_block+runtime_save_v8_regression parser=true'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+mobile_picker_nested_block+runtime_save_v8_regression+final_import_semantic_verify parser=true'
 
   & $v21 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL predecessor_apply_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+mobile_picker_nested_block+runtime_save_v8_regression"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+mobile_picker_nested_block+runtime_save_v8_regression+final_import_semantic_verify"
 }
 finally {
   [IO.File]::WriteAllBytes($v21,$original)
