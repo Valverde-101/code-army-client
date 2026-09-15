@@ -137,14 +137,16 @@ $1
 
   # Physical evidence showed Error #1009 escaping Building.convertToSnow() and
   # aborting ArchiveMap.convertAllBuildingsToSnow(). Building/ArchiveMap live in
-  # the canonical SWF, not the tracked replacement-source subset. Export the exact
-  # Building class from the exact produced SWF, isolate conversion failure to that
-  # building, reinsert the class, and fail closed if the class cannot be located.
+  # the canonical SWF, not the tracked replacement-source subset. Export every AS3
+  # class from the exact produced SWF and discover the method semantically. Never
+  # depend on FFDec's output filename: class paths/names are derived from source.
   $patcher=Normalize-Lf ([IO.File]::ReadAllText($patcherPath))
   $patchAnchor='foreach($tmpSource in $tempSources){Remove-Item -LiteralPath $tmpSource -Force -ErrorAction SilentlyContinue}'
   $snowGuard=@'
 
 # Root fix V30: isolate authored snow-building conversion failures per building.
+# Discovery is representation-safe: scan all exported AS3 sources by method
+# signature and derive the owning class from source instead of assuming Building.as.
 $snowExportRoot=Join-Path $outDir 'snow-building-v30-export'
 Remove-Item -LiteralPath $snowExportRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $snowExportRoot|Out-Null
@@ -161,17 +163,37 @@ $snowExportLines|Set-Content -LiteralPath $snowExportLog -Encoding UTF8
 if($snowExportExit -ne 0){throw "SNOW_BUILDING_GUARD=FAIL phase=export exit=$snowExportExit log=$snowExportLog"}
 
 $snowBuildingCandidates=@()
-foreach($candidate in @(Get-ChildItem -LiteralPath $snowExportRoot -Recurse -File -Filter 'Building.as' -ErrorAction Stop)){
-  $candidateText=[IO.File]::ReadAllText($candidate.FullName)
-  if($candidateText -match '\bfunction\s+convertToSnow\s*\('){$snowBuildingCandidates+=@($candidate)}
+foreach($candidate in @(Get-ChildItem -LiteralPath $snowExportRoot -Recurse -File -Filter '*.as' -ErrorAction Stop)){
+  $candidateText=[IO.File]::ReadAllText($candidate.FullName).Replace("`r`n","`n").Replace("`r","`n")
+  $methodMatches=@([regex]::Matches($candidateText,'\bfunction\s+convertToSnow\s*\([^)]*\)\s*(?::\s*[A-Za-z_][A-Za-z0-9_\.<>]*)?\s*\{'))
+  foreach($methodMatch in $methodMatches){
+    $classMatches=@([regex]::Matches($candidateText,'\b(?:(?:public|internal)\s+)?(?:(?:dynamic|final)\s+)*class\s+([A-Za-z_][A-Za-z0-9_]*)')|Where-Object{$_.Index -lt $methodMatch.Index})
+    if($classMatches.Count -eq 0){throw "SNOW_BUILDING_GUARD=FAIL phase=owner_class_parse file=$($candidate.FullName)"}
+    $classMatch=$classMatches[$classMatches.Count-1]
+    $simpleClass=[string]$classMatch.Groups[1].Value
+    $packageMatch=[regex]::Match($candidateText,'(?m)^\s*package(?:\s+([A-Za-z_][A-Za-z0-9_\.]*))?\s*\{')
+    if(-not $packageMatch.Success){throw "SNOW_BUILDING_GUARD=FAIL phase=package_parse file=$($candidate.FullName)"}
+    $packageName=[string]$packageMatch.Groups[1].Value
+    $qualifiedClass=if([string]::IsNullOrWhiteSpace($packageName)){$simpleClass}else{$packageName+'.'+$simpleClass}
+    $snowBuildingCandidates+=@([pscustomobject]@{File=$candidate.FullName;Text=$candidateText;Method=$methodMatch;Class=$qualifiedClass;SimpleClass=$simpleClass})
+  }
 }
-if($snowBuildingCandidates.Count -ne 1){
-  throw "SNOW_BUILDING_GUARD=FAIL phase=locate_convertToSnow candidates=$($snowBuildingCandidates.Count) export=$snowExportRoot"
+
+$preferredSnowCandidates=@($snowBuildingCandidates|Where-Object{$_.SimpleClass -eq 'Building'})
+$snowSelected=$null
+if($preferredSnowCandidates.Count -eq 1){$snowSelected=$preferredSnowCandidates[0]}
+elseif($snowBuildingCandidates.Count -eq 1){$snowSelected=$snowBuildingCandidates[0]}
+else{
+  $discovered=@($snowBuildingCandidates|ForEach-Object{$_.Class+'@'+$_.File}) -join ';'
+  throw "SNOW_BUILDING_GUARD=FAIL phase=locate_convertToSnow candidates=$($snowBuildingCandidates.Count) preferred=$($preferredSnowCandidates.Count) discovered=$discovered export=$snowExportRoot"
 }
-$snowBuildingSource=$snowBuildingCandidates[0].FullName
-$snowBuildingText=[IO.File]::ReadAllText($snowBuildingSource).Replace("`r`n","`n").Replace("`r","`n")
-$snowMethod=[regex]::Match($snowBuildingText,'\bfunction\s+convertToSnow\s*\([^)]*\)\s*:\s*void\s*\{')
-if(-not $snowMethod.Success){throw 'SNOW_BUILDING_GUARD=FAIL phase=method_signature'}
+
+$snowBuildingSource=[string]$snowSelected.File
+$snowBuildingText=[string]$snowSelected.Text
+$snowMethod=$snowSelected.Method
+$snowBuildingClass=[string]$snowSelected.Class
+Write-Host "SNOW_BUILDING_GUARD_DISCOVERY=PASS strategy=semantic_method_scan class=$snowBuildingClass file=$snowBuildingSource candidates=$($snowBuildingCandidates.Count)"
+
 $snowOpen=$snowMethod.Index+$snowMethod.Length-1
 $snowDepth=0
 $snowClose=-1
@@ -190,20 +212,17 @@ $snowWrappedBody="`n         try {"+$snowBody+"`n         } catch(snowConversion
 $snowBuildingText=$snowBuildingText.Substring(0,$snowOpen+1)+$snowWrappedBody+$snowBuildingText.Substring($snowClose)
 [IO.File]::WriteAllText($snowBuildingSource,$snowBuildingText,(New-Object System.Text.UTF8Encoding($true)))
 
-$snowPackageMatch=[regex]::Match($snowBuildingText,'(?m)^\s*package(?:\s+([A-Za-z_][A-Za-z0-9_\.]*))?\s*\{')
-if(-not $snowPackageMatch.Success){throw 'SNOW_BUILDING_GUARD=FAIL phase=package_parse'}
-$snowPackage=[string]$snowPackageMatch.Groups[1].Value
-$snowBuildingClass=if([string]::IsNullOrWhiteSpace($snowPackage)){'Building'}else{$snowPackage+'.Building'}
 $snowGuardedSwf=Join-Path $outDir 'swf-runtime-snow-building-v30.tmp.swf'
 Remove-Item -LiteralPath $snowGuardedSwf -Force -ErrorAction SilentlyContinue
 Invoke-FFDecReplace -In $OutputSwf -Out $snowGuardedSwf -ClassName $snowBuildingClass -Source $snowBuildingSource -LogName 'ffdec-snow-building-v30-replace.log'
 Remove-Item -LiteralPath $OutputSwf -Force
 Move-Item -LiteralPath $snowGuardedSwf -Destination $OutputSwf -Force
 Remove-Item -LiteralPath $snowExportRoot -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "SNOW_BUILDING_GUARD=PASS class=$snowBuildingClass boundary=convertToSnow isolation=per_building error1009_aborts_map=false"
+Write-Host "SNOW_BUILDING_GUARD=PASS class=$snowBuildingClass boundary=convertToSnow isolation=per_building discovery=semantic_method_scan error1009_aborts_map=false"
 '@.TrimEnd()
   $patcher=Replace-LiteralOne $patcher $patchAnchor ($patchAnchor+$snowGuard) 'snow_building_convert_guard_in_patcher'
-  foreach($token in @('snow-building-v30-export','function\s+convertToSnow','SNOW_BUILDING_CONVERT_GUARD','SNOW_BUILDING_GUARD=PASS','Invoke-FFDecReplace -In $OutputSwf')){Require-Token $patcher $token ('snow_guard_contract_'+$token)}
+  foreach($token in @('snow-building-v30-export','-Filter ''*.as''','function\s+convertToSnow','SNOW_BUILDING_GUARD_DISCOVERY=PASS','SNOW_BUILDING_CONVERT_GUARD','SNOW_BUILDING_GUARD=PASS','Invoke-FFDecReplace -In $OutputSwf')){Require-Token $patcher $token ('snow_guard_contract_'+$token)}
+  if($patcher.Contains("-Filter 'Building.as'")){throw 'ANDROID_EVIDENCE_ROOTFIX_V30=FAIL stale_filename_bound_snow_discovery'}
   Write-Utf8Bom $patcherPath $patcher
 
   $psTokens=$null;$psErrors=$null
@@ -216,9 +235,9 @@ Write-Host "SNOW_BUILDING_GUARD=PASS class=$snowBuildingClass boundary=convertTo
 
   Write-Host 'REGRESSION_CHECK=PASS name=territory_border_initial_restore topology_commit=before_visible_ready full_recalc=true full_tilemap_commit=true semantic_hook=true'
   Write-Host 'REGRESSION_CHECK=PASS name=territory_border_map_switch topology_commit=after_missions before_timing_checkpoint=true semantic_hook=true'
-  Write-Host 'REGRESSION_CHECK=PASS name=snow_building_conversion_failure_isolated scope=Building.convertToSnow map_wide_abort=false canonical_swf=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=snow_building_conversion_failure_isolated scope=convertToSnow map_wide_abort=false canonical_swf=true discovery=semantic_method_scan filename_dependency=false'
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V30_TERRITORY=PASS boot_restore=true map_switch=true per_capture=v29_local_refresh sha=$ExpectedSha"
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V30_SNOW=PASS strategy=canonical_swf_building_guard error1009_isolated=true sha=$ExpectedSha"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V30_SNOW=PASS strategy=canonical_swf_semantic_method_guard error1009_isolated=true sha=$ExpectedSha"
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V30=PASS mode=apply predecessor=v29 sha=$ExpectedSha"
 }
 catch {
