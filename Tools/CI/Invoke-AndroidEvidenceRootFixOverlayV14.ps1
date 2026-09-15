@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
-$impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV27.ps1'
+$impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV28.ps1'
 $v4=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV4.ps1'
 if(-not(Test-Path -LiteralPath $impl -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL delegate_missing=$impl"}
 if(-not(Test-Path -LiteralPath $v4 -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v4_missing=$v4"}
@@ -16,10 +16,10 @@ $tokens=$null
 $errors=$null
 [void][System.Management.Automation.Language.Parser]::ParseFile($impl,[ref]$tokens,[ref]$errors)
 if(@($errors).Count -gt 0){
-  $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V27_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
-  throw 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v27_parser_invalid'
+  $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V28_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
+  throw 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v28_parser_invalid'
 }
-Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_DELEGATE=PASS implementation=v27 parser=true'
+Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_DELEGATE=PASS implementation=v28 parser=true'
 
 # V3 inserts commitOwnershipVisualNow between clearDirtyBitmapRegion and
 # updateCameraViewport. The old V4 range used updateCameraViewport as its end
@@ -38,7 +38,7 @@ try {
 
   & $impl -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode $Mode
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL delegate_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=PASS delegated=v27 mode=$Mode sha=$ExpectedSha v4_boundary_fixed=true"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=PASS delegated=v28 mode=$Mode sha=$ExpectedSha v4_boundary_fixed=true"
 }
 finally {
   [IO.File]::WriteAllBytes($v4,$original)
