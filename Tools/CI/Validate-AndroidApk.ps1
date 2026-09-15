@@ -86,6 +86,9 @@ $failures=New-Object System.Collections.Generic.List[string]
 $referencePackage=[string]$reference.package_name
 if(-not $package){$failures.Add('package_unparseable')}
 elseif($package -ne $referencePackage){$failures.Add("package expected=$referencePackage actual=$package")}
+if([string]::IsNullOrWhiteSpace($versionCode)){$failures.Add('version_code_missing')}
+elseif($versionCode -notmatch '^\d+$' -or [int64]$versionCode -le 0){$failures.Add("version_code_invalid=$versionCode")}
+if([string]::IsNullOrWhiteSpace($versionName)){$failures.Add('version_name_missing')}
 if(-not $launch){$failures.Add('launchable_activity_missing')}
 if($permissions -match 'MANAGE_EXTERNAL_STORAGE'){$failures.Add('forbidden_permission=MANAGE_EXTERNAL_STORAGE')}
 if($permissions -match 'WRITE_EXTERNAL_STORAGE'){$failures.Add('forbidden_permission=WRITE_EXTERNAL_STORAGE')}
@@ -158,9 +161,14 @@ if($apksigner){
   if($sigExit -ne 0){$signature="FAIL($sigExit)";$failures.Add("signature_exit=$sigExit")}else{$signature='PASS'}
 }
 $alignment='SKIPPED'
+$alignmentMode='SKIPPED'
 if($zipalign){
-  & $zipalign.FullName -c -P 16 4 $ApkPath|Out-Null
+  # AIR 50 is pinned to Android Build Tools 33.0.2. Its zipalign supports -p
+  # (page-align uncompressed .so files) but not the newer -P <page-size-kb> flag.
+  # Keep alignment validation enabled and use the syntax guaranteed by the pinned toolchain.
+  & $zipalign.FullName -c -p 4 $ApkPath|Out-Null
   $alignExit=$LASTEXITCODE
+  $alignmentMode='BT33_LEGACY_PAGE_ALIGN'
   if($alignExit -ne 0){$alignment="FAIL($alignExit)";$failures.Add("zipalign_exit=$alignExit")}else{$alignment='PASS'}
 }
 
@@ -184,14 +192,14 @@ $report=[ordered]@{
   native_performance_overlay=[bool]$prov.native_performance_overlay
   native_performance_overlay_mode=[string]$prov.native_performance_overlay_mode
   diagnostics_ane_sha256=[string]$prov.diagnostics_ane_sha256
-  signature=$signature;zipalign=$alignment
+  signature=$signature;zipalign=$alignment;zipalign_mode=$alignmentMode
   build_tier=$buildTier;published_source_sha=[string]$prov.binary_seed_source_sha;game_version=[string]$prov.game_version
   failures=@($failures)
 }
 $reportPath=Join-Path $reportRoot 'apk-info.json'
 $report|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $reportPath -Encoding UTF8
 $summaryPath=Join-Path $reportRoot 'summary.json'
-[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;apk_sha256=$apkSha;apk_validated=($failures.Count -eq 0);build_tier=$buildTier;game_version=[string]$prov.game_version;render_mode=[string]$prov.render_mode;expected_render_mode=$ExpectedRenderMode;failures=@($failures)}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $summaryPath -Encoding UTF8
+[ordered]@{repository='Valverde-101/code-army-client';tested_sha=$ExpectedSha;apk_sha256=$apkSha;package_name=$package;version_code=$versionCode;version_name=$versionName;apk_validated=($failures.Count -eq 0);build_tier=$buildTier;game_version=[string]$prov.game_version;render_mode=[string]$prov.render_mode;expected_render_mode=$ExpectedRenderMode;failures=@($failures)}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $summaryPath -Encoding UTF8
 
 $reportMd=Join-Path $reportRoot 'REPORT.md'
 @(
@@ -202,6 +210,8 @@ $reportMd=Join-Path $reportRoot 'REPORT.md'
   "- APK: $ApkPath",
   "- APK_SHA256: $apkSha",
   "- package: $package",
+  "- versionCode: $versionCode",
+  "- versionName: $versionName",
   "- ABI: $($abis -join ',')",
   "- targetSdk: $targetSdk",
   "- SWF: $seedEntryPath",
@@ -212,7 +222,7 @@ $reportMd=Join-Path $reportRoot 'REPORT.md'
   "- profiler ANE SHA256: $($prov.diagnostics_ane_sha256)",
   "- build tier: $buildTier",
   "- signature: $signature",
-  "- zipalign: $alignment",
+  "- zipalign: $alignment ($alignmentMode)",
   "- validation failures: $($failures.Count)",
   $(if($failures.Count -gt 0){"- failures: $($failures -join '; ')"}else{"- failures: none"})
 )|Set-Content -LiteralPath $reportMd -Encoding UTF8
@@ -222,6 +232,8 @@ Write-Host "APK_SIZE=$($apk.Length)"
 Write-Host "APK_SHA256=$apkSha"
 Write-Host "PACKAGE_NAME=$package"
 Write-Host "REFERENCE_PACKAGE_NAME=$referencePackage"
+Write-Host "VERSION_CODE=$versionCode"
+Write-Host "VERSION_NAME=$versionName"
 Write-Host "TARGET_SDK=$targetSdk"
 Write-Host "REFERENCE_TARGET_SDK=$referenceTarget"
 Write-Host "ABI=$($abis -join ',')"
@@ -230,6 +242,7 @@ Write-Host "SWF_PATH=$seedEntryPath"
 Write-Host "SWF_SHA256=$seedHash"
 Write-Host "SIGNATURE=$signature"
 Write-Host "ZIPALIGN=$alignment"
+Write-Host "ZIPALIGN_MODE=$alignmentMode"
 Write-Host "BUILD_TIER=$buildTier"
 Write-Host "GAME_VERSION=$($prov.game_version)"
 Write-Host "BASE_ONLY_VALIDATE_STATE profiles=$($profileEntries.Count) selector_entries=$($selectorEntries.Count) root_swf_count=$($rootSwfEntries.Count)"
@@ -250,12 +263,13 @@ $promoted=Join-Path $candidateDir "ArmyAttack-23.2-$ExpectedSha.apk"
 Copy-Item -LiteralPath $ApkPath -Destination $promoted -Force
 $promotedSha=(Get-FileHash -LiteralPath $promoted -Algorithm SHA256).Hash.ToLowerInvariant()
 if($promotedSha -ne $apkSha){throw "APK_PROMOTION=FAIL expected=$apkSha actual=$promotedSha"}
-$meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sha=[string]$prov.binary_seed_source_sha;apk_path=$promoted;apk_size=(Get-Item $promoted).Length;apk_sha256=$promotedSha;package_name=$package;build_tier=$buildTier}
+$meta=[ordered]@{tested_sha=$ExpectedSha;game_version='23.2';published_source_sha=[string]$prov.binary_seed_source_sha;apk_path=$promoted;apk_size=(Get-Item $promoted).Length;apk_sha256=$promotedSha;package_name=$package;version_code=$versionCode;version_name=$versionName;build_tier=$buildTier}
 "$promoted.json"|ForEach-Object{$meta|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $_ -Encoding UTF8}
 if($env:GITHUB_ENV){"PROMOTED_CANDIDATE_PATH=$promoted"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
 Write-Host "SWF_PERFORMANCE_PATCH_VALIDATE=PASS source_sha256=$canonicalSwfSha patched_sha256=$seedHash version=$manifestPatchVersion classes=$($manifestPatchClasses.Count)"
 Write-Host "NATIVE_PERF_OVERLAY_VALIDATE=PASS provider=DiagnosticsProvider authority=air.army.attack.armyattackdiagnostics render_mode=$ExpectedRenderMode"
 Write-Host "BASE_ONLY_VALIDATE=PASS modern_v23_2=true profiles=0 selector=false diagnostics_ane=true root_swf=$seedEntryPath swf_source_original=true swf_performance_patched=true"
+Write-Host "APK_IDENTITY=PASS package=$package versionCode=$versionCode versionName=$versionName abi=$($abis -join ',')"
 Write-Host "APK_VALIDATE=PASS"
 Write-Host "APK_PROMOTION=PASS path=$promoted sha256=$promotedSha"
 & (Join-Path $PSScriptRoot 'Publish-ApkFinal.ps1') -SourceApk $promoted -AndroidBuildRoot $AndroidBuildRoot -ExpectedSha $ExpectedSha -RelativePath 'ArmyAttack-23.2.apk' -Kind 'base-23.2'

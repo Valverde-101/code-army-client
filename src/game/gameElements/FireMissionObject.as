@@ -16,83 +16,68 @@ package game.gameElements
    import game.states.GameState;
    import game.utils.ColorFadeEffect;
    import game.utils.ScreenShakeEffect;
-   
+
    public class FireMissionObject extends MovieClip
    {
-      
       private static const DOOMSDAY_NAME:String = "Doomsday";
       private static const FIREMISSION_TARGET_FPS:Number = 30;
       private static const FIREMISSION_FRAME_MS:Number = 1000 / FIREMISSION_TARGET_FPS;
+
+      // Combat feedback is gameplay-critical. LOW SWF may reduce decoration, but it must
+      // never suppress the projectile/impact timeline that tells the player what caused damage.
+      private static const CRITICAL_COMBAT_FX_ENABLED:Boolean = true;
+
       private static const FALLBACK_PROJECTILE_MS:int = 900;
       private static const FALLBACK_PROJECTILE_START_Y:Number = -420;
       private static const FALLBACK_TOTAL_TIMEOUT_MS:int = 2600;
-       
-      
+
       private var mColorEffectField:ColorFadeEffect;
-      
       private var mColorEffectScene:ColorFadeEffect;
-      
       private var mShakeEffect:ScreenShakeEffect;
-      
       private var mItem:FireMissionItem;
-      
       private var mGraphicsOverride:String;
-      
       private var mAnim:MovieClip;
-      
       private var mGraphicsLoaded:Boolean;
-      
       private var mLoadingCallbackEventType:String;
-      
       private var mStarted:Boolean;
-      
       private var mCells:Array;
-      
       private var mSound:SoundCollection;
-      
       private var mDebrises:Array;
-
       private var mAnimationStartMs:int = 0;
-
       private var mAnimationLastAdvanceMs:int = 0;
-
       private var mAnimationEndLogged:Boolean = false;
-
       private var mFallbackProjectileMode:Boolean = false;
-
       private var mFallbackRocket:MovieClip;
-
       private var mFallbackExplosion:MovieClip;
-
       private var mFallbackImpacted:Boolean = false;
-
       private var mFallbackFinished:Boolean = false;
-      
+
       public function FireMissionObject(param1:FireMissionItem, param2:Array, param3:String = null)
       {
-         var _loc5_:Class = null;
          super();
          this.mItem = param1;
          this.mGraphicsOverride = param3;
          this.mCells = param2;
-         var _loc3_:DCResourceManager = DCResourceManager.getInstance();
-         var _loc4_:String = param1.getIconGraphicsFile();
-         if(_loc3_.isLoaded(_loc4_))
+         Utils.DiagEvent("FIREMISSION_FX_POLICY","mission=" + this.mItem.mId + ";critical_fx=" + CRITICAL_COMBAT_FX_ENABLED + ";low_swf=" + FeatureTuner.USE_LOW_SWF + ";legacy_fire_fx_flag=" + FeatureTuner.USE_FIRE_CALL_EFFECTS);
+
+         var manager:DCResourceManager = DCResourceManager.getInstance();
+         var resource:String = param1.getIconGraphicsFile();
+         if(manager.isLoaded(resource))
          {
             this.mGraphicsLoaded = true;
-            if(FeatureTuner.USE_FIRE_CALL_EFFECTS)
+            if(CRITICAL_COMBAT_FX_ENABLED)
             {
-               this.materializeGraphics(_loc3_,_loc4_);
+               this.materializeGraphics(manager,resource);
             }
          }
          else
          {
             this.mGraphicsLoaded = false;
-            this.mLoadingCallbackEventType = _loc4_ + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
-            _loc3_.addEventListener(this.mLoadingCallbackEventType,this.LoadingFinished,false,0,true);
-            if(!_loc3_.isAddedToLoadingList(_loc4_))
+            this.mLoadingCallbackEventType = resource + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
+            manager.addEventListener(this.mLoadingCallbackEventType,this.LoadingFinished,false,0,true);
+            if(!manager.isAddedToLoadingList(resource))
             {
-               _loc3_.load(Config.DIR_DATA + _loc4_ + ".swf",_loc4_,null,false);
+               manager.load(Config.DIR_DATA + resource + ".swf",resource,null,false);
             }
          }
          if(this.mItem.mId == DOOMSDAY_NAME || this.mItem.mId.toLowerCase().indexOf("doomsday") >= 0)
@@ -102,7 +87,7 @@ package game.gameElements
          this.initSound();
          this.mStarted = false;
       }
-      
+
       private function getGraphicsSymbol() : String
       {
          return this.mGraphicsOverride && this.mGraphicsOverride.length > 0 ? this.mGraphicsOverride : this.mItem.getIconGraphics();
@@ -170,26 +155,26 @@ package game.gameElements
          }
          Utils.DiagEvent("FIREMISSION_GRAPHICS_FALLBACK","mission=" + this.mItem.mId + ";requested=" + param2 + ";projectile=rocket;impact=effect_explosion");
       }
-      
+
       public function initSound() : void
       {
-         var _loc1_:String = null;
+         var id:String = null;
          if(FeatureTuner.USE_ALL_FIRE_CALL_SOUND)
          {
-            _loc1_ = this.mItem.mId;
-            if(_loc1_ == "Mortar")
+            id = this.mItem.mId;
+            if(id == "Mortar")
             {
                this.mSound = ArmySoundManager.SC_FIRE_MISSION_MORTAR;
             }
-            else if(_loc1_ == "Napalm")
+            else if(id == "Napalm")
             {
                this.mSound = ArmySoundManager.SC_FIRE_MISSION_NAPALM;
             }
-            else if(_loc1_ == "Artillery")
+            else if(id == "Artillery")
             {
                this.mSound = ArmySoundManager.SC_FIRE_MISSION_ARTILLERY;
             }
-            else if(_loc1_ == "Doomsday")
+            else if(id == "Doomsday")
             {
                this.mSound = ArmySoundManager.SC_FIRE_MISSION_DOOMSDAY;
             }
@@ -204,29 +189,27 @@ package game.gameElements
          }
          this.mSound.load();
       }
-      
+
       public function LoadingFinished(param1:Event) : void
       {
-         var _loc3_:Class = null;
-         var _loc2_:DCResourceManager = DCResourceManager.getInstance();
-         _loc2_.removeEventListener(param1.type,this.LoadingFinished);
+         var manager:DCResourceManager = DCResourceManager.getInstance();
+         manager.removeEventListener(param1.type,this.LoadingFinished);
          this.mLoadingCallbackEventType = null;
          this.mGraphicsLoaded = true;
-         if(FeatureTuner.USE_FIRE_CALL_EFFECTS)
+         if(CRITICAL_COMBAT_FX_ENABLED)
          {
-            this.materializeGraphics(_loc2_,this.mItem.getIconGraphicsFile());
+            this.materializeGraphics(manager,this.mItem.getIconGraphicsFile());
          }
          if(this.mStarted)
          {
             this.start();
          }
       }
-      
+
       public function destroy() : void
       {
-         var _loc1_:MovieLoop = null;
-         var _loc2_:int = 0;
-         var _loc3_:int = 0;
+         var loop:MovieLoop = null;
+         var i:int = 0;
          if(parent)
          {
             parent.removeChild(this);
@@ -264,18 +247,17 @@ package game.gameElements
          }
          if(this.mDebrises)
          {
-            _loc2_ = int(this.mDebrises.length);
-            _loc3_ = 0;
-            while(_loc3_ < _loc2_)
+            i = 0;
+            while(i < this.mDebrises.length)
             {
-               _loc1_ = this.mDebrises[_loc3_] as MovieLoop;
-               _loc1_.destroy();
-               _loc3_++;
+               loop = this.mDebrises[i] as MovieLoop;
+               if(loop) loop.destroy();
+               i++;
             }
             this.mDebrises = null;
          }
       }
-      
+
       public function start() : void
       {
          this.mStarted = true;
@@ -286,12 +268,12 @@ package game.gameElements
          this.mAnimationStartMs = getTimer();
          this.mAnimationLastAdvanceMs = this.mAnimationStartMs;
          this.mAnimationEndLogged = false;
-         if(FeatureTuner.USE_FIRE_CALL_EFFECTS && this.mAnim)
+         if(CRITICAL_COMBAT_FX_ENABLED && this.mAnim)
          {
             this.mAnim.gotoAndStop(1);
             Utils.DiagEvent("FIREMISSION_ANIMATION","phase=start;mission=" + this.mItem.mId + ";symbol=" + this.getGraphicsSymbol() + ";frames=" + this.mAnim.totalFrames + ";target_fps=" + FIREMISSION_TARGET_FPS + ";mode=authored");
          }
-         else if(FeatureTuner.USE_FIRE_CALL_EFFECTS && this.mFallbackProjectileMode)
+         else if(CRITICAL_COMBAT_FX_ENABLED && this.mFallbackProjectileMode)
          {
             this.mFallbackImpacted = false;
             this.mFallbackFinished = false;
@@ -309,14 +291,14 @@ package game.gameElements
          }
          ArmySoundManager.getInstance().playSound(this.mSound.getSound());
       }
-      
+
       public function isOver() : Boolean
       {
          if(!this.mGraphicsLoaded)
          {
             return false;
          }
-         if(!FeatureTuner.USE_FIRE_CALL_EFFECTS)
+         if(!CRITICAL_COMBAT_FX_ENABLED)
          {
             return true;
          }
@@ -330,26 +312,23 @@ package game.gameElements
          }
          return this.mAnim.currentFrame >= this.mAnim.totalFrames;
       }
-      
+
       public function update() : void
       {
-         var _loc1_:Class = null;
-         var _loc2_:int = 0;
-         var _loc3_:int = 0;
-         var _loc4_:int = 0;
-         var _loc5_:IsometricScene = null;
-         var _loc6_:GridCell = null;
-         var _loc7_:int = 0;
-         var _loc8_:int = 0;
-         var _loc9_:MovieLoop = null;
-         if(!this.mGraphicsLoaded)
+         var debrisClass:Class = null;
+         var cellSize:int = 0;
+         var offsetX:int = 0;
+         var offsetY:int = 0;
+         var scene:IsometricScene = null;
+         var cell:GridCell = null;
+         var i:int = 0;
+         var loop:MovieLoop = null;
+
+         if(!this.mGraphicsLoaded || !CRITICAL_COMBAT_FX_ENABLED)
          {
             return;
          }
-         if(!FeatureTuner.USE_FIRE_CALL_EFFECTS)
-         {
-            return;
-         }
+
          var nowMs:int = getTimer();
          if(this.mFallbackProjectileMode)
          {
@@ -402,6 +381,7 @@ package game.gameElements
             }
             return;
          }
+
          if(!this.mAnim)
          {
             return;
@@ -428,6 +408,7 @@ package game.gameElements
                Utils.DiagEvent("FIREMISSION_ANIMATION","phase=end;mission=" + this.mItem.mId + ";elapsed_ms=" + Math.max(0,nowMs - this.mAnimationStartMs) + ";frames=" + this.mAnim.totalFrames);
             }
          }
+
          if(this.mColorEffectField)
          {
             if(this.mAnim.currentFrameLabel == "start_flash" && !this.mColorEffectField.mStarted)
@@ -439,48 +420,53 @@ package game.gameElements
                this.mColorEffectField.update();
             }
          }
+
          if(this.mAnim.currentFrameLabel == "debris")
          {
             if(!this.mDebrises)
             {
-               _loc1_ = DCResourceManager.getInstance().getSWFClass(Config.SWF_EFFECTS_NAME,"debris_animation");
-               if(!_loc1_)
+               debrisClass = DCResourceManager.getInstance().getSWFClass(Config.SWF_EFFECTS_NAME,"debris_animation");
+               if(!debrisClass)
                {
                   this.mDebrises = new Array();
                   Utils.DiagEvent("FIREMISSION_DEBRIS_MISS","mission=" + this.mItem.mId + ";resource=" + Config.SWF_EFFECTS_NAME + ";symbol=debris_animation");
                   return;
                }
-               _loc2_ = SceneLoader.GRID_CELL_SIZE;
-               _loc3_ = -_loc2_ / 2;
-               _loc4_ = -_loc2_ / 2;
-               _loc5_ = GameState.mInstance.mScene;
+               cellSize = SceneLoader.GRID_CELL_SIZE;
+               offsetX = -cellSize / 2;
+               offsetY = -cellSize / 2;
+               scene = GameState.mInstance.mScene;
                this.mDebrises = new Array();
-               _loc7_ = int(this.mCells.length);
-               _loc8_ = 0;
-               while(_loc8_ < _loc7_)
+               i = 0;
+               while(i < this.mCells.length)
                {
-                  if(!((_loc6_ = this.mCells[_loc8_] as GridCell).hasFog() || !_loc5_.isInsideVisibleArea(_loc6_) || !MapData.isTilePassable(_loc6_.mType)))
+                  cell = this.mCells[i] as GridCell;
+                  if(!(cell.hasFog() || !scene.isInsideVisibleArea(cell) || !MapData.isTilePassable(cell.mType)))
                   {
-                     if(!_loc6_.mObject && !_loc6_.mCharacter)
+                     if(!cell.mObject && !cell.mCharacter)
                      {
-                        (_loc9_ = new MovieLoop(new _loc1_(),_loc6_.mPosI * _loc2_ - _loc3_,_loc6_.mPosJ * _loc2_ - _loc4_,GameState.mInstance.mScene.mContainer,1,0)).mRemoveInTheEnd = false;
-                        this.mDebrises.push(_loc9_);
+                        loop = new MovieLoop(new debrisClass(),cell.mPosI * cellSize - offsetX,cell.mPosJ * cellSize - offsetY,scene.mContainer,1,0);
+                        loop.mRemoveInTheEnd = false;
+                        this.mDebrises.push(loop);
                      }
-                     else if(_loc6_.mObject && (_loc6_.mObject is DecorationObject && (_loc6_.mObject as DecorationObject).getHealth() == 0 && !(_loc6_.mObject.mItem as DecorationItem).mLeaveRuins) || _loc6_.mObject is EnemyInstallationObject && (_loc6_.mObject as EnemyInstallationObject).getHealth() == 0 || _loc6_.mObject is HFEPlotObject && (_loc6_.mObject as HFEPlotObject).getHealth() == 0)
+                     else if(cell.mObject && (cell.mObject is DecorationObject && (cell.mObject as DecorationObject).getHealth() == 0 && !(cell.mObject.mItem as DecorationItem).mLeaveRuins) || cell.mObject is EnemyInstallationObject && (cell.mObject as EnemyInstallationObject).getHealth() == 0 || cell.mObject is HFEPlotObject && (cell.mObject as HFEPlotObject).getHealth() == 0)
                      {
-                        (_loc9_ = new MovieLoop(new _loc1_(),_loc6_.mPosI * _loc2_ - _loc3_,_loc6_.mPosJ * _loc2_ - _loc4_,GameState.mInstance.mScene.mContainer,1,0)).mRemoveInTheEnd = false;
-                        this.mDebrises.push(_loc9_);
+                        loop = new MovieLoop(new debrisClass(),cell.mPosI * cellSize - offsetX,cell.mPosJ * cellSize - offsetY,scene.mContainer,1,0);
+                        loop.mRemoveInTheEnd = false;
+                        this.mDebrises.push(loop);
                      }
-                     else if(Boolean(_loc6_.mCharacter) && (!(_loc6_.mCharacter is PlayerUnit) || _loc6_.mCharacter.getHealth() > 0))
+                     else if(Boolean(cell.mCharacter) && (!(cell.mCharacter is PlayerUnit) || cell.mCharacter.getHealth() > 0))
                      {
-                        (_loc9_ = new MovieLoop(new _loc1_(),_loc6_.mPosI * _loc2_ - _loc3_,_loc6_.mPosJ * _loc2_ - _loc4_,GameState.mInstance.mScene.mContainer,1,0)).mRemoveInTheEnd = false;
-                        this.mDebrises.push(_loc9_);
+                        loop = new MovieLoop(new debrisClass(),cell.mPosI * cellSize - offsetX,cell.mPosJ * cellSize - offsetY,scene.mContainer,1,0);
+                        loop.mRemoveInTheEnd = false;
+                        this.mDebrises.push(loop);
                      }
                   }
-                  _loc8_++;
+                  i++;
                }
             }
          }
+
          if(this.mColorEffectScene)
          {
             if(this.mAnim.currentFrameLabel == "start_flash" && !this.mColorEffectScene.mStarted)

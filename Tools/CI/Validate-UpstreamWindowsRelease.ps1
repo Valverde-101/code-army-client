@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$AndroidBuildRoot,
-  [Parameter(Mandatory=$true)][string]$ExpectedSha
+  [Parameter(Mandatory=$true)][string]$ExpectedSha,
+  [switch]$SkipRuntime
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,6 +24,7 @@ Write-Host "UPSTREAM_RELEASE_TAG=$releaseTag"
 Write-Host "UPSTREAM_SOURCE_SHA=$sourceBaseSha"
 Write-Host "UPSTREAM_ASSET=$assetName"
 Write-Host "UPSTREAM_EXPECTED_SHA256=$expectedAssetSha256"
+Write-Host "UPSTREAM_RUNTIME_POLICY=$(if($SkipRuntime){'SKIP'}else{'RUN'})"
 
 $needsDownload = $true
 if (Test-Path -LiteralPath $zipPath) {
@@ -128,6 +130,15 @@ Write-Host "UPSTREAM_APP_EXE_SIZE=$($appExe.Length)"
 Write-Host "UPSTREAM_APP_EXE_SHA256=$appExeHash"
 Write-Host "UPSTREAM_EXE_VALIDATE=PASS"
 
+if($SkipRuntime){
+  Write-Host 'UPSTREAM_START=SKIPPED_WITH_REASON reason=iterative_windows_validation'
+  Write-Host 'UPSTREAM_SMOKE=SKIPPED_WITH_REASON reason=iterative_windows_validation'
+  Write-Host 'UPSTREAM_STABILITY_PARITY=SKIPPED_WITH_REASON reason=iterative_windows_validation'
+  Write-Host 'UPSTREAM_REFERENCE_VALIDATION=PASS scope=asset_extract_inventory_static'
+  Write-Host "UPSTREAM_REFERENCE_PATH=$extractRoot"
+  return
+}
+
 $runtimeValidator = Join-Path $PSScriptRoot 'Test-WindowsRuntime.ps1'
 $runtimeEvidence = Join-Path $logRoot 'runtime-upstream'
 $baselineStabilitySeconds = 45
@@ -140,5 +151,5 @@ $baselineStabilitySeconds = 45
 Write-Host "UPSTREAM_START=PASS criterion=validated_by_runtime_probe"
 Write-Host "UPSTREAM_SMOKE=PASS criterion=visible_window_visual_stability_${baselineStabilitySeconds}s"
 Write-Host "UPSTREAM_STABILITY_PARITY=PASS seconds=$baselineStabilitySeconds"
-Write-Host "UPSTREAM_REFERENCE_VALIDATION=PASS"
+Write-Host "UPSTREAM_REFERENCE_VALIDATION=PASS scope=runtime"
 Write-Host "UPSTREAM_REFERENCE_PATH=$extractRoot"
