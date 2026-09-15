@@ -28,8 +28,14 @@ function Replace-LiteralOne([string]$Text,[string]$Needle,[string]$Replacement,[
   if($first -lt 0){throw "ANDROID_EVIDENCE_ROOTFIX_V30=FAIL patch=$Name literal_missing"}
   $second=$Text.IndexOf($Needle,$first+$Needle.Length,[StringComparison]::Ordinal)
   if($second -ge 0){throw "ANDROID_EVIDENCE_ROOTFIX_V30=FAIL patch=$Name literal_ambiguous"}
-  Write-Host "EVIDENCE_ROOTFIX_V30_HOOK=PASS name=$Name matches=1"
+  Write-Host "EVIDENCE_ROOTFIX_V30_HOOK=PASS name=$Name matches=1 literal=true"
   return $Text.Substring(0,$first)+$Replacement+$Text.Substring($first+$Needle.Length)
+}
+function Replace-RegexOne([string]$Text,[string]$Pattern,[string]$Replacement,[string]$Name){
+  $matches=[regex]::Matches($Text,$Pattern)
+  if($matches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V30=FAIL patch=$Name semantic_match_count=$($matches.Count)"}
+  Write-Host "EVIDENCE_ROOTFIX_V30_HOOK=PASS name=$Name matches=1 semantic=true"
+  return [regex]::Replace($Text,$Pattern,$Replacement,1)
 }
 function Restore-OwnedFiles {
   if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){return}
@@ -73,9 +79,8 @@ try {
   # Ownership is restored before the first visible frame, but the authored border
   # renderer consumes cached GridCell.mBorderEdgeBits. A later conquest refreshed
   # those bits, which is why the white perimeter appeared only after capturing a
-  # cell. Commit topology once, after objects/missions have finished materializing,
-  # for both boot restore and map switches. This is intentionally a load-boundary
-  # full commit; per-capture mutations remain V29's bounded 3x3 refresh.
+  # cell. Commit topology once after materialization on both load boundaries.
+  # Per-capture mutations remain V29's bounded 3x3 refresh.
   $offline=Normalize-Lf ([IO.File]::ReadAllText($offlinePath))
   $helperAnchor="`n`t`tpublic static function generateSaveJson(): * {"
   $helper=@'
@@ -94,14 +99,21 @@ try {
 '@.TrimEnd()
   $offline=Replace-LiteralOne $offline $helperAnchor ($helper+$helperAnchor) 'territory_topology_helper'
 
-  $switchNeedle='`t`t`tUtils.DiagEvent("OFFLINE_MAP_TIMING","map=" + map_id + ";phase=fog_missions;ms=" + (getTimer() - mapPhaseStarted));'.Replace('`t',"`t")
-  $switchReplacement='`t`t`tcommitLoadedTerritoryTopology("switch:" + map_id);`n'+$switchNeedle
-  $switchReplacement=$switchReplacement.Replace('`t',"`t").Replace('`n',"`n")
-  $offline=Replace-LiteralOne $offline $switchNeedle $switchReplacement 'switch_map_topology_commit'
+  # Do not bind to formatting inserted by older overlays. Scope each hook from its
+  # method signature to a stable semantic statement and require exactly one match.
+  $switchPattern='(?s)(public\s+static\s+function\s+switchMap\s*\(\s*\)\s*:\s*void\s*\{.*?)(\n[ \t]*Utils\.DiagEvent\("OFFLINE_MAP_TIMING","map="\s*\+\s*map_id\s*\+\s*";phase=fog_missions;ms="\s*\+\s*\(getTimer\(\)\s*-\s*mapPhaseStarted\)\);)'
+  $switchReplacement=@'
+$1
+			commitLoadedTerritoryTopology("switch:" + map_id);$2
+'@.TrimEnd()
+  $offline=Replace-RegexOne $offline $switchPattern $switchReplacement 'switch_map_topology_commit'
 
-  $bootNeedle='`t`t`tMissionManager.findNewActiveMissions();`n`n`n`t`t`tGameState.mInstance.mLoadingStatesOver = true;'.Replace('`t',"`t").Replace('`n',"`n")
-  $bootReplacement='`t`t`tMissionManager.findNewActiveMissions();`n`t`t`tcommitLoadedTerritoryTopology("boot_restore:" + GameState.mInstance.mCurrentMapId);`n`n`t`t`tGameState.mInstance.mLoadingStatesOver = true;'.Replace('`t',"`t").Replace('`n',"`n")
-  $offline=Replace-LiteralOne $offline $bootNeedle $bootReplacement 'boot_restore_topology_commit'
+  $bootPattern='(?s)(public\s+static\s+function\s+loadProgress\s*\([^)]*\)\s*:\s*void\s*\{.*?)(\n[ \t]*GameState\.mInstance\.mLoadingStatesOver\s*=\s*true;)'
+  $bootReplacement=@'
+$1
+			commitLoadedTerritoryTopology("boot_restore:" + GameState.mInstance.mCurrentMapId);$2
+'@.TrimEnd()
+  $offline=Replace-RegexOne $offline $bootPattern $bootReplacement 'boot_restore_topology_commit'
 
   foreach($token in @(
     'private static function commitLoadedTerritoryTopology(param1: String): void',
@@ -113,30 +125,26 @@ try {
     'commitLoadedTerritoryTopology("boot_restore:" + GameState.mInstance.mCurrentMapId);'
   )){Require-Token $offline $token ('territory_contract_'+$token)}
 
-  $switchIndex=$offline.IndexOf('commitLoadedTerritoryTopology("switch:" + map_id);',[StringComparison]::Ordinal)
-  $switchDoneIndex=$offline.IndexOf('GameState.mInstance.mLoadingStatesOver = true;',$switchIndex,[StringComparison]::Ordinal)
-  if($switchIndex -lt 0 -or $switchDoneIndex -lt 0 -or $switchIndex -gt $switchDoneIndex){throw 'ANDROID_EVIDENCE_ROOTFIX_V30=FAIL switch_commit_order'}
-  $bootIndex=$offline.IndexOf('commitLoadedTerritoryTopology("boot_restore:" + GameState.mInstance.mCurrentMapId);',[StringComparison]::Ordinal)
-  if($bootIndex -lt 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V30=FAIL boot_commit_missing'}
+  $switchMethodIndex=$offline.IndexOf('public static function switchMap()',[StringComparison]::Ordinal)
+  $switchIndex=$offline.IndexOf('commitLoadedTerritoryTopology("switch:" + map_id);',$switchMethodIndex,[StringComparison]::Ordinal)
+  $switchTimingIndex=$offline.IndexOf('phase=fog_missions',$switchIndex,[StringComparison]::Ordinal)
+  if($switchMethodIndex -lt 0 -or $switchIndex -lt 0 -or $switchTimingIndex -lt 0 -or $switchIndex -gt $switchTimingIndex){throw 'ANDROID_EVIDENCE_ROOTFIX_V30=FAIL switch_commit_order'}
+  $loadMethodIndex=$offline.IndexOf('public static function loadProgress',[StringComparison]::Ordinal)
+  $bootIndex=$offline.IndexOf('commitLoadedTerritoryTopology("boot_restore:" + GameState.mInstance.mCurrentMapId);',$loadMethodIndex,[StringComparison]::Ordinal)
+  $bootDoneIndex=$offline.IndexOf('GameState.mInstance.mLoadingStatesOver = true;',$bootIndex,[StringComparison]::Ordinal)
+  if($loadMethodIndex -lt 0 -or $bootIndex -lt 0 -or $bootDoneIndex -lt 0 -or $bootIndex -gt $bootDoneIndex){throw 'ANDROID_EVIDENCE_ROOTFIX_V30=FAIL boot_commit_order'}
   Write-Utf8Bom $offlinePath $offline
 
-  # Snow map failure evidence shows Error #1009 propagating from
-  # Building.convertToSnow() through ArchiveMap.convertAllBuildingsToSnow(), which
-  # aborts the whole first-entry conversion. Building/ArchiveMap are authored
-  # classes that live in the canonical SWF rather than this tracked source subset.
-  # Patch the exact canonical Building class at SWF build time: decompile the
-  # produced SWF, locate the one convertToSnow implementation, wrap that building's
-  # conversion boundary, and reinsert it. A bad/missing optional snow visual can no
-  # longer abort conversion of every remaining building or the map transition.
+  # Physical evidence showed Error #1009 escaping Building.convertToSnow() and
+  # aborting ArchiveMap.convertAllBuildingsToSnow(). Building/ArchiveMap live in
+  # the canonical SWF, not the tracked replacement-source subset. Export the exact
+  # Building class from the exact produced SWF, isolate conversion failure to that
+  # building, reinsert the class, and fail closed if the class cannot be located.
   $patcher=Normalize-Lf ([IO.File]::ReadAllText($patcherPath))
   $patchAnchor='foreach($tmpSource in $tempSources){Remove-Item -LiteralPath $tmpSource -Force -ErrorAction SilentlyContinue}'
   $snowGuard=@'
 
 # Root fix V30: isolate authored snow-building conversion failures per building.
-# Physical evidence showed Error #1009 escaping Building.convertToSnow() and
-# aborting ArchiveMap.convertAllBuildingsToSnow(). Building is not part of the
-# tracked replacement-source subset, so derive the exact class from this exact
-# source SWF at build time and reinsert only that class.
 $snowExportRoot=Join-Path $outDir 'snow-building-v30-export'
 Remove-Item -LiteralPath $snowExportRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $snowExportRoot|Out-Null
@@ -178,7 +186,7 @@ for($scan=$snowOpen;$scan -lt $snowBuildingText.Length;$scan++){
 if($snowClose -le $snowOpen){throw 'SNOW_BUILDING_GUARD=FAIL phase=method_braces'}
 $snowBody=$snowBuildingText.Substring($snowOpen+1,$snowClose-$snowOpen-1)
 if($snowBody.Contains('SNOW_BUILDING_CONVERT_GUARD')){throw 'SNOW_BUILDING_GUARD=FAIL phase=already_instrumented'}
-$snowWrappedBody="`n         try {"+$snowBody+"`n         } catch(snowConversionError:Error) {`n            trace(\"[SNOW_BUILDING_CONVERT_GUARD] result=FALLBACK;type=\" + snowConversionError.name + \";message=\" + snowConversionError.message);`n         }`n      "
+$snowWrappedBody="`n         try {"+$snowBody+"`n         } catch(snowConversionError:Error) {`n            trace(`"[SNOW_BUILDING_CONVERT_GUARD] result=FALLBACK;type=`" + snowConversionError.name + `";message=`" + snowConversionError.message);`n         }`n      "
 $snowBuildingText=$snowBuildingText.Substring(0,$snowOpen+1)+$snowWrappedBody+$snowBuildingText.Substring($snowClose)
 [IO.File]::WriteAllText($snowBuildingSource,$snowBuildingText,(New-Object System.Text.UTF8Encoding($true)))
 
@@ -198,8 +206,16 @@ Write-Host "SNOW_BUILDING_GUARD=PASS class=$snowBuildingClass boundary=convertTo
   foreach($token in @('snow-building-v30-export','function\s+convertToSnow','SNOW_BUILDING_CONVERT_GUARD','SNOW_BUILDING_GUARD=PASS','Invoke-FFDecReplace -In $OutputSwf')){Require-Token $patcher $token ('snow_guard_contract_'+$token)}
   Write-Utf8Bom $patcherPath $patcher
 
-  Write-Host 'REGRESSION_CHECK=PASS name=territory_border_initial_restore topology_commit=before_visible_ready full_recalc=true full_tilemap_commit=true'
-  Write-Host 'REGRESSION_CHECK=PASS name=territory_border_map_switch topology_commit=after_missions before_loading_complete=true'
+  $psTokens=$null;$psErrors=$null
+  [void][System.Management.Automation.Language.Parser]::ParseFile($patcherPath,[ref]$psTokens,[ref]$psErrors)
+  if(@($psErrors).Count -gt 0){
+    $psErrors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V30_PATCHER_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
+    throw 'ANDROID_EVIDENCE_ROOTFIX_V30=FAIL patched_patcher_parser_invalid'
+  }
+  Write-Host 'EVIDENCE_ROOTFIX_V30_PATCHER_PARSER=PASS target=Patch-AndroidPerformanceSwf.ps1'
+
+  Write-Host 'REGRESSION_CHECK=PASS name=territory_border_initial_restore topology_commit=before_visible_ready full_recalc=true full_tilemap_commit=true semantic_hook=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=territory_border_map_switch topology_commit=after_missions before_timing_checkpoint=true semantic_hook=true'
   Write-Host 'REGRESSION_CHECK=PASS name=snow_building_conversion_failure_isolated scope=Building.convertToSnow map_wide_abort=false canonical_swf=true'
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V30_TERRITORY=PASS boot_restore=true map_switch=true per_capture=v29_local_refresh sha=$ExpectedSha"
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V30_SNOW=PASS strategy=canonical_swf_building_guard error1009_isolated=true sha=$ExpectedSha"
