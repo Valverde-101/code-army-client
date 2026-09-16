@@ -29,7 +29,9 @@ try {
   $anchorReplacement='  $patchAnchor=''$patchSpecs=@('''
   $text=[regex]::Replace($text,$anchorPattern,$anchorReplacement,1)
 
-  $insertPattern="(?m)^\s*\`$patcher=Replace-LiteralOne\s+\`$patcher\s+\`$patchAnchor.*'patcher_v33_runtime_classes'\s*$"
+  # Single-quoted regex keeps PowerShell from interpolating the literal variable
+  # names while \$ makes each dollar sign literal to the regex engine.
+  $insertPattern='(?m)^\s*\$patcher=Replace-LiteralOne\s+\$patcher\s+\$patchAnchor.*''patcher_v33_runtime_classes''\s*$'
   $insertMatches=[regex]::Matches($text,$insertPattern)
   if($insertMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V34=FAIL repair=patch_insertion expected=1 actual=$($insertMatches.Count)"}
   $insertReplacement=@'
