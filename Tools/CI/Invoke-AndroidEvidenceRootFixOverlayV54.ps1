@@ -22,13 +22,18 @@ if(-not(Test-Path -LiteralPath $v53 -PathType Leaf)){throw "ANDROID_EVIDENCE_ROO
 function Get-Sha256([string]$Path){(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()}
 function Normalize-Lf([string]$Text){$Text.Replace("`r`n","`n").Replace("`r","`n")}
 function Write-Utf8Bom([string]$Path,[string]$Text){[IO.File]::WriteAllText($Path,$Text,(New-Object System.Text.UTF8Encoding($true)))}
-function Replace-ExactOne([string]$Text,[string]$Needle,[string]$Replacement,[string]$Name){
-  $first=$Text.IndexOf($Needle,[StringComparison]::Ordinal)
-  if($first -lt 0){throw "ANDROID_EVIDENCE_ROOTFIX_V54=FAIL patch=$Name missing"}
-  $second=$Text.IndexOf($Needle,$first+$Needle.Length,[StringComparison]::Ordinal)
-  if($second -ge 0){throw "ANDROID_EVIDENCE_ROOTFIX_V54=FAIL patch=$Name ambiguous"}
-  Write-Host "EVIDENCE_ROOTFIX_V54_HOOK=PASS name=$Name matches=1"
-  return $Text.Substring(0,$first)+$Replacement+$Text.Substring($first+$Needle.Length)
+function Replace-RegressionCheckByName([string]$Text,[string]$CheckName,[string]$Replacement,[string]$Name){
+  $lines=@($Text -split "`n",-1)
+  $matches=New-Object System.Collections.Generic.List[int]
+  $quoted="'"+$CheckName+"'"
+  for($i=0;$i -lt $lines.Count;$i++){
+    $trim=$lines[$i].TrimStart()
+    if($trim.StartsWith('Require-Contains $swfPatch ') -and $lines[$i].Contains($quoted)){$matches.Add($i)}
+  }
+  if($matches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V54=FAIL patch=$Name semantic_count=$($matches.Count) check=$CheckName"}
+  $lines[$matches[0]]=$Replacement
+  Write-Host "EVIDENCE_ROOTFIX_V54_HOOK=PASS name=$Name matches=1 semantic=true check=$CheckName representation_independent=true"
+  return ($lines -join "`n")
 }
 function Restore-OwnedTest {
   if(-not(Test-Path -LiteralPath $manifestPath -PathType Leaf)){return}
@@ -65,7 +70,6 @@ try {
   [ordered]@{schema='armyattack-android-evidence-rootfix-overlay/v54';source_sha=$ExpectedSha;predecessor='v53';test_sha256=$baselineHash}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
   $test=Normalize-Lf ([IO.File]::ReadAllText($testPath))
-  $old="Require-Contains `$swfPatch '(?://.*)?\\z' 'ffdec_config_preprocessor_accepts_trailing_comments'"
   $new=@'
 $configRegexMatch=[regex]::Match($swfPatch,'\$candidate=\[regex\]::Match\(\$line,''([^'']+)''\)')
 if(-not $configRegexMatch.Success){throw 'REGRESSION=FAIL check=ffdec_config_preprocessor_regex_missing'}
@@ -80,7 +84,7 @@ Require-Contains $swfPatch 'parser=brace_depth_stack' 'ffdec_config_preprocessor
 Require-Contains $swfPatch '$stack=New-Object System.Collections.ArrayList' 'ffdec_config_preprocessor_supports_nested_blocks'
 Require-NotContains $swfPatch '$configIndent' 'ffdec_config_preprocessor_not_indent_sensitive'
 '@.TrimEnd()
-  $test=Replace-ExactOne $test $old $new 'migrate_ffdec_config_regression_contract'
+  $test=Replace-RegressionCheckByName $test 'ffdec_config_preprocessor_accepts_trailing_comments' $new 'migrate_ffdec_config_regression_contract'
   Write-Utf8Bom $testPath $test
 
   $tokens=$null
@@ -93,7 +97,7 @@ Require-NotContains $swfPatch '$configIndent' 'ffdec_config_preprocessor_not_ind
   foreach($token in @('configRegexMatch','parser_regex_executed=true','Get-AS3BraceDelta','FFDEC_CONFIG_BALANCE=PASS','ffdec_config_preprocessor_not_indent_sensitive')){
     if(-not $test.Contains($token)){throw "ANDROID_EVIDENCE_ROOTFIX_V54=FAIL verify=$token"}
   }
-  Write-Host 'REGRESSION_CHECK=PASS name=ffdec_config_test_contract_migrated stale_literal_z_removed=true executable_regex_sample=true structural_markers=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=ffdec_config_test_contract_migrated stale_literal_dependency_removed=true executable_regex_sample=true structural_markers=true representation_independent=true'
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V54=PASS mode=apply predecessor=v53 sha=$ExpectedSha root_cause=stale_static_regression_contract"
 }
 catch {
