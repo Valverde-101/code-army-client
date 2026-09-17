@@ -11,7 +11,7 @@ Set-StrictMode -Version Latest
 $effectiveMode=if($PSBoundParameters.ContainsKey('Mode')){$Mode}else{$RequestedMode}
 if($effectiveMode -notin @('Apply','Restore')){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL invalid_mode=$effectiveMode"}
 
-$impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV54.ps1'
+$impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV55.ps1'
 $v4=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV4.ps1'
 if(-not(Test-Path -LiteralPath $impl -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL delegate_missing=$impl"}
 if(-not(Test-Path -LiteralPath $v4 -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v4_missing=$v4"}
@@ -20,10 +20,10 @@ $tokens=$null
 $errors=$null
 [void][System.Management.Automation.Language.Parser]::ParseFile($impl,[ref]$tokens,[ref]$errors)
 if(@($errors).Count -gt 0){
-  $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V54_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
-  throw 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v54_parser_invalid'
+  $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V55_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
+  throw 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v55_parser_invalid'
 }
-Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_DELEGATE=PASS implementation=v54 predecessor=v53 canonical=v48 config_parser=brace_depth_stack regression_contract=structural legacy_adapters_bypassed=v49,v50,v51 parser=true'
+Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_DELEGATE=PASS implementation=v55 predecessor=v54 config_parser=brace_depth_stack active_config_gate=lexical regression_contract=structural legacy_adapters_bypassed=v49,v50,v51 parser=true'
 Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v14 requested=$RequestedMode external_mode=$Mode effective=$effectiveMode compatibility_parameter=Mode validates_manually=true"
 
 # V3 inserts commitOwnershipVisualNow between clearDirtyBitmapRegion and
@@ -43,7 +43,7 @@ try {
 
   & $impl -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -RequestedMode $effectiveMode
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL delegate_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=PASS delegated=v54 predecessor=v53 canonical=v48 mode=$effectiveMode sha=$ExpectedSha v4_boundary_fixed=true config_parser=brace_depth_stack regression_contract=structural legacy_adapters_bypassed=true"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=PASS delegated=v55 predecessor=v54 mode=$effectiveMode sha=$ExpectedSha v4_boundary_fixed=true config_parser=brace_depth_stack active_config_gate=lexical regression_contract=structural legacy_adapters_bypassed=true"
 }
 finally {
   [IO.File]::WriteAllBytes($v4,$original)
