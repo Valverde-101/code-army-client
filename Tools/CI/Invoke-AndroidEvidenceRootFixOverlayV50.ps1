@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
   [Parameter(Mandatory=$true)][string]$GitPath,
-  [ValidateSet('Apply','Restore')][string]$Mode='Apply'
+  [Alias('Mode')][ValidateSet('Apply','Restore')][string]$RequestedMode='Apply'
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -36,10 +36,11 @@ try {
     throw 'ANDROID_EVIDENCE_ROOTFIX_V50=FAIL patched_v48_parser_invalid'
   }
   Write-Host 'EVIDENCE_ROOTFIX_V50_COMPOSITION=PASS predecessor=v49 root=v48 activity_visibility=camera_viewport fog_visibility_rejected=true parser=true'
-  & $v49 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode $Mode
+  Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v50 requested=$RequestedMode internal_parameter=RequestedMode external_alias=Mode"
+  & $v49 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -RequestedMode $RequestedMode
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V50=FAIL predecessor_exit=$LASTEXITCODE"}
   Write-Host "REGRESSION_CHECK=PASS name=enemy_ai_activity_visibility source=isInsideVisibleArea fog_of_war_independent=true viewport_always_active=true"
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V50=PASS mode=$Mode predecessor=v49 sha=$ExpectedSha viewport_activity=true"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V50=PASS mode=$RequestedMode predecessor=v49 sha=$ExpectedSha viewport_activity=true"
 }
 finally {
   [IO.File]::WriteAllBytes($v48,$original)

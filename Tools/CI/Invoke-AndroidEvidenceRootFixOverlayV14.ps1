@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
   [Parameter(Mandatory=$true)][string]$GitPath,
-  [ValidateSet('Apply','Restore')][string]$Mode='Apply'
+  [Alias('Mode')][ValidateSet('Apply','Restore')][string]$RequestedMode='Apply'
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -20,6 +20,7 @@ if(@($errors).Count -gt 0){
   throw 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v51_parser_invalid'
 }
 Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_DELEGATE=PASS implementation=v46 adapters=v47+v48+v49+v50+v51 parser=true'
+Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v14 requested=$RequestedMode internal_parameter=RequestedMode external_alias=Mode"
 
 # V3 inserts commitOwnershipVisualNow between clearDirtyBitmapRegion and
 # updateCameraViewport. The old V4 range used updateCameraViewport as its end
@@ -36,9 +37,9 @@ try {
   [IO.File]::WriteAllText($v4,$text,(New-Object System.Text.UTF8Encoding($true)))
   Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPOSITION=PASS root_cause=v4_cross_method_span boundary=commitOwnershipVisualNow'
 
-  & $impl -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode $Mode
+  & $impl -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -RequestedMode $RequestedMode
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL delegate_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=PASS delegated=v46 adapters=v47,v48,v49,v50,v51 mode=$Mode sha=$ExpectedSha v4_boundary_fixed=true"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=PASS delegated=v46 adapters=v47,v48,v49,v50,v51 mode=$RequestedMode sha=$ExpectedSha v4_boundary_fixed=true"
 }
 finally {
   [IO.File]::WriteAllBytes($v4,$original)

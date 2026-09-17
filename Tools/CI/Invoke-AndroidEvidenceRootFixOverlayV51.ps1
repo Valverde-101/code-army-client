@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
   [Parameter(Mandatory=$true)][string]$GitPath,
-  [ValidateSet('Apply','Restore')][string]$Mode='Apply'
+  [Alias('Mode')][ValidateSet('Apply','Restore')][string]$RequestedMode='Apply'
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -61,12 +61,13 @@ try {
     throw 'ANDROID_EVIDENCE_ROOTFIX_V51=FAIL patched_v48_parser_invalid'
   }
   Write-Host 'EVIDENCE_ROOTFIX_V51_COMPOSITION=PASS predecessor=v50 root=v48 patch=ai_tuning_method_scoped census=all_alive tuner=spatial_active parser=true'
+  Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v51 requested=$RequestedMode internal_parameter=RequestedMode external_alias=Mode"
 
-  & $v50 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode $Mode
+  & $v50 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -RequestedMode $RequestedMode
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V51=FAIL predecessor_exit=$LASTEXITCODE"}
 
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_spatial_census_not_self_filtered refresh=all_alive tuner=active_set_only feedback_loop=false'
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V51=PASS mode=$Mode predecessor=v50 sha=$ExpectedSha ai_tuning_scope=semantic"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V51=PASS mode=$RequestedMode predecessor=v50 sha=$ExpectedSha ai_tuning_scope=semantic"
 }
 finally {
   [IO.File]::WriteAllBytes($v48,$original)
