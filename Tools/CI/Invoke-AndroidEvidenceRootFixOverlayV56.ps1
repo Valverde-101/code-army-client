@@ -94,44 +94,79 @@ function Get-JsonProperty($Object,[string]$Name){
   if($null -eq $Object){return $null}
   return @($Object.PSObject.Properties|Where-Object{$_.Name -eq $Name})|Select-Object -First 1
 }
+function Set-JsonProperty($Object,[string]$Name,$Value){
+  if($null -eq $Object){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL json_target_null property=$Name"}
+  $property=Get-JsonProperty $Object $Name
+  if($property){
+    $property.Value=$Value
+  }else{
+    $Object|Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+  }
+}
 function Get-PvpSetupSet($Cfg,[string]$MapId){
-  foreach($prop in @($Cfg.PVPAreaSetup.PSObject.Properties)){
-    $candidate=[string]$prop.Value.SetupSet
+  $areas=Get-JsonProperty $Cfg 'PVPAreaSetup'
+  if(-not $areas -or $null -eq $areas.Value){return $MapId}
+  foreach($prop in @($areas.Value.PSObject.Properties)){
+    $setup=Get-JsonProperty $prop.Value 'SetupSet'
+    if(-not $setup){continue}
+    $candidate=[string]$setup.Value
     if($candidate -and $candidate.Equals($MapId,[StringComparison]::OrdinalIgnoreCase)){return $candidate}
   }
   return $MapId
 }
+function Get-NormalizedCsvCellCount([string]$Path){
+  $raw=Get-Content -LiteralPath $Path -Raw
+  $count=0
+  foreach($token in ($raw -split ',')){
+    $value=(($token -replace "[\r\n]",'').Trim()).TrimStart([char]0xFEFF)
+    if($value.Length -gt 0){$count++}
+  }
+  return $count
+}
 function Ensure-PvpMapSetup([string]$Path){
   $cfg=Get-Content -LiteralPath $Path -Raw|ConvertFrom-Json
-  if(-not $cfg.MapSetup){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL config_mapsetup_missing path=$Path"}
-  if(-not $cfg.PvPMapProbability){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL config_probability_missing path=$Path"}
-  $template=$cfg.MapSetup.pvp_map_1_4valleys_11x11
-  if(-not $template){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL native_pvp_template_missing path=$Path"}
+  $mapSetupProperty=Get-JsonProperty $cfg 'MapSetup'
+  $probabilityProperty=Get-JsonProperty $cfg 'PvPMapProbability'
+  if(-not $mapSetupProperty -or $null -eq $mapSetupProperty.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL config_mapsetup_missing path=$Path"}
+  if(-not $probabilityProperty -or $null -eq $probabilityProperty.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL config_probability_missing path=$Path"}
+  $templateProperty=Get-JsonProperty $mapSetupProperty.Value 'pvp_map_1_4valleys_11x11'
+  if(-not $templateProperty -or $null -eq $templateProperty.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL native_pvp_template_missing path=$Path"}
+  $template=$templateProperty.Value
+  $nativeTileProperty=Get-JsonProperty $template 'TilemapFileName'
+  $nativeTileName=if($nativeTileProperty){[string]$nativeTileProperty.Value}else{'pvp_map_1_4valleys_11x11.csv'}
+  $tileSuffix=if($nativeTileName.EndsWith('.csv',[StringComparison]::OrdinalIgnoreCase)){'.csv'}else{''}
+  $nativeSwfProperty=Get-JsonProperty $template 'SWFFile'
+  $nativeSwf=if($nativeSwfProperty){$nativeSwfProperty.Value}else{'swf/new_backgroud_01'}
   foreach($map in $pvpMaps){
-    $prob=Get-JsonProperty $cfg.PvPMapProbability ([string]$map.Id)
+    $prob=Get-JsonProperty $probabilityProperty.Value ([string]$map.Id)
     if(-not $prob){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_probability_missing id=$($map.Id) path=$Path"}
-    $existing=Get-JsonProperty $cfg.MapSetup ([string]$map.Id)
+    $existing=Get-JsonProperty $mapSetupProperty.Value ([string]$map.Id)
     if(-not $existing){
       $entry=($template|ConvertTo-Json -Depth 30|ConvertFrom-Json)
-      $entry.Width=[string]$map.Width
-      $entry.Height=[string]$map.Height
-      $entry.DefaultCell_X='1'
-      $entry.DefaultCell_Y='1'
-      $entry.MapType=if($map.Kind -eq 'desert'){'#MapType.Desert'}else{'#MapType.Grassland'}
-      $entry.UnlockLevel='1'
-      $entry.TilemapFileName=[string]$map.Id
-      $entry.SWFFile=if($map.Kind -eq 'desert'){'swf/desert_backgroud_01'}else{[string]$template.SWFFile}
-      $entry.Name=('#TID_PVP_MAP_'+[string]$map.Number+'_NAME')
-      $entry.Type='#Scene.TypePvP'
-      $entry.SetupSet=Get-PvpSetupSet $cfg ([string]$map.Id)
-      if(Get-JsonProperty $entry 'ZoomLevels'){$entry.ZoomLevels='40, 75, 100'}
-      if(Get-JsonProperty $entry 'ZoomLevelsMobile'){$entry.ZoomLevelsMobile='70, 100, 140'}else{$entry|Add-Member -NotePropertyName 'ZoomLevelsMobile' -NotePropertyValue '70, 100, 140'}
-      $cfg.MapSetup|Add-Member -NotePropertyName ([string]$map.Id) -NotePropertyValue $entry
-      Write-Host "PVP_MAP_SETUP_RECONSTRUCTED=PASS id=$($map.Id) size=$($map.Width)x$($map.Height) type=$($map.Kind) setup=$($entry.SetupSet)"
+      Set-JsonProperty $entry 'Width' ([string]$map.Width)
+      Set-JsonProperty $entry 'Height' ([string]$map.Height)
+      Set-JsonProperty $entry 'MapType' (if($map.Kind -eq 'desert'){'#MapType.Desert'}else{'#MapType.Grassland'})
+      Set-JsonProperty $entry 'UnlockLevel' '1'
+      Set-JsonProperty $entry 'TilemapFileName' ([string]$map.Id+$tileSuffix)
+      if($map.Kind -eq 'desert'){
+        Set-JsonProperty $entry 'SWFFile' @('swf/new_backgroud_01','swf/desert_backgroud_01')
+      }else{
+        Set-JsonProperty $entry 'SWFFile' $nativeSwf
+      }
+      Set-JsonProperty $entry 'Name' ('#TID_PVP_MAP_'+[string]$map.Number+'_NAME')
+      Set-JsonProperty $entry 'Type' '#Scene.TypePvP'
+      Set-JsonProperty $entry 'SetupSet' (Get-PvpSetupSet $cfg ([string]$map.Id))
+      Set-JsonProperty $entry 'ZoomLevels' '40, 75, 100'
+      Set-JsonProperty $entry 'ZoomLevelsMobile' '40, 75, 100'
+      $mapSetupProperty.Value|Add-Member -NotePropertyName ([string]$map.Id) -NotePropertyValue $entry
+      $setupProperty=Get-JsonProperty $entry 'SetupSet'
+      $setupValue=if($setupProperty){[string]$setupProperty.Value}else{[string]$map.Id}
+      Write-Host "PVP_MAP_SETUP_RECONSTRUCTED=PASS id=$($map.Id) size=$($map.Width)x$($map.Height) type=$($map.Kind) setup=$setupValue powershell51_safe=true"
     }
   }
-  if(-not $cfg.MapSetup.Snow){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL snow_mapsetup_missing path=$Path"}
-  if([int]$cfg.MapSetup.Snow.UnlockLevel -gt 0){$cfg.MapSetup.Snow.UnlockLevel='0'}
+  $snowProperty=Get-JsonProperty $mapSetupProperty.Value 'Snow'
+  if(-not $snowProperty -or $null -eq $snowProperty.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL snow_mapsetup_missing path=$Path"}
+  Set-JsonProperty $snowProperty.Value 'UnlockLevel' '0'
   $json=$cfg|ConvertTo-Json -Depth 100
   Write-Utf8NoBom $Path $json
 }
@@ -152,7 +187,10 @@ function New-ReconstructedPvpCsv($Map){
     $rows.Add(($cells -join ','))
   }
   Write-Utf8NoBom $path (($rows -join "`n")+"`n")
-  Write-Host "PVP_MAP_TERRAIN_RECONSTRUCTED=PASS id=$($Map.Id) source=preserved_dimensions_and_tiletypes cells=$([int]$Map.Width*[int]$Map.Height) native=false"
+  $actual=Get-NormalizedCsvCellCount $path
+  $expected=[int]$Map.Width*[int]$Map.Height
+  if($actual -ne $expected){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL reconstructed_csv_cells id=$($Map.Id) expected=$expected actual=$actual"}
+  Write-Host "PVP_MAP_TERRAIN_RECONSTRUCTED=PASS id=$($Map.Id) source=preserved_dimensions_and_tiletypes cells=$actual native=false"
   return ('src\config\'+[string]$Map.Id+'.csv')
 }
 
@@ -305,13 +343,15 @@ try {
 
   # Validate all final invariants after every historical overlay has run.
   $baseCfg=Get-Content -LiteralPath $configBasePath -Raw|ConvertFrom-Json
+  $baseMapSetup=(Get-JsonProperty $baseCfg 'MapSetup').Value
   foreach($map in $pvpMaps){
     $id=[string]$map.Id
-    if(-not (Get-JsonProperty $baseCfg.MapSetup $id)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL final_mapsetup_missing=$id"}
+    if(-not (Get-JsonProperty $baseMapSetup $id)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL final_mapsetup_missing=$id"}
     $csv=Join-Path $RepoRoot ('src\config\'+$id+'.csv')
     if(-not(Test-Path -LiteralPath $csv -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL final_csv_missing=$id"}
-    $lineCount=@(Get-Content -LiteralPath $csv).Count
-    if($lineCount -ne [int]$map.Height){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL final_csv_height id=$id expected=$($map.Height) actual=$lineCount"}
+    $expectedCells=[int]$map.Width*[int]$map.Height
+    $actualCells=Get-NormalizedCsvCellCount $csv
+    if($actualCells -ne $expectedCells){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL final_csv_cells id=$id expected=$expectedCells actual=$actualCells"}
   }
   $mapData=Get-Content -LiteralPath $mapDataPath -Raw
   $offline=Get-Content -LiteralPath $offlinePath -Raw
@@ -327,8 +367,8 @@ try {
   Write-Host 'REGRESSION_CHECK=PASS name=attack_logic_decoupled_from_visual budget_ms=220 shooting_length_dependency=false effect_length_dependency=false'
   Write-Host 'REGRESSION_CHECK=PASS name=snow_final_product_invariant world_map=true unlocked=true runtime_type=true runtime_identity=true switch_transaction=requestWorldMapSwitch'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_optimization_preserved target=24 refresh_ms=1500 visual_update_ms=250'
-  Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_complete maps=12 native=1 reconstructed=11 probability_metadata=preserved'
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha capture=true snow=true attack_budget_ms=220 pvp_maps=12 spatial_ai=true"
+  Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_complete maps=12 native=1 reconstructed=11 probability_metadata=preserved zoom_mobile=40,75,100'
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha capture=true snow=true attack_budget_ms=220 pvp_maps=12 spatial_ai=true powershell51_safe=true"
 }
 catch {
   $failure=$_
