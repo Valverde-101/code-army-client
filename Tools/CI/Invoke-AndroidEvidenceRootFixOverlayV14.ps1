@@ -2,10 +2,14 @@ param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
   [Parameter(Mandatory=$true)][string]$GitPath,
-  [Alias('Mode')][ValidateSet('Apply','Restore')][string]$RequestedMode='Apply'
+  [ValidateSet('Apply','Restore')][string]$RequestedMode='Apply',
+  [string]$Mode=''
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+
+$effectiveMode=if($PSBoundParameters.ContainsKey('Mode')){$Mode}else{$RequestedMode}
+if($effectiveMode -notin @('Apply','Restore')){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL invalid_mode=$effectiveMode"}
 
 $impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV51.ps1'
 $v4=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV4.ps1'
@@ -20,7 +24,7 @@ if(@($errors).Count -gt 0){
   throw 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v51_parser_invalid'
 }
 Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_DELEGATE=PASS implementation=v46 adapters=v47+v48+v49+v50+v51 parser=true'
-Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v14 requested=$RequestedMode internal_parameter=RequestedMode external_alias=Mode"
+Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v14 requested=$RequestedMode external_mode=$Mode effective=$effectiveMode compatibility_parameter=Mode alias=none"
 
 # V3 inserts commitOwnershipVisualNow between clearDirtyBitmapRegion and
 # updateCameraViewport. The old V4 range used updateCameraViewport as its end
@@ -37,9 +41,9 @@ try {
   [IO.File]::WriteAllText($v4,$text,(New-Object System.Text.UTF8Encoding($true)))
   Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPOSITION=PASS root_cause=v4_cross_method_span boundary=commitOwnershipVisualNow'
 
-  & $impl -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -RequestedMode $RequestedMode
+  & $impl -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -RequestedMode $effectiveMode
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL delegate_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=PASS delegated=v46 adapters=v47,v48,v49,v50,v51 mode=$RequestedMode sha=$ExpectedSha v4_boundary_fixed=true"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=PASS delegated=v46 adapters=v47,v48,v49,v50,v51 mode=$effectiveMode sha=$ExpectedSha v4_boundary_fixed=true"
 }
 finally {
   [IO.File]::WriteAllBytes($v4,$original)
