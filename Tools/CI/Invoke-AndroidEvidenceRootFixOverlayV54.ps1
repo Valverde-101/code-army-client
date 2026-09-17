@@ -67,7 +67,7 @@ try {
   $test=Normalize-Lf ([IO.File]::ReadAllText($testPath))
   $old="Require-Contains `$swfPatch '(?://.*)?\\z' 'ffdec_config_preprocessor_accepts_trailing_comments'"
   $new=@'
-$configRegexMatch=[regex]::Match($swfPatch,"\$candidate=\[regex\]::Match\(\$line,'([^']+)'\)")
+$configRegexMatch=[regex]::Match($swfPatch,'\$candidate=\[regex\]::Match\(\$line,''([^'']+)''\)')
 if(-not $configRegexMatch.Success){throw 'REGRESSION=FAIL check=ffdec_config_preprocessor_regex_missing'}
 $configRegex=$configRegexMatch.Groups[1].Value
 foreach($sample in @('CONFIG::BUILD_FOR_MOBILE_AIR {','  CONFIG::BUILD_FOR_MOBILE_AIR { // trailing comment','CONFIG::BUILD_FOR_AIR { // donor branch')){
