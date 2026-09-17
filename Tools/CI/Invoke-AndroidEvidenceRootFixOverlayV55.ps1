@@ -27,7 +27,7 @@ function Replace-ExactOne([string]$Text,[string]$Needle,[string]$Replacement,[st
   if($first -lt 0){throw "ANDROID_EVIDENCE_ROOTFIX_V55=FAIL patch=$Name missing"}
   $second=$Text.IndexOf($Needle,$first+$Needle.Length,[StringComparison]::Ordinal)
   if($second -ge 0){throw "ANDROID_EVIDENCE_ROOTFIX_V55=FAIL patch=$Name ambiguous"}
-  Write-Host "EVIDENCE_ROOTFIX_V55_HOOK=PASS name=$Name matches=1 semantic=false"
+  Write-Host "EVIDENCE_ROOTFIX_V55_HOOK=PASS name=$Name matches=1"
   return $Text.Substring(0,$first)+$Replacement+$Text.Substring($first+$Needle.Length)
 }
 function Restore-OwnedPatcher {
@@ -67,7 +67,7 @@ try {
   $patcher=Normalize-Lf ([IO.File]::ReadAllText($patcherPath))
   $helperAnchor=@'
 function Convert-MobileAirSourceForFFDec([string]$Source,[string]$Destination,[string]$ClassName){
-'@
+'@.TrimEnd()
   $helper=@'
 function Test-AS3ActiveConfigDirective([string]$Text){
   $inBlockComment=$false
@@ -82,26 +82,28 @@ function Test-AS3ActiveConfigDirective([string]$Text){
     }
     if([int]$quote -ne 0){
       if($escaped){$escaped=$false;continue}
-      if($ch -eq '\'){$escaped=$true;continue}
+      if([int]$ch -eq 92){$escaped=$true;continue}
       if($ch -eq $quote){$quote=[char]0}
       continue
     }
     if($ch -eq '/' -and $next -eq '/'){
-      while($i -lt $Text.Length -and $Text[$i] -ne "`n"){$i++}
+      while($i -lt $Text.Length -and [int]$Text[$i] -ne 10){$i++}
       continue
     }
     if($ch -eq '/' -and $next -eq '*'){$inBlockComment=$true;$i++;continue}
-    if($ch -eq '"' -or $ch -eq "'"){$quote=$ch;continue}
+    if([int]$ch -eq 34 -or [int]$ch -eq 39){$quote=$ch;continue}
     if($ch -eq 'C' -and $i+8 -le $Text.Length -and $Text.Substring($i,8) -ceq 'CONFIG::'){return $true}
   }
   return $false
 }
 
 function Convert-MobileAirSourceForFFDec([string]$Source,[string]$Destination,[string]$ClassName){
-'@
-  $patcher=Replace-ExactOne $patcher $helperAnchor.TrimStart("`n") $helper.TrimStart("`n") 'active_config_lexer_helper'
+'@.TrimEnd()
+  $patcher=Replace-ExactOne $patcher $helperAnchor $helper 'active_config_lexer_helper'
 
-  $oldGate='  if($text -match ''CONFIG::''){throw "SWF_PERF_PATCH=FAIL config_directive_survived source=$Source"}'
+  $oldGate=@'
+  if($text -match 'CONFIG::'){throw "SWF_PERF_PATCH=FAIL config_directive_survived source=$Source"}
+'@.TrimEnd()
   $newGate=@'
   if(Test-AS3ActiveConfigDirective -Text $text){throw "SWF_PERF_PATCH=FAIL active_config_directive_survived source=$Source"}
   Write-Host "FFDEC_CONFIG_ACTIVE_DIRECTIVES=PASS class=$ClassName active=0 comments_ignored=true strings_ignored=true"
@@ -113,16 +115,17 @@ function Convert-MobileAirSourceForFFDec([string]$Source,[string]$Destination,[s
 $commentedConfig="/*`nCONFIG::BUILD_FOR_MOBILE_AIR {`n  var disabled:Boolean = true;`n}`n*/"
 $lineCommentConfig='// CONFIG::BUILD_FOR_AIR { disabled }'
 $stringConfig='var marker:String = "CONFIG::BUILD_FOR_AIR {";'
+$escapedStringConfig='var marker:String = "quoted \"CONFIG::BUILD_FOR_AIR {\" marker";'
 $activeConfig="CONFIG::BUILD_FOR_AIR {`n}"
-foreach($probe in @($commentedConfig,$lineCommentConfig,$stringConfig)){
+foreach($probe in @($commentedConfig,$lineCommentConfig,$stringConfig,$escapedStringConfig)){
   if(Test-AS3ActiveConfigDirective -Text $probe){throw 'SWF_PERF_PATCH=FAIL config_lexer_selftest_false_positive'}
 }
 if(-not(Test-AS3ActiveConfigDirective -Text $activeConfig)){throw 'SWF_PERF_PATCH=FAIL config_lexer_selftest_false_negative'}
-Write-Host 'FFDEC_CONFIG_LEXER_SELFTEST=PASS block_comment=true line_comment=true string=true active_directive=true fail_closed=true'
+Write-Host 'FFDEC_CONFIG_LEXER_SELFTEST=PASS block_comment=true line_comment=true string=true escaped_string=true active_directive=true fail_closed=true'
 
 Remove-Item -LiteralPath $OutputSwf -Force -ErrorAction SilentlyContinue
-'@
-  $patcher=Replace-ExactOne $patcher $runAnchor $selfTest.TrimEnd() 'active_config_lexer_selftest'
+'@.TrimEnd()
+  $patcher=Replace-ExactOne $patcher $runAnchor $selfTest 'active_config_lexer_selftest'
 
   Write-Utf8Bom $patcherPath $patcher
   $tokens=$null
@@ -132,11 +135,11 @@ Remove-Item -LiteralPath $OutputSwf -Force -ErrorAction SilentlyContinue
     $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V55_PATCHER_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
     throw 'ANDROID_EVIDENCE_ROOTFIX_V55=FAIL patched_patcher_parser_invalid'
   }
-  foreach($token in @('Test-AS3ActiveConfigDirective','FFDEC_CONFIG_ACTIVE_DIRECTIVES=PASS','FFDEC_CONFIG_LEXER_SELFTEST=PASS','active_config_directive_survived','comments_ignored=true','strings_ignored=true')){
+  foreach($token in @('Test-AS3ActiveConfigDirective','FFDEC_CONFIG_ACTIVE_DIRECTIVES=PASS','FFDEC_CONFIG_LEXER_SELFTEST=PASS','active_config_directive_survived','comments_ignored=true','strings_ignored=true','escaped_string=true')){
     if(-not $patcher.Contains($token)){throw "ANDROID_EVIDENCE_ROOTFIX_V55=FAIL verify=$token"}
   }
   if($patcher.Contains("if(`$text -match 'CONFIG::')")){throw 'ANDROID_EVIDENCE_ROOTFIX_V55=FAIL stale_raw_config_gate_survived'}
-  Write-Host 'REGRESSION_CHECK=PASS name=ffdec_config_survivor_gate lexical=true block_comments_ignored=true line_comments_ignored=true strings_ignored=true active_directive_fail_closed=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=ffdec_config_survivor_gate lexical=true block_comments_ignored=true line_comments_ignored=true strings_ignored=true escaped_strings_ignored=true active_directive_fail_closed=true'
   Write-Host 'REGRESSION_CHECK=PASS name=snow_dialog_commented_mobile_config accepted=true active_air_blocks_preprocessed=true expected_opened=2 expected_closed=2'
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V55=PASS mode=apply predecessor=v54 sha=$ExpectedSha root_cause=comment_blind_config_survivor_gate"
 }
