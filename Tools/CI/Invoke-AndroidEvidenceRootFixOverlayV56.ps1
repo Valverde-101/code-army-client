@@ -146,16 +146,14 @@ function Ensure-PvpMapSetup([string]$Path){
       Set-JsonProperty $entry 'Width' ([string]$map.Width)
       Set-JsonProperty $entry 'Height' ([string]$map.Height)
       $mapType=if($map.Kind -eq 'desert'){'#MapType.Desert'}else{'#MapType.Grassland'}
-      Set-JsonProperty $entry 'MapType' $mapType
-      Set-JsonProperty $entry 'UnlockLevel' '1'
+      Set-JsonProperty $entry 'Type' $mapType
       Set-JsonProperty $entry 'TilemapFileName' ([string]$map.Id+$tileSuffix)
       if($map.Kind -eq 'desert'){
         Set-JsonProperty $entry 'SWFFile' @('swf/new_backgroud_01','swf/desert_backgroud_01')
       }else{
         Set-JsonProperty $entry 'SWFFile' $nativeSwf
       }
-      Set-JsonProperty $entry 'Name' ('#TID_PVP_MAP_'+[string]$map.Number+'_NAME')
-      Set-JsonProperty $entry 'Type' '#Scene.TypePvP'
+      Set-JsonProperty $entry 'Name' ('#TID.PVP_MAP_'+[string]$map.Number)
       Set-JsonProperty $entry 'SetupSet' (Get-PvpSetupSet $cfg ([string]$map.Id))
       Set-JsonProperty $entry 'ZoomLevels' '40, 75, 100'
       Set-JsonProperty $entry 'ZoomLevelsMobile' '40, 75, 100'
@@ -164,7 +162,26 @@ function Ensure-PvpMapSetup([string]$Path){
       $setupValue=if($setupProperty){[string]$setupProperty.Value}else{[string]$map.Id}
       Write-Host "PVP_MAP_SETUP_RECONSTRUCTED=PASS id=$($map.Id) size=$($map.Width)x$($map.Height) type=$($map.Kind) setup=$setupValue powershell51_safe=true"
     }
+    $resolved=Get-JsonProperty $mapSetupProperty.Value ([string]$map.Id)
+    if(-not $resolved -or $null -eq $resolved.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL reconstructed_map_missing id=$($map.Id)"}
+    $nameProperty=Get-JsonProperty $resolved.Value 'Name'
+    $typeProperty=Get-JsonProperty $resolved.Value 'Type'
+    $expectedName='#TID.PVP_MAP_'+[string]$map.Number
+    $expectedType=if($map.Kind -eq 'desert'){'#MapType.Desert'}else{'#MapType.Grassland'}
+    if(-not $nameProperty -or [string]$nameProperty.Value -ne $expectedName){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_name_reference id=$($map.Id) expected=$expectedName actual=$([string]$nameProperty.Value)"}
+    if(-not $typeProperty -or [string]$typeProperty.Value -ne $expectedType){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_type_reference id=$($map.Id) expected=$expectedType actual=$([string]$typeProperty.Value)"}
+    if(Get-JsonProperty $resolved.Value 'MapType'){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_noncanonical_maptype_property id=$($map.Id)"}
   }
+  foreach($lang in @('en','de','fr','it','es')){
+    $langPath=Join-Path $RepoRoot ('src\config\army_config_'+$lang+'.json')
+    if(-not(Test-Path -LiteralPath $langPath -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_translation_file_missing lang=$lang"}
+    $langRaw=Get-Content -LiteralPath $langPath -Raw
+    foreach($map in $pvpMaps){
+      $translationKey='"PVP_MAP_'+[string]$map.Number+'"'
+      if(-not $langRaw.Contains($translationKey)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_translation_missing lang=$lang id=$($map.Id) key=$translationKey"}
+    }
+  }
+  Write-Host 'PVP_MAP_REFERENCE_CONTRACT=PASS maps=12 name=#TID.PVP_MAP_N type=#MapType kind=grassland|desert translations=en,de,fr,it,es synthetic_scene_reference=false'
   $snowProperty=Get-JsonProperty $mapSetupProperty.Value 'Snow'
   if(-not $snowProperty -or $null -eq $snowProperty.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL snow_mapsetup_missing path=$Path"}
   Set-JsonProperty $snowProperty.Value 'UnlockLevel' '0'
