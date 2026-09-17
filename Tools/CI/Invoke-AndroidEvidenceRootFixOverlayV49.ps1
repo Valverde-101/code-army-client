@@ -33,7 +33,7 @@ $new=@'
 $count=([regex]::Matches($source,[regex]::Escape($old))).Count
 if($count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V49=FAIL composition_anchor expected=1 actual=$count"}
 $patched=$source.Replace($old,$new)
-if($patched -notmatch 'manualSavePattern' -or $patched -match "Replace-One \$hud 'this\.savePortableAndShare\(\);'"){
+if($patched -notmatch 'manualSavePattern' -or $patched.Contains($old)){
   throw 'ANDROID_EVIDENCE_ROOTFIX_V49=FAIL semantic_patch_not_applied'
 }
 
