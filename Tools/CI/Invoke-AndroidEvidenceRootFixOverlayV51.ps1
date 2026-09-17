@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$ExpectedSha,
   [Parameter(Mandatory=$true)][string]$GitPath,
-  [Alias('Mode')][ValidateSet('Apply','Restore')][string]$RequestedMode='Apply'
+  [ValidateSet('Apply','Restore')][string]$RequestedMode='Apply'
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -61,7 +61,7 @@ try {
     throw 'ANDROID_EVIDENCE_ROOTFIX_V51=FAIL patched_v48_parser_invalid'
   }
   Write-Host 'EVIDENCE_ROOTFIX_V51_COMPOSITION=PASS predecessor=v50 root=v48 patch=ai_tuning_method_scoped census=all_alive tuner=spatial_active parser=true'
-  Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v51 requested=$RequestedMode internal_parameter=RequestedMode external_alias=Mode"
+  Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v51 requested=$RequestedMode parameter=RequestedMode alias=none"
 
   & $v50 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -RequestedMode $RequestedMode
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V51=FAIL predecessor_exit=$LASTEXITCODE"}
