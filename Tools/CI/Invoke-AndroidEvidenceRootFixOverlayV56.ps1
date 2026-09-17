@@ -145,7 +145,8 @@ function Ensure-PvpMapSetup([string]$Path){
       $entry=($template|ConvertTo-Json -Depth 30|ConvertFrom-Json)
       Set-JsonProperty $entry 'Width' ([string]$map.Width)
       Set-JsonProperty $entry 'Height' ([string]$map.Height)
-      Set-JsonProperty $entry 'MapType' (if($map.Kind -eq 'desert'){'#MapType.Desert'}else{'#MapType.Grassland'})
+      $mapType=if($map.Kind -eq 'desert'){'#MapType.Desert'}else{'#MapType.Grassland'}
+      Set-JsonProperty $entry 'MapType' $mapType
       Set-JsonProperty $entry 'UnlockLevel' '1'
       Set-JsonProperty $entry 'TilemapFileName' ([string]$map.Id+$tileSuffix)
       if($map.Kind -eq 'desert'){
