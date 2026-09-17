@@ -171,6 +171,68 @@ function Ensure-PvpMapSetup([string]$Path){
   $json=$cfg|ConvertTo-Json -Depth 100
   Write-Utf8NoBom $Path $json
 }
+function Get-JsonObjectSpan([string]$Text,[string]$PropertyName){
+  $pattern='"'+[regex]::Escape($PropertyName)+'"\s*:\s*\{'
+  $match=[regex]::Match($Text,$pattern)
+  if(-not $match.Success){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL json_object_missing property=$PropertyName"}
+  $open=$Text.IndexOf('{',$match.Index)
+  if($open -lt 0){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL json_object_open_missing property=$PropertyName"}
+  $depth=0
+  $inString=$false
+  $escaped=$false
+  for($i=$open;$i -lt $Text.Length;$i++){
+    $c=$Text[$i]
+    if($inString){
+      if($escaped){$escaped=$false;continue}
+      if($c -eq '\'){$escaped=$true;continue}
+      if($c -eq '"'){$inString=$false}
+      continue
+    }
+    if($c -eq '"'){$inString=$true;continue}
+    if($c -eq '{'){$depth++;continue}
+    if($c -eq '}'){
+      $depth--
+      if($depth -eq 0){return [pscustomobject]@{Open=$open;Close=$i}}
+    }
+  }
+  throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL json_object_unclosed property=$PropertyName"
+}
+function Sync-PvpMapSetupText([string]$SourcePath,[string]$TargetPath){
+  # army_config.json intentionally contains case-sensitive keys such as ID/id.
+  # Windows PowerShell 5.1 ConvertFrom-Json rejects those as duplicates, so only
+  # the MapSetup object is edited lexically; every unrelated byte-semantic key is preserved.
+  $sourceCfg=Get-Content -LiteralPath $SourcePath -Raw|ConvertFrom-Json
+  $sourceMapProperty=Get-JsonProperty $sourceCfg 'MapSetup'
+  if(-not $sourceMapProperty -or $null -eq $sourceMapProperty.Value){throw 'ANDROID_EVIDENCE_ROOTFIX_V56=FAIL source_mapsetup_missing_for_text_sync'}
+  $raw=Normalize-Lf ([IO.File]::ReadAllText($TargetPath))
+  $span=Get-JsonObjectSpan $raw 'MapSetup'
+  $body=$raw.Substring($span.Open+1,$span.Close-$span.Open-1)
+  $entries=New-Object System.Collections.Generic.List[string]
+  foreach($map in $pvpMaps){
+    if([bool]$map.Native){continue}
+    $id=[string]$map.Id
+    $needle='"'+$id+'"'
+    if($body.Contains($needle)){continue}
+    $sourceEntry=Get-JsonProperty $sourceMapProperty.Value $id
+    if(-not $sourceEntry -or $null -eq $sourceEntry.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL source_mapsetup_missing_for_text_sync id=$id"}
+    $entryJson=$sourceEntry.Value|ConvertTo-Json -Depth 30 -Compress
+    $entries.Add(('    "'+$id+'": '+$entryJson))
+  }
+  if($entries.Count -gt 0){
+    $existing=$body.Trim()
+    $separator=if($existing.Length -gt 0){","}else{""}
+    $insert=$separator+"`n"+($entries -join ",`n")+"`n"
+    $raw=$raw.Substring(0,$span.Close)+$insert+$raw.Substring($span.Close)
+  }
+  $verifySpan=Get-JsonObjectSpan $raw 'MapSetup'
+  $verifyBody=$raw.Substring($verifySpan.Open+1,$verifySpan.Close-$verifySpan.Open-1)
+  foreach($map in $pvpMaps){
+    $id=[string]$map.Id
+    if(-not $verifyBody.Contains(('"'+$id+'"'))){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL full_config_text_sync_missing id=$id"}
+  }
+  Write-Utf8NoBom $TargetPath $raw
+  Write-Host "PVP_FULL_CONFIG_TEXT_SYNC=PASS maps=12 inserted=$($entries.Count) parser=brace_depth case_sensitive_keys_preserved=true convertfromjson=false"
+}
 function New-ReconstructedPvpCsv($Map){
   $path=Join-Path $RepoRoot ('src\config\'+[string]$Map.Id+'.csv')
   if(Test-Path -LiteralPath $path -PathType Leaf){return $null}
@@ -318,10 +380,10 @@ try {
   Write-Utf8Bom $worldMapPath $world
 
   # Restore the complete PvP catalog from metadata that survived in the v23.2
-  # config. The 11 missing historical terrain CSVs are explicitly reconstructed,
-  # deterministic and unique; they are never claimed as byte-original archives.
+  # config. The compact base config is PowerShell-safe. The full config has
+  # intentional case-sensitive ID/id keys and is synchronized lexically instead.
   Ensure-PvpMapSetup $configBasePath
-  Ensure-PvpMapSetup $configFullPath
+  Sync-PvpMapSetupText $configBasePath $configFullPath
   foreach($map in $pvpMaps){
     if(-not [bool]$map.Native){[void](New-ReconstructedPvpCsv $map)}
   }
@@ -368,7 +430,7 @@ try {
   Write-Host 'REGRESSION_CHECK=PASS name=attack_logic_decoupled_from_visual budget_ms=220 shooting_length_dependency=false effect_length_dependency=false'
   Write-Host 'REGRESSION_CHECK=PASS name=snow_final_product_invariant world_map=true unlocked=true runtime_type=true runtime_identity=true switch_transaction=requestWorldMapSwitch'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_optimization_preserved target=24 refresh_ms=1500 visual_update_ms=250'
-  Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_complete maps=12 native=1 reconstructed=11 probability_metadata=preserved zoom_mobile=40,75,100'
+  Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_complete maps=12 native=1 reconstructed=11 probability_metadata=preserved zoom_mobile=40,75,100 full_config_case_sensitive=true'
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha capture=true snow=true attack_budget_ms=220 pvp_maps=12 spatial_ai=true powershell51_safe=true"
 }
 catch {
