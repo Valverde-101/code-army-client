@@ -502,6 +502,8 @@ Require-Contains $enemyMoving 'GameState.mInstance.mState == GameState.STATE_PLA
 Require-Contains $enemyMoving 'String(GameState.mInstance.mCurrentMapId).indexOf("pvp_") != 0' 'campaign_enemy_capture_excludes_pvp_maps'
 Require-Contains $enemyMoving '_loc21_ < currentDistance' 'campaign_enemy_movement_requires_forward_progress'
 Require-Contains $enemyMoving 'this.headToThePlayerArea();' 'campaign_enemy_movement_has_pathfinding_fallback'
+Require-Contains $enemyMoving 'getPlayerUnitsAndObjects();' 'campaign_enemy_pathfinding_targets_units_and_structures'
+Require-NotContains $enemyMoving 'getPlayerBuildingTargets();' 'campaign_enemy_pathfinding_not_building_only'
 Require-NotContains $enemyMoving 'isInsideVisibleArea(_loc10_)' 'campaign_enemy_local_step_is_camera_independent'
 Require-NotContains $enemyMoving 'isInsideVisibleArea(_loc12_)' 'campaign_enemy_pathfinding_is_camera_independent'
 Require-Contains $playerUnit 'MAX_OFFLINE_REPAIRS:int = 3' 'player_unit_has_three_repair_lives'

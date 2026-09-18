@@ -258,7 +258,7 @@ package game.actions
             }
             _loc9_++;
          }
-         var _loc10_:Array = (mActor as Element).mScene.getPlayerBuildingTargets();
+         var _loc10_:Array = (mActor as Element).mScene.getPlayerUnitsAndObjects();
          if(_loc1_.length > 0)
          {
             _loc14_ = int.MAX_VALUE;
