@@ -385,18 +385,24 @@ try {
   # for genuinely unknown enemy IDs.
   $enemy=Normalize-Lf ([IO.File]::ReadAllText($enemyPath))
   if(-not $enemy.Contains('UNIT_ID_ELITE_DROID')){
-    $eliteDroidConstants=@'
-      public static const UNIT_ID_DROID:String = "Droid";
-
-      public static const UNIT_ID_ELITE_DROID:String = "EliteDroid";
-'@.TrimEnd()
-    $enemy=Replace-ExactOne $enemy '      public static const UNIT_ID_DROID:String = "Droid";' (Normalize-Lf $eliteDroidConstants) 'snow_elite_droid_constant'
+    $droidConstPattern='(?m)^(?<indent>[ \t]*)public static const UNIT_ID_DROID:\s*String\s*=\s*"Droid";[ \t]*$'
+    $droidConstMatch=[regex]::Match($enemy,$droidConstPattern)
+    if(-not $droidConstMatch.Success){throw 'ANDROID_EVIDENCE_ROOTFIX_V56=FAIL patch=snow_elite_droid_constant semantic_missing'}
+    $droidConstIndent=$droidConstMatch.Groups['indent'].Value
+    $droidConstReplacement=$droidConstMatch.Value.TrimEnd()+"`n"+$droidConstIndent+'public static const UNIT_ID_ELITE_DROID: String = "EliteDroid";'
+    $enemy=$enemy.Substring(0,$droidConstMatch.Index)+$droidConstReplacement+$enemy.Substring($droidConstMatch.Index+$droidConstMatch.Length)
+    Write-Host 'EVIDENCE_ROOTFIX_V56_HOOK=PASS name=snow_elite_droid_constant matches=1 semantic=true'
   }
-  $droidCase='            case UNIT_ID_DROID:'
   if(-not $enemy.Contains('case UNIT_ID_ELITE_DROID:')){
-    $enemy=Replace-ExactOne $enemy $droidCase ($droidCase+"`n            case UNIT_ID_ELITE_DROID:") 'snow_elite_droid_sound_case'
+    $droidCasePattern='(?m)^(?<indent>[ \t]*)case UNIT_ID_DROID:[ \t]*$'
+    $droidCaseMatch=[regex]::Match($enemy,$droidCasePattern)
+    if(-not $droidCaseMatch.Success){throw 'ANDROID_EVIDENCE_ROOTFIX_V56=FAIL patch=snow_elite_droid_sound_case semantic_missing'}
+    $droidCaseIndent=$droidCaseMatch.Groups['indent'].Value
+    $droidCaseReplacement=$droidCaseMatch.Value.TrimEnd()+"`n"+$droidCaseIndent+'case UNIT_ID_ELITE_DROID:'
+    $enemy=$enemy.Substring(0,$droidCaseMatch.Index)+$droidCaseReplacement+$enemy.Substring($droidCaseMatch.Index+$droidCaseMatch.Length)
+    Write-Host 'EVIDENCE_ROOTFIX_V56_HOOK=PASS name=snow_elite_droid_sound_case matches=1 semantic=true'
   }
-  Require $enemy 'UNIT_ID_ELITE_DROID:String = "EliteDroid"' 'snow_elite_droid_constant'
+  Require $enemy 'UNIT_ID_ELITE_DROID: String = "EliteDroid"' 'snow_elite_droid_constant'
   Require $enemy 'case UNIT_ID_ELITE_DROID:' 'snow_elite_droid_sound_case'
   Write-Utf8Bom $enemyPath $enemy
 
