@@ -6,6 +6,17 @@ Set-StrictMode -Version Latest
 function Read-Source([string]$Relative){$path=Join-Path $RepoRoot $Relative;if(-not(Test-Path -LiteralPath $path)){throw "REGRESSION=FAIL missing=$Relative"};Get-Content -LiteralPath $path -Raw}
 function Require-Contains([string]$Text,[string]$Needle,[string]$Name){if(-not $Text.Contains($Needle)){throw "REGRESSION=FAIL check=$Name expected=contains"};Write-Host "REGRESSION_CHECK=PASS name=$Name"}
 function Require-NotContains([string]$Text,[string]$Needle,[string]$Name){if($Text.Contains($Needle)){throw "REGRESSION=FAIL check=$Name expected=absent"};Write-Host "REGRESSION_CHECK=PASS name=$Name"}
+function Require-PowerShellParses([string]$Relative,[string]$Name){
+  $path=Join-Path $RepoRoot $Relative
+  if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "REGRESSION=FAIL missing=$Relative"}
+  $tokens=$null;$errors=$null
+  [void][System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
+  if(@($errors).Count -gt 0){
+    $first=@($errors)[0]
+    throw "REGRESSION=FAIL check=$Name parser_error_line=$($first.Extent.StartLineNumber) message=$($first.Message)"
+  }
+  Write-Host "REGRESSION_CHECK=PASS name=$Name"
+}
 $game=Read-Source 'src\game\states\GameState.as'
 $offline=Read-Source 'src\game\utils\OfflineSave.as'
 $world=Read-Source 'src\game\gui\popups\WorldMapWindow.as'
@@ -53,6 +64,9 @@ $playerBuilding=Read-Source 'src\game\gameElements\PlayerBuildingObject.as'
 $candidateWorkflow=Read-Source '.github\workflows\android-candidate.yml'
 $v48=Read-Source 'Tools\CI\Invoke-AndroidEvidenceRootFixOverlayV48.ps1'
 $v56=Read-Source 'Tools\CI\Invoke-AndroidEvidenceRootFixOverlayV56.ps1'
+Require-PowerShellParses 'Tools\CI\Invoke-AndroidVisualCombatOverlay.ps1' 'visual_combat_overlay_parser'
+Require-PowerShellParses 'Tools\CI\Invoke-AndroidAnimationLifecycleOverlay.ps1' 'animation_lifecycle_overlay_parser'
+Require-PowerShellParses 'Tools\CI\Invoke-AndroidEvidenceRootFixOverlayV52.ps1' 'v52_overlay_parser'
 Require-Contains $game 'private var mPvPReturnMapId: String = "Home";' 'pvp_return_map_state'
 Require-Contains $game 'if (param3) {' 'pvp_transient_switch_guard'
 Require-Contains $game 'this.mPvPMatch.mOpponent = null;' 'pvp_end_resets_opponent'

@@ -497,32 +497,7 @@ if(this.mFallbackExplosion.currentFrame >= this.mFallbackExplosion.totalFrames)
   # Ensure every changed AS3 class is actually replaced into the Android SWF.
   $patcherPath=Target-Path 'patcher'
   $patcher=Normalize-Lf ([IO.File]::ReadAllText($patcherPath))
-  $versionPattern='(?m)^\$patchVersion=''[^'']+''"  [ordered]@{Class='game.gameElements.Missile';Source='src\game\gameElements\Missile.as';Log='ffdec-feature-missile-lifecycle.log'},"
-  $artillerySpec="  [ordered]@{Class='game.gameElements.ArtilleryRound';Source='src\game\gameElements\ArtilleryRound.as';Log='ffdec-feature-artillery-lifecycle.log'},"
-  $patcher=Replace-LiteralOnce $patcher $missileSpec ($missileSpec+"`n"+$artillerySpec) 'artillery_swf_patch_spec'
-  foreach($required in @('game.characters.AnimationController','game.gameElements.ArtilleryRound','game.gameElements.FireMissionObject','game.battlefield.TileMapGraphic','game.isometric.IsometricScene','mobile-engine-v3.23-visual-combat-rootfix')){
-    if(-not $patcher.Contains($required)){throw "ANDROID_VISUAL_COMBAT_OVERLAY=FAIL patch=patcher_verification missing=$required"}
-  }
-  Write-Utf8Bom $patcherPath $patcher
-
-  Write-Host 'REGRESSION_CHECK=PASS name=status_hint_orientation_independent_of_unit_facing counter_flip=hint_roots_only'
-  Write-Host 'REGRESSION_CHECK=PASS name=ownership_visual_commit_same_action_frame partial_dirty_redraw=true fallback=deferred'
-  Write-Host 'REGRESSION_CHECK=PASS name=artillery_impact_cleanup_bounded parent_safe=true watchdog_frames=90 trail_clear=true'
-  Write-Host 'REGRESSION_CHECK=PASS name=firemission_fallback_cleanup_deterministic natural=true timeout=true missing_explosion=true'
-  Write-Host 'REGRESSION_CHECK=PASS name=existing_missile_cleanup_preserved event=MISSILE_IMPACT_CLEANUP'
-  Write-Host 'REGRESSION_CHECK=PASS name=perf_meaningful_event_correlation raw_context=preserved gameplay_context=filtered over_200ms=true'
-  Write-Host 'REGRESSION_CHECK=PASS name=render_hotpath_contract_preserved immediate_commit_uses_existing_dirty_region=true'
-  Write-Host "ANDROID_VISUAL_COMBAT_OVERLAY=PASS mode=apply sha=$ExpectedSha schema=v1 swf_patch_version=mobile-engine-v3.23-visual-combat-rootfix perf_schema=meaningful-jank-v2"
-}catch{
-  $failure=$_
-  foreach($key in $targets.Keys){
-    $src=Backup-Path $key
-    $dst=Target-Path $key
-    if(Test-Path -LiteralPath $src -PathType Leaf){Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction SilentlyContinue}
-  }
-  throw $failure
-}
-
+  $versionPattern='(?m)^\$patchVersion=''[^'']+''$'
   $versionMatches=[regex]::Matches($patcher,$versionPattern)
   if($versionMatches.Count -ne 1){throw "ANDROID_VISUAL_COMBAT_OVERLAY=FAIL patch=patch_version_v3_23 reason=semantic_pattern_count actual=$($versionMatches.Count)"}
   $previousPatchVersion=$versionMatches[0].Value
