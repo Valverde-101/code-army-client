@@ -143,6 +143,7 @@ function Ensure-PvpMapSetup([string]$Path){
     $existing=Get-JsonProperty $mapSetupProperty.Value ([string]$map.Id)
     if(-not $existing){
       $entry=($template|ConvertTo-Json -Depth 30|ConvertFrom-Json)
+      Set-JsonProperty $entry 'ID' ([string]$map.Id)
       Set-JsonProperty $entry 'Width' ([string]$map.Width)
       Set-JsonProperty $entry 'Height' ([string]$map.Height)
       $mapType=if($map.Kind -eq 'desert'){'#MapType.Desert'}else{'#MapType.Grassland'}
@@ -164,13 +165,38 @@ function Ensure-PvpMapSetup([string]$Path){
     }
     $resolved=Get-JsonProperty $mapSetupProperty.Value ([string]$map.Id)
     if(-not $resolved -or $null -eq $resolved.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL reconstructed_map_missing id=$($map.Id)"}
+    $idProperty=Get-JsonProperty $resolved.Value 'ID'
     $nameProperty=Get-JsonProperty $resolved.Value 'Name'
     $typeProperty=Get-JsonProperty $resolved.Value 'Type'
+    $setupProperty=Get-JsonProperty $resolved.Value 'SetupSet'
+    $expectedId=[string]$map.Id
     $expectedName='#TID.PVP_MAP_'+[string]$map.Number
     $expectedType=if($map.Kind -eq 'desert'){'#MapType.Desert'}else{'#MapType.Grassland'}
+    $expectedSetup=Get-PvpSetupSet $cfg $expectedId
+    if(-not $idProperty -or [string]$idProperty.Value -ne $expectedId){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_internal_id id=$($map.Id) expected=$expectedId actual=$([string]$idProperty.Value)"}
     if(-not $nameProperty -or [string]$nameProperty.Value -ne $expectedName){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_name_reference id=$($map.Id) expected=$expectedName actual=$([string]$nameProperty.Value)"}
     if(-not $typeProperty -or [string]$typeProperty.Value -ne $expectedType){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_type_reference id=$($map.Id) expected=$expectedType actual=$([string]$typeProperty.Value)"}
+    if(-not $setupProperty -or -not ([string]$setupProperty.Value).Equals($expectedSetup,[StringComparison]::Ordinal)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_setupset_reference id=$($map.Id) expected=$expectedSetup actual=$([string]$setupProperty.Value)"}
     if(Get-JsonProperty $resolved.Value 'MapType'){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_noncanonical_maptype_property id=$($map.Id)"}
+    $mapTypeProperty=Get-JsonProperty $cfg 'MapType'
+    $mapTypeKey=if($map.Kind -eq 'desert'){'Desert'}else{'Grassland'}
+    if(-not $mapTypeProperty -or $null -eq $mapTypeProperty.Value -or -not (Get-JsonProperty $mapTypeProperty.Value $mapTypeKey)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_maptype_target_missing id=$($map.Id) target=$mapTypeKey"}
+    $areasProperty=Get-JsonProperty $cfg 'PVPAreaSetup'
+    if(-not $areasProperty -or $null -eq $areasProperty.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_area_setup_missing id=$($map.Id)"}
+    $setupAreaCount=0
+    $playerSpawnCount=0
+    $enemySpawnCount=0
+    foreach($areaProp in @($areasProperty.Value.PSObject.Properties)){
+      $areaSetup=Get-JsonProperty $areaProp.Value 'SetupSet'
+      if(-not $areaSetup){continue}
+      $candidate=[string]$areaSetup.Value
+      if(-not $candidate.Equals($expectedSetup,[StringComparison]::OrdinalIgnoreCase)){continue}
+      $setupAreaCount++
+      $spawnType=Get-JsonProperty $areaProp.Value 'SpawningAreaType'
+      if($spawnType -and [string]$spawnType.Value -eq 'PlayerSpawning'){$playerSpawnCount++}
+      if($spawnType -and [string]$spawnType.Value -eq 'EnemySpawning'){$enemySpawnCount++}
+    }
+    if($setupAreaCount -lt 2 -or $playerSpawnCount -ne 1 -or $enemySpawnCount -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_setupset_incomplete id=$($map.Id) setup=$expectedSetup areas=$setupAreaCount player_spawn=$playerSpawnCount enemy_spawn=$enemySpawnCount"}
   }
   foreach($lang in @('en','de','fr','it','es')){
     $langPath=Join-Path $RepoRoot ('src\config\army_config_'+$lang+'.json')
@@ -181,7 +207,7 @@ function Ensure-PvpMapSetup([string]$Path){
       if(-not $langRaw.Contains($translationKey)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_translation_missing lang=$lang id=$($map.Id) key=$translationKey"}
     }
   }
-  Write-Host 'PVP_MAP_REFERENCE_CONTRACT=PASS maps=12 name=#TID.PVP_MAP_N type=#MapType kind=grassland|desert translations=en,de,fr,it,es synthetic_scene_reference=false'
+  Write-Host 'PVP_MAP_REFERENCE_CONTRACT=PASS maps=12 id=unique name=#TID.PVP_MAP_N type=#MapType kind=grassland|desert setupset=resolved player_spawn=1 enemy_spawn=1 translations=en,de,fr,it,es synthetic_scene_reference=false'
   $snowProperty=Get-JsonProperty $mapSetupProperty.Value 'Snow'
   if(-not $snowProperty -or $null -eq $snowProperty.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL snow_mapsetup_missing path=$Path"}
   Set-JsonProperty $snowProperty.Value 'UnlockLevel' '0'
@@ -214,6 +240,27 @@ function Get-JsonObjectSpan([string]$Text,[string]$PropertyName){
   }
   throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL json_object_unclosed property=$PropertyName"
 }
+function Assert-PvpMapSetupTextContract([string]$Path){
+  $raw=Normalize-Lf ([IO.File]::ReadAllText($Path))
+  $mapSpan=Get-JsonObjectSpan $raw 'MapSetup'
+  $mapBody=$raw.Substring($mapSpan.Open+1,$mapSpan.Close-$mapSpan.Open-1)
+  foreach($map in $pvpMaps){
+    $id=[string]$map.Id
+    $entrySpan=Get-JsonObjectSpan $mapBody $id
+    $entryText=$mapBody.Substring($entrySpan.Open,$entrySpan.Close-$entrySpan.Open+1)
+    $expectedName='#TID.PVP_MAP_'+[string]$map.Number
+    $expectedType=if($map.Kind -eq 'desert'){'#MapType.Desert'}else{'#MapType.Grassland'}
+    $idPattern='"ID"\s*:\s*"'+[regex]::Escape($id)+'"'
+    $namePattern='"Name"\s*:\s*"'+[regex]::Escape($expectedName)+'"'
+    $typePattern='"Type"\s*:\s*"'+[regex]::Escape($expectedType)+'"'
+    if(-not [regex]::IsMatch($entryText,$idPattern)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL full_config_internal_id id=$id"}
+    if(-not [regex]::IsMatch($entryText,$namePattern)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL full_config_name_reference id=$id expected=$expectedName"}
+    if(-not [regex]::IsMatch($entryText,$typePattern)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL full_config_type_reference id=$id expected=$expectedType"}
+    if([regex]::IsMatch($entryText,'"MapType"\s*:')){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL full_config_noncanonical_maptype id=$id"}
+  }
+  Write-Host 'PVP_MAP_FULL_TEXT_CONTRACT=PASS maps=12 internal_id=unique name_reference=canonical type_reference=canonical maptype_field=absent'
+}
+
 function Sync-PvpMapSetupText([string]$SourcePath,[string]$TargetPath){
   # army_config.json intentionally contains case-sensitive keys such as ID/id.
   # Windows PowerShell 5.1 ConvertFrom-Json rejects those as duplicates, so only
@@ -401,6 +448,7 @@ try {
   # intentional case-sensitive ID/id keys and is synchronized lexically instead.
   Ensure-PvpMapSetup $configBasePath
   Sync-PvpMapSetupText $configBasePath $configFullPath
+  Assert-PvpMapSetupTextContract $configFullPath
   foreach($map in $pvpMaps){
     if(-not [bool]$map.Native){[void](New-ReconstructedPvpCsv $map)}
   }
