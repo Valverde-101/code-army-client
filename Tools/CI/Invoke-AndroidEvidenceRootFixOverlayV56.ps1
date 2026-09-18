@@ -273,7 +273,6 @@ function Sync-PvpMapSetupText([string]$SourcePath,[string]$TargetPath){
   $body=$raw.Substring($span.Open+1,$span.Close-$span.Open-1)
   $entries=New-Object System.Collections.Generic.List[string]
   foreach($map in $pvpMaps){
-    if([bool]$map.Native){continue}
     $id=[string]$map.Id
     $needle='"'+$id+'"'
     if($body.Contains($needle)){continue}
@@ -281,6 +280,7 @@ function Sync-PvpMapSetupText([string]$SourcePath,[string]$TargetPath){
     if(-not $sourceEntry -or $null -eq $sourceEntry.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL source_mapsetup_missing_for_text_sync id=$id"}
     $entryJson=$sourceEntry.Value|ConvertTo-Json -Depth 30 -Compress
     $entries.Add(('    "'+$id+'": '+$entryJson))
+    if([bool]$map.Native){Write-Host "PVP_FULL_CONFIG_NATIVE_SYNC=PASS id=$id action=insert_missing source=base_config"}
   }
   if($entries.Count -gt 0){
     $existing=$body.Trim()
