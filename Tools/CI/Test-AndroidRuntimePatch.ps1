@@ -146,6 +146,7 @@ Require-Contains $v56 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_enemy_capture_has_r
 Require-Contains $v56 'commitOwnershipVisualNow()' 'campaign_enemy_capture_commits_visual_ownership'
 Require-Contains $v56 "Reject `$campaignMove 'territoryCell.mOwner = MapData.TILE_OWNER_ENEMY'" 'campaign_enemy_capture_does_not_force_owner'
 Require-Contains $v56 'UNIT_ID_ELITE_DROID: String = "EliteDroid"' 'snow_elitedroid_is_explicit_enemy_unit'
+Require-NotContains $v56 'UNIT_ID_ELITE_DROID:String = "EliteDroid"' 'snow_elitedroid_compact_token_removed'
 Require-Contains $v56 'droidConstPattern' 'snow_elitedroid_constant_patch_is_whitespace_tolerant'
 Require-Contains $v56 'droidCasePattern' 'snow_elitedroid_case_patch_is_whitespace_tolerant'
 Require-Contains $v56 'case UNIT_ID_ELITE_DROID:' 'snow_elitedroid_has_explicit_sound_policy'

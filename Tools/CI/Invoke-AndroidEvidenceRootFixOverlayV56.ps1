@@ -479,7 +479,7 @@ try {
   Require $gameState 'OFFLINE_ENEMY_SPATIAL_TARGET:int = 24' 'spatial_ai_target'
   Require $gameState 'OFFLINE_ENEMY_SPATIAL_REFRESH_MS:int = 1500' 'spatial_ai_refresh'
   Require $enemy 'OFFLINE_SLEEP_VISUAL_INTERVAL_MS:int = 250' 'enemy_visual_throttle'
-  Require $enemy 'UNIT_ID_ELITE_DROID:String = "EliteDroid"' 'snow_elite_droid_sound_support'
+  Require $enemy 'UNIT_ID_ELITE_DROID: String = "EliteDroid"' 'snow_elite_droid_sound_support'
   Require $pvp 'PVP_TERRITORY_INVARIANT' 'pvp_ownership_immutable_final'
   Reject $pvp 'PVP_TERRITORY_CAPTURE' 'pvp_capture_absent_final'
   Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_enemy_capture_visible_final'
