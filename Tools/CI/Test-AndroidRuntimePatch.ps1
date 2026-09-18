@@ -132,6 +132,7 @@ Require-Contains $pvpBooster 'Utils.removeAllChildren(_loc3_);' 'pvp_booster_pla
 Require-Contains $v56 "Set-JsonProperty `$entry 'ZoomLevels' '40, 75, 100'" 'pvp_zoom_contract_declared_by_final_compositor'
 Require-Contains $v56 "Set-JsonProperty `$entry 'ZoomLevelsMobile' '40, 75, 100'" 'pvp_mobile_zoom_contract_declared_by_final_compositor'
 Require-Contains $v56 'PVP_FULL_CONFIG_TEXT_SYNC=PASS maps=12' 'pvp_full_config_sync_covers_complete_catalog'
+Require-Contains $v56 'PVP_FULL_CONFIG_NATIVE_SYNC=PASS' 'pvp_full_config_inserts_native_map_when_missing'
 Require-Contains $v56 'pvp_maps=12 spatial_ai=true powershell51_safe=true' 'pvp_final_compositor_reports_complete_catalog'
 Require-Contains $v56 "Set-JsonProperty `$entry 'ID' ([string]`$map.Id)" 'pvp_reconstructed_internal_id_is_unique'
 Require-Contains $v56 "Set-JsonProperty `$entry 'Name' ('#TID.PVP_MAP_'+[string]`$map.Number)" 'pvp_reconstructed_names_use_canonical_tid_reference'
