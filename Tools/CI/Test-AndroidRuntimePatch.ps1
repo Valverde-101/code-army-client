@@ -508,6 +508,7 @@ Require-NotContains $enemyMoving 'isInsideVisibleArea(_loc10_)' 'campaign_enemy_
 Require-NotContains $enemyMoving 'isInsideVisibleArea(_loc12_)' 'campaign_enemy_pathfinding_is_camera_independent'
 Require-Contains $playerUnit 'MAX_OFFLINE_REPAIRS:int = 3' 'player_unit_has_three_repair_lives'
 Require-Contains $playerUnit 'PLAYER_UNIT_PERMADEATH' 'player_unit_permadeath_after_repair_lives'
+Require-Contains $playerUnit '(mItem as ShopItem).mCostPremium == 0 || this.mDestroyedPermanently' 'premium_units_are_removed_after_repair_lives_exhausted'
 Require-Contains $repairPlayerUnit 'registerOfflineRepair()' 'repair_action_consumes_repair_life_on_revive'
 Require-Contains $offline 'unit["repairs_used"]' 'repair_lives_persist_in_save'
 Require-Contains $offline 'if (version < 10) {' 'repair_lives_have_v10_save_migration'

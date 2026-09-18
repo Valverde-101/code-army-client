@@ -505,6 +505,7 @@ try {
   Reject $campaignMove 'isInsideVisibleArea(_loc12_)' 'campaign_enemy_pathfinding_camera_gate_absent_final'
   Require $playerUnit 'MAX_OFFLINE_REPAIRS:int = 3' 'player_unit_three_repairs_final'
   Require $playerUnit 'PLAYER_UNIT_PERMADEATH' 'player_unit_permadeath_telemetry_final'
+  Require $playerUnit '(mItem as ShopItem).mCostPremium == 0 || this.mDestroyedPermanently' 'player_unit_premium_permadeath_final'
   Require $repairPlayerUnit 'registerOfflineRepair()' 'player_unit_repair_life_consumed_final'
   Require $recapturePlayerBuilding 'var enemyAttack:Boolean = mCharacterActors != null' 'enemy_building_attack_side_detected_final'
   Require $recapturePlayerBuilding 'else if(!enemyAttack && _loc2_.mEnergy <= 0)' 'enemy_building_attack_not_blocked_by_player_energy_final'

@@ -334,7 +334,7 @@
          {
             super.updateDying(param1);
          }
-         else if(!GameState.mInstance.visitingFriend() && (mItem as ShopItem).mCostPremium == 0)
+         else if(!GameState.mInstance.visitingFriend() && ((mItem as ShopItem).mCostPremium == 0 || this.mDestroyedPermanently))
          {
             this.mDyingTimer -= param1;
             if(this.mDyingTimer <= 0 || this.mDestroyedPermanently)
