@@ -73,7 +73,7 @@ package game.actions
                   {
                      if(_loc10_.mWalkable)
                      {
-                        if((mActor as Element).mScene.isInsideVisibleArea(_loc10_))
+                        if(_loc10_)
                         {
                            if(_loc10_ == (mActor as IsometricCharacter).mPreviousTile)
                            {
@@ -221,7 +221,7 @@ package game.actions
                   {
                      if(_loc12_.mWalkable)
                      {
-                        if((mActor as Element).mScene.isInsideVisibleArea(_loc12_))
+                        if(_loc12_)
                         {
                            if(_loc8_)
                            {

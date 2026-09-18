@@ -499,6 +499,8 @@ try {
   Require $campaignMove 'arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_enemy_capture_owner_final'
   Require $campaignMove '_loc21_ < currentDistance' 'campaign_enemy_strict_forward_progress_final'
   Require $campaignMove 'this.headToThePlayerArea();' 'campaign_enemy_pathfinding_fallback_final'
+  Reject $campaignMove 'isInsideVisibleArea(_loc10_)' 'campaign_enemy_local_step_camera_gate_absent_final'
+  Reject $campaignMove 'isInsideVisibleArea(_loc12_)' 'campaign_enemy_pathfinding_camera_gate_absent_final'
   Require $playerUnit 'MAX_OFFLINE_REPAIRS:int = 3' 'player_unit_three_repairs_final'
   Require $playerUnit 'PLAYER_UNIT_PERMADEATH' 'player_unit_permadeath_telemetry_final'
   Require $repairPlayerUnit 'registerOfflineRepair()' 'player_unit_repair_life_consumed_final'
