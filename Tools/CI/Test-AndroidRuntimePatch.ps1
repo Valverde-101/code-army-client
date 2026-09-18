@@ -497,7 +497,7 @@ Require-Contains $animationLifecycleOverlay 'mobile-engine-v3.23-composed-runtim
 Require-NotContains $animationLifecycleOverlay '$versionNeedle=' 'animation_overlay_no_longer_depends_on_exact_prior_patch_version'
 Require-Contains $visualCombatOverlay '$versionMatches=[regex]::Matches($patcher,$versionPattern)' 'visual_combat_patch_version_hook_is_semantic'
 Require-Contains $visualCombatOverlay 'VISUAL_COMBAT_PATCH_VERSION=PASS semantic=true' 'visual_combat_semantic_version_hook_is_instrumented'
-Require-NotContains $visualCombatOverlay "Replace-LiteralOnce $patcher '$patchVersion=''mobile-engine-v3.22-combat-lifecycle-rootfix'''" 'visual_combat_no_longer_depends_on_exact_prior_patch_version'
+Require-NotContains $visualCombatOverlay "Replace-LiteralOnce `$patcher '`$patchVersion=''mobile-engine-v3.22-combat-lifecycle-rootfix'''" 'visual_combat_no_longer_depends_on_exact_prior_patch_version'
 Require-Contains $v52 "action=already_applied" 'v52_accepts_prepatched_viewport_semantics'
 Require-Contains $v52 '$oldVisibilityCount -eq 0 -and $newVisibilityCount -eq 1' 'v52_viewport_patch_is_idempotent'
 Require-Contains $v21 'CURRENT_SAVE_VERSION:int = 9' 'v21_portable_save_tracks_current_v9_schema'
