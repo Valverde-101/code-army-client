@@ -32,19 +32,23 @@ $backupRoot=Join-Path $RepoRoot ('.work\scratch\android-evidence-rootfix-v56\'+$
 $manifestPath=Join-Path $backupRoot 'manifest.json'
 
 $pvpMaps=@(
-  [ordered]@{Id='pvp_map_1_4valleys_11x11';Number=1;Width=11;Height=11;Kind='grass';Native=$true},
-  [ordered]@{Id='pvp_map_2_blackforest_13x9';Number=2;Width=13;Height=9;Kind='grass';Native=$false},
-  [ordered]@{Id='pvp_map_3_desert_battleisland_13x9';Number=3;Width=13;Height=9;Kind='desert';Native=$false},
-  [ordered]@{Id='pvp_map_4_forbiddenforest_11x11';Number=4;Width=11;Height=11;Kind='grass';Native=$false},
-  [ordered]@{Id='pvp_map_5_fourmountains_11x11';Number=5;Width=11;Height=11;Kind='grass';Native=$false},
-  [ordered]@{Id='pvp_map_10_twomountains_11x11';Number=10;Width=11;Height=11;Kind='grass';Native=$false},
-  [ordered]@{Id='pvp_map_12_battleisle_13x13';Number=12;Width=13;Height=13;Kind='grass';Native=$false},
-  [ordered]@{Id='pvp_map_21_desert_15x8';Number=21;Width=15;Height=8;Kind='desert';Native=$false},
-  [ordered]@{Id='pvp_map_22_desert_14x8';Number=22;Width=14;Height=8;Kind='desert';Native=$false},
-  [ordered]@{Id='pvp_map_23_desert_14x8';Number=23;Width=14;Height=8;Kind='desert';Native=$false},
-  [ordered]@{Id='pvp_map_29_desertcanyon_13x13';Number=29;Width=13;Height=13;Kind='desert';Native=$false},
-  [ordered]@{Id='pvp_map_30_kingofthehill_16x14';Number=30;Width=16;Height=14;Kind='grass';Native=$false}
+  [ordered]@{Id='pvp_map_1_4valleys_11x11';Number=1;Width=11;Height=11;Kind='grass';Native=$true}
 )
+$disabledSyntheticPvpMapIds=@(
+  'pvp_map_2_blackforest_13x9',
+  'pvp_map_3_desert_battleisland_13x9',
+  'pvp_map_4_forbiddenforest_11x11',
+  'pvp_map_5_fourmountains_11x11',
+  'pvp_map_10_twomountains_11x11',
+  'pvp_map_12_battleisle_13x13',
+  'pvp_map_21_desert_15x8',
+  'pvp_map_22_desert_14x8',
+  'pvp_map_23_desert_14x8',
+  'pvp_map_29_desertcanyon_13x13',
+  'pvp_map_30_kingofthehill_16x14'
+)
+if(@($pvpMaps|Where-Object{-not [bool]$_.Native}).Count -ne 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V56=FAIL synthetic_pvp_map_active'}
+Write-Host "PVP_SYNTHETIC_MAPS_DISABLED=PASS count=$($disabledSyntheticPvpMapIds.Count) active_native=$($pvpMaps.Count) reason=terrain_not_authentic"
 
 function Get-Sha256([string]$Path){(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()}
 function Normalize-Lf([string]$Text){$Text.Replace("`r`n","`n").Replace("`r","`n")}
@@ -208,7 +212,7 @@ function Ensure-PvpMapSetup([string]$Path){
       if(-not $langRaw.Contains($translationKey)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL pvp_translation_missing lang=$lang id=$($map.Id) key=$translationKey"}
     }
   }
-  Write-Host 'PVP_MAP_REFERENCE_CONTRACT=PASS maps=12 id=unique name=#TID.PVP_MAP_N type=#MapType kind=grassland|desert setupset=resolved player_spawn=1 enemy_spawn=1 translations=en,de,fr,it,es synthetic_scene_reference=false'
+  Write-Host 'PVP_MAP_REFERENCE_CONTRACT=PASS maps=1 id=unique name=#TID.PVP_MAP_N type=#MapType kind=grassland|desert setupset=resolved player_spawn=1 enemy_spawn=1 translations=en,de,fr,it,es synthetic_scene_reference=false'
   $snowProperty=Get-JsonProperty $mapSetupProperty.Value 'Snow'
   if(-not $snowProperty -or $null -eq $snowProperty.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL snow_mapsetup_missing path=$Path"}
   Set-JsonProperty $snowProperty.Value 'UnlockLevel' '0'
@@ -259,7 +263,7 @@ function Assert-PvpMapSetupTextContract([string]$Path){
     if(-not [regex]::IsMatch($entryText,$typePattern)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL full_config_type_reference id=$id expected=$expectedType"}
     if([regex]::IsMatch($entryText,'"MapType"\s*:')){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL full_config_noncanonical_maptype id=$id"}
   }
-  Write-Host 'PVP_MAP_FULL_TEXT_CONTRACT=PASS maps=12 internal_id=unique name_reference=canonical type_reference=canonical maptype_field=absent'
+  Write-Host 'PVP_MAP_FULL_TEXT_CONTRACT=PASS maps=1 internal_id=unique name_reference=canonical type_reference=canonical maptype_field=absent'
 }
 
 function Sync-PvpMapSetupText([string]$SourcePath,[string]$TargetPath){
@@ -296,32 +300,8 @@ function Sync-PvpMapSetupText([string]$SourcePath,[string]$TargetPath){
     if(-not $verifyBody.Contains(('"'+$id+'"'))){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL full_config_text_sync_missing id=$id"}
   }
   Write-Utf8NoBom $TargetPath $raw
-  Write-Host "PVP_FULL_CONFIG_TEXT_SYNC=PASS maps=12 inserted=$($entries.Count) parser=brace_depth case_sensitive_keys_preserved=true convertfromjson=false"
+  Write-Host "PVP_FULL_CONFIG_TEXT_SYNC=PASS maps=1 inserted=$($entries.Count) parser=brace_depth case_sensitive_keys_preserved=true convertfromjson=false"
 }
-function New-ReconstructedPvpCsv($Map){
-  $path=Join-Path $RepoRoot ('src\config\'+[string]$Map.Id+'.csv')
-  if(Test-Path -LiteralPath $path -PathType Leaf){return $null}
-  $base=if($Map.Kind -eq 'desert'){100}else{0}
-  $decorBase=if($Map.Kind -eq 'desert'){101}else{1}
-  $rows=New-Object System.Collections.Generic.List[string]
-  for($y=0;$y -lt [int]$Map.Height;$y++){
-    $cells=New-Object System.Collections.Generic.List[string]
-    for($x=0;$x -lt [int]$Map.Width;$x++){
-      $mix=($x*31+$y*17+[int]$Map.Number*13)%11
-      $value=$base
-      if($mix -ge 7){$value=$decorBase+(($x*7+$y*5+[int]$Map.Number)%17)}
-      $cells.Add([string]$value)
-    }
-    $rows.Add(($cells -join ','))
-  }
-  Write-Utf8NoBom $path (($rows -join "`n")+"`n")
-  $actual=Get-NormalizedCsvCellCount $path
-  $expected=[int]$Map.Width*[int]$Map.Height
-  if($actual -ne $expected){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL reconstructed_csv_cells id=$($Map.Id) expected=$expected actual=$actual"}
-  Write-Host "PVP_MAP_TERRAIN_RECONSTRUCTED=PASS id=$($Map.Id) source=preserved_dimensions_and_tiletypes cells=$actual native=false"
-  return ('src\config\'+[string]$Map.Id+'.csv')
-}
-
 if($RequestedMode -eq 'Restore'){
   Restore-OwnedFiles
   & $v55 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -RequestedMode Restore
@@ -356,12 +336,6 @@ try {
     $files+=@([ordered]@{path=$e.Repo;backup=$e.Backup;sha256=(Get-Sha256 $e.Path)})
   }
   $generated=@()
-  foreach($map in $pvpMaps){
-    if(-not [bool]$map.Native){
-      $candidate='src\config\'+[string]$map.Id+'.csv'
-      if(-not(Test-Path -LiteralPath (Join-Path $RepoRoot $candidate) -PathType Leaf)){$generated+=@($candidate)}
-    }
-  }
   Save-Manifest $files $generated
 
   # V43 is the product invariant: PvP is transient tactical combat and must not
@@ -452,15 +426,13 @@ try {
   Reject $world 'this.setAreaAvailability(2, false);' 'snow_forced_disabled'
   Write-Utf8Bom $worldMapPath $world
 
-  # Restore the complete PvP catalog from metadata that survived in the v23.2
-  # config. The compact base config is PowerShell-safe. The full config has
-  # intentional case-sensitive ID/id keys and is synchronized lexically instead.
+  # Keep only PvP maps backed by authentic terrain files. The eleven extra
+  # IDs survive as metadata, but their committed CSVs were synthetic reconstructions
+  # and must never enter runtime selection until original terrain is recovered.
   Ensure-PvpMapSetup $configBasePath
   Sync-PvpMapSetupText $configBasePath $configFullPath
   Assert-PvpMapSetupTextContract $configFullPath
-  foreach($map in $pvpMaps){
-    if(-not [bool]$map.Native){[void](New-ReconstructedPvpCsv $map)}
-  }
+  Write-Host "PVP_AUTHENTIC_CATALOG=PASS active=1 native=pvp_map_1_4valleys_11x11 synthetic_disabled=$($disabledSyntheticPvpMapIds.Count)"
 
   $allPvpIds=@($pvpMaps|ForEach-Object{[string]$_.Id})
   $asset=Normalize-Lf ([IO.File]::ReadAllText($assetPath))
@@ -512,8 +484,8 @@ try {
   Write-Host 'REGRESSION_CHECK=PASS name=attack_logic_decoupled_from_visual budget_ms=220 shooting_length_dependency=false effect_length_dependency=false'
   Write-Host 'REGRESSION_CHECK=PASS name=snow_final_product_invariant world_map=true unlocked=true runtime_type=true runtime_identity=true switch_transaction=requestWorldMapSwitch'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_optimization_preserved target=24 refresh_ms=1500 visual_update_ms=250'
-  Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_complete maps=12 native=1 reconstructed=11 probability_metadata=preserved zoom_mobile=40,75,100 full_config_case_sensitive=true'
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha campaign_capture_visual=true pvp_ownership_immutable=true snow_elitedroid=true attack_budget_ms=220 pvp_maps=12 spatial_ai=true powershell51_safe=true"
+  Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_authentic_only maps=1 native=1 synthetic_disabled=11 probability_metadata=preserved zoom_mobile=40,75,100 full_config_case_sensitive=true'
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha campaign_capture_visual=true pvp_ownership_immutable=true snow_elitedroid=true attack_budget_ms=220 pvp_maps=1 synthetic_pvp_disabled=11 spatial_ai=true powershell51_safe=true"
 }
 catch {
   $failure=$_
