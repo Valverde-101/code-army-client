@@ -84,7 +84,7 @@ try {
   foreach($required in @('runtime_test_offline_save_version_v10','runtime_test_daily_reward_saveversion_current')){
     if(-not $text.Contains($required)){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_save_version_compat_missing token=$required"}
   }
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_SAVE_VERSION_COMPAT=PASS owner=v21 schema=v9 semantic_current_version=true'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_SAVE_VERSION_COMPAT=PASS owner=v21 schema=v10 semantic_current_version=true'
 
   # Root cause from b2cca00: even API method names such as File.copyTo are not a
   # stable contract of FFDec's post-compile source re-export. Prove the complete

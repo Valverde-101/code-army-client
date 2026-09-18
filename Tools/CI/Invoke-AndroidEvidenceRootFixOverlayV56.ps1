@@ -33,6 +33,7 @@ $enemyPath=Join-Path $RepoRoot 'src\game\characters\EnemyUnit.as'
 $enemyAttackPath=Join-Path $RepoRoot 'src\game\actions\EnemyAttackingAction.as'
 $playerUnitPath=Join-Path $RepoRoot 'src\game\characters\PlayerUnit.as'
 $repairPlayerUnitPath=Join-Path $RepoRoot 'src\game\actions\RepairPlayerUnitAction.as'
+$recapturePlayerBuildingPath=Join-Path $RepoRoot 'src\game\actions\RecapturePlayerBuildingAction.as'
 
 $backupRoot=Join-Path $RepoRoot ('.work\scratch\android-evidence-rootfix-v56\'+$ExpectedSha)
 $manifestPath=Join-Path $backupRoot 'manifest.json'
@@ -448,7 +449,8 @@ try {
   Require $patcher "Class='game.characters.EnemyUnit'" 'enemy_unit_patched_into_swf'
   Require $patcher "Class='game.characters.PlayerUnit'" 'player_unit_patched_into_swf'
   Require $patcher "Class='game.actions.RepairPlayerUnitAction'" 'repair_player_unit_action_patched_into_swf'
-  Write-Host 'FINAL_COMPOSITION=PASS classes=AssetManager,Config,DailyRewardWindow,AttackEnemyAction,PvPEnemyMovingAction,EnemyMovingAction,EnemyUnit,PlayerUnit,RepairPlayerUnitAction'
+  Require $patcher "Class='game.actions.RecapturePlayerBuildingAction'" 'recapture_player_building_action_patched_into_swf'
+  Write-Host 'FINAL_COMPOSITION=PASS classes=AssetManager,Config,DailyRewardWindow,AttackEnemyAction,PvPEnemyMovingAction,EnemyMovingAction,EnemyUnit,PlayerUnit,RepairPlayerUnitAction,RecapturePlayerBuildingAction'
 
   # Validate all final invariants after every historical overlay has run.
   $baseCfg=Get-Content -LiteralPath $configBasePath -Raw|ConvertFrom-Json
@@ -472,6 +474,7 @@ try {
   $enemyAttack=Get-Content -LiteralPath $enemyAttackPath -Raw
   $playerUnit=Get-Content -LiteralPath $playerUnitPath -Raw
   $repairPlayerUnit=Get-Content -LiteralPath $repairPlayerUnitPath -Raw
+  $recapturePlayerBuilding=Get-Content -LiteralPath $recapturePlayerBuildingPath -Raw
   Require $mapData 'TILE_MAP_TYPE_SNOW' 'snow_runtime_type'
   Require $offline 'SNOW_RUNTIME_IDENTITY' 'snow_runtime_identity'
   Require $gameState 'OFFLINE_ENEMY_SPATIAL_TARGET:int = 24' 'spatial_ai_target'
@@ -481,7 +484,6 @@ try {
   Require $enemy 'findPriorityPlayerTargetInRange' 'campaign_enemy_priority_target_final'
   Require $enemy 'hasPriorityPlayerTargetInRange' 'campaign_enemy_priority_public_probe_final'
   Require $enemy 'ENEMY_ATTACK_PRIORITY' 'campaign_enemy_priority_telemetry_final'
-  Require $enemy 'ENEMY_ATTACK_PRIORITY_WAKE' 'campaign_enemy_wait_bypass_final'
   Require $enemy 'OFFLINE_ATTACK_TWO_CHANCE: Number = 40' 'campaign_enemy_two_attack_probability_final'
   Require $enemy 'OFFLINE_ATTACK_THREE_CHANCE: Number = 5' 'campaign_enemy_three_attack_probability_final'
   Require $enemy 'ENEMY_ATTACK_TURN' 'campaign_enemy_turn_budget_telemetry_final'
@@ -500,6 +502,9 @@ try {
   Require $playerUnit 'MAX_OFFLINE_REPAIRS:int = 3' 'player_unit_three_repairs_final'
   Require $playerUnit 'PLAYER_UNIT_PERMADEATH' 'player_unit_permadeath_telemetry_final'
   Require $repairPlayerUnit 'registerOfflineRepair()' 'player_unit_repair_life_consumed_final'
+  Require $recapturePlayerBuilding 'var enemyAttack:Boolean = mCharacterActors != null' 'enemy_building_attack_side_detected_final'
+  Require $recapturePlayerBuilding 'else if(!enemyAttack && _loc2_.mEnergy <= 0)' 'enemy_building_attack_not_blocked_by_player_energy_final'
+  Require $recapturePlayerBuilding 'else if(!enemyAttack && !_loc2_.hasEnoughMapResource(1))' 'enemy_building_attack_not_blocked_by_player_resource_final'
   Require $offline 'unit["repairs_used"]' 'player_unit_repair_lives_persisted_final'
   Require $configSource 'ENABLE_DAILY_REWARDS:Boolean = true' 'daily_reward_enabled_final'
   Require $offline 'DAILY_REWARD_MAX_STREAK: int = 360' 'daily_reward_360_state_final'
@@ -514,7 +519,7 @@ try {
   Require $dailyReward 'OfflineSave.claimDailyReward' 'daily_reward_offline_claim_final'
 
   Write-Host 'REGRESSION_CHECK=PASS name=daily_reward_360_offline streak=360 missed_day_reset=true one_claim_per_day=true saveversion=10 representation=CURRENT_SAVE_VERSION popup_window=5day_page'
-  Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_attack_priority player_in_range=attack wait_timer_bypassed=true queue_wait_bypassed=true camera_independent=true explicit_target=true pvp_untouched=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_attack_turn targets=units+structures attacks_min=1 attacks_two_pct=40 attacks_three_pct=5 timer_bypass=false camera_independent=true pvp_untouched=true'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_budget target=24 viewport_visibility=true in_range_targets_always_active=true container_visible_not_used=true'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_tile_ownership_is_immutable_during_unit_movement capture_call=false owner_write=false v43_invariant=true'
   Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_capture_uses_native_owner_transfer visual_commit=immediate forced_owner=false'

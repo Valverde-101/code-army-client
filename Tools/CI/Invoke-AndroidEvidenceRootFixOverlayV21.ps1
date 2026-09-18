@@ -101,7 +101,7 @@ public class OfflineSave {
 
 		private static const CURRENT_SAVE_VERSION:int = 10;
 		private static const SAVE_SCHEMA:String = "armyattack-offline-save/v10";
-'@.TrimEnd() 'save_schema_v9'
+'@.TrimEnd() 'save_schema_v10'
 
   $dedupePattern='(?ms)if \(known_objects\.indexOf\(String\(gameobj\["coord_x"\]\) \+ String\(gameobj\["coord_y"\]\)\) == -1\) \{\s*known_objects\.push\(String\(gameobj\["coord_x"\]\) \+ String\(gameobj\["coord_y"\]\)\);\s*gamefield_items\.push\(gameobj\);\s*\}'
   $dedupeReplacement=@'
@@ -209,7 +209,7 @@ if (version < 7) savedata["offline_pvp_booster_seed_cleanup_pending"] = true;
 				savedata["save_manifest"] = buildSaveManifest(savedata);
 			}
 '@
-  $offline=Replace-LiteralOne $offline $migrationNeedle $migrationReplacement.TrimEnd() 'save_v9_manifest_migration'
+  $offline=Replace-LiteralOne $offline $migrationNeedle $migrationReplacement.TrimEnd() 'save_v10_manifest_migration'
   foreach($token in @('CURRENT_SAVE_VERSION:int = 10','armyattack-offline-save/v10','validatePortableSave','save_manifest','objectKey','persisted_map_ids','unvisited_map_ids')){Require-Token $offline $token 'portable_save_model'}
   Write-Utf8Bom $offlinePath $offline
 

@@ -308,7 +308,7 @@
 
       public function getOfflineRepairsRemaining() : int
       {
-         return Math.max(0,MAX_OFFLINE_REPAIRS - this.mOfflineRepairsUsed);
+         return int(Math.max(0,MAX_OFFLINE_REPAIRS - this.mOfflineRepairsUsed));
       }
 
       public function canRepairOffline() : Boolean
