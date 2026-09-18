@@ -39,7 +39,18 @@ try {
 '@.TrimEnd()
   $text=Replace-ExactOne $text $oldManual $newManual 'manual_save_method_scoped'
 
-  $text=Replace-ExactOne $text 'visible = enemy.getContainer() && enemy.getContainer().visible;' 'visible = enemy.getCell() && this.mScene.isInsideVisibleArea(enemy.getCell());' 'enemy_activity_camera_viewport'
+  $oldVisibility='visible = enemy.getContainer() && enemy.getContainer().visible;'
+  $newVisibility='visible = enemy.getCell() && this.mScene.isInsideVisibleArea(enemy.getCell());'
+  $oldVisibilityCount=([regex]::Matches($text,[regex]::Escape($oldVisibility))).Count
+  $newVisibilityCount=([regex]::Matches($text,[regex]::Escape($newVisibility))).Count
+  if($oldVisibilityCount -eq 1 -and $newVisibilityCount -eq 0){
+    $text=$text.Replace($oldVisibility,$newVisibility)
+    Write-Host 'EVIDENCE_ROOTFIX_V52_HOOK=PASS name=enemy_activity_camera_viewport matches=1 action=migrated'
+  }elseif($oldVisibilityCount -eq 0 -and $newVisibilityCount -eq 1){
+    Write-Host 'EVIDENCE_ROOTFIX_V52_HOOK=PASS name=enemy_activity_camera_viewport matches=1 action=already_applied'
+  }else{
+    throw "ANDROID_EVIDENCE_ROOTFIX_V52=FAIL patch=enemy_activity_camera_viewport old=$oldVisibilityCount new=$newVisibilityCount"
+  }
   $text=$text.Replace('visible_always_active=true','viewport_always_active=true')
 
   $oldAi="  `$game=Replace-One `$game 'if (enemy && enemy.isAlive()) {' 'if (enemy && enemy.isAlive() && this.isOfflineEnemySpatiallyActive(enemy)) {' 'ai_tuning_active_set_only'"
