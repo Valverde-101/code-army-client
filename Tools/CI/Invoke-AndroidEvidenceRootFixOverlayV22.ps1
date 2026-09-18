@@ -78,7 +78,7 @@ try {
   $pickerInsertAt=$pickerApplyIndex+$pickerApplyLine.Length
   $text=$text.Substring(0,$pickerInsertAt)+"`n"+$pickerGuard+$text.Substring($pickerInsertAt)
 
-  # V21 upgrades emitted saves to CURRENT_SAVE_VERSION=8, while V20's runtime test
+  # V21 upgrades emitted saves to the current save schema, while V20's runtime test
   # still asserts the literal v7 assignment. The stale assertion lives in the TEST
   # FILE that V21 patches at runtime, not in V21's own source. Inject a V21 runtime
   # migration immediately after its stable patch-version hook instead of searching
@@ -87,7 +87,7 @@ try {
   $runtimeMatches=[regex]::Matches($text,$runtimePatchPattern)
   if($runtimeMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_runtime_patch_anchor expected=1 actual=$($runtimeMatches.Count)"}
   $runtimeFixLine=@'
-  $test=Replace-LiteralOne $test "Require-Contains `$offline 'savedata[`"saveversion`"] = 7;' 'offline_save_version_bumped_for_active_map'" "Require-Contains `$offline 'savedata[`"saveversion`"] = CURRENT_SAVE_VERSION;' 'offline_save_version_bumped_for_active_map'" 'runtime_test_save_version_v8'
+  $test=Replace-LiteralOne $test "Require-Contains `$offline 'savedata[`"saveversion`"] = 7;' 'offline_save_version_bumped_for_active_map'" "Require-Contains `$offline 'savedata[`"saveversion`"] = CURRENT_SAVE_VERSION;' 'offline_save_version_bumped_for_active_map'" 'runtime_test_save_version_current'
 '@.TrimEnd()
   $runtimeMatch=$runtimeMatches[0]
   $insertAt=$runtimeMatch.Index+$runtimeMatch.Length
@@ -136,11 +136,11 @@ $v21PauseMarkers=@('browseForOpen','onExternalSaveSelected')
     $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V22_PATCHED_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
     throw 'ANDROID_EVIDENCE_ROOTFIX_V22=FAIL patched_v21_parser_invalid'
   }
-  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+mobile_picker_nested_block+runtime_save_v8_regression+source_import_transaction+representation_independent_final_gate parser=true'
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_COMPAT=PASS fixes=semantic_onPermission+pause_dialog_swf_path+mobile_picker_nested_block+runtime_save_version_regression+source_import_transaction+representation_independent_final_gate parser=true'
 
   & $v21 -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -Mode Apply
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL predecessor_apply_exit=$LASTEXITCODE"}
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+mobile_picker_nested_block+runtime_save_v8_regression+source_import_transaction+representation_independent_final_gate"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V22=PASS mode=apply predecessor=v21 sha=$ExpectedSha compatibility=semantic_import+swf_path+mobile_picker_nested_block+runtime_save_version_regression+source_import_transaction+representation_independent_final_gate"
 }
 finally {
   [IO.File]::WriteAllBytes($v21,$original)

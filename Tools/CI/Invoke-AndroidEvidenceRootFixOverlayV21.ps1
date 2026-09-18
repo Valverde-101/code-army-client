@@ -99,9 +99,9 @@ try {
   $offline=Replace-LiteralOne $offline 'public class OfflineSave {' @'
 public class OfflineSave {
 
-		private static const CURRENT_SAVE_VERSION:int = 8;
-		private static const SAVE_SCHEMA:String = "armyattack-offline-save/v8";
-'@.TrimEnd() 'save_schema_v8'
+		private static const CURRENT_SAVE_VERSION:int = 9;
+		private static const SAVE_SCHEMA:String = "armyattack-offline-save/v9";
+'@.TrimEnd() 'save_schema_v9'
 
   $dedupePattern='(?ms)if \(known_objects\.indexOf\(String\(gameobj\["coord_x"\]\) \+ String\(gameobj\["coord_y"\]\)\) == -1\) \{\s*known_objects\.push\(String\(gameobj\["coord_x"\]\) \+ String\(gameobj\["coord_y"\]\)\);\s*gamefield_items\.push\(gameobj\);\s*\}'
   $dedupeReplacement=@'
@@ -113,7 +113,7 @@ var objectKey:String = String(gameobj["coord_x"]) + ":" + String(gameobj["coord_
 '@
   $offline=Replace-RegexOne $offline $dedupePattern $dedupeReplacement.TrimEnd() 'structure_coordinate_dedupe_collision_fix'
 
-  $saveVersionNeedle='savedata["saveversion"] = 7;'
+  $saveVersionNeedle='savedata["saveversion"] = 9;'
   $saveVersionReplacement=@'
 savedata["saveversion"] = CURRENT_SAVE_VERSION;
 			savedata["save_manifest"] = buildSaveManifest(savedata);
@@ -204,13 +204,13 @@ savedata["saveversion"] = CURRENT_SAVE_VERSION;
   $migrationNeedle='if (version < 7) savedata["offline_pvp_booster_seed_cleanup_pending"] = true;'
   $migrationReplacement=@'
 if (version < 7) savedata["offline_pvp_booster_seed_cleanup_pending"] = true;
-			if (version < 8) {
+			if (version < CURRENT_SAVE_VERSION) {
 				savedata["saveversion"] = CURRENT_SAVE_VERSION;
 				savedata["save_manifest"] = buildSaveManifest(savedata);
 			}
 '@
-  $offline=Replace-LiteralOne $offline $migrationNeedle $migrationReplacement.TrimEnd() 'save_v8_migration'
-  foreach($token in @('CURRENT_SAVE_VERSION:int = 8','armyattack-offline-save/v8','validatePortableSave','save_manifest','objectKey','persisted_map_ids','unvisited_map_ids')){Require-Token $offline $token 'portable_save_model'}
+  $offline=Replace-LiteralOne $offline $migrationNeedle $migrationReplacement.TrimEnd() 'save_v9_manifest_migration'
+  foreach($token in @('CURRENT_SAVE_VERSION:int = 9','armyattack-offline-save/v9','validatePortableSave','save_manifest','objectKey','persisted_map_ids','unvisited_map_ids')){Require-Token $offline $token 'portable_save_model'}
   Write-Utf8Bom $offlinePath $offline
 
   # Manual Save on Android persists the exact validated snapshot internally first,
@@ -469,7 +469,7 @@ if($v21Offline.Count -ne 1 -or $v21Hud.Count -ne 1 -or $v21Pause.Count -ne 1){th
 $v21OfflineText=[IO.File]::ReadAllText($v21Offline[0].FullName)
 $v21HudText=[IO.File]::ReadAllText($v21Hud[0].FullName)
 $v21PauseText=[IO.File]::ReadAllText($v21Pause[0].FullName)
-$v21OfflineMarkers=@('armyattack-offline-save/v8','validatePortableSave','save_manifest','objectKey','persisted_map_ids','unvisited_map_ids')
+$v21OfflineMarkers=@('armyattack-offline-save/v9','validatePortableSave','save_manifest','objectKey','persisted_map_ids','unvisited_map_ids')
 $v21HudMarkers=@('savePortableAndShare','SAVE_EXPORT_SHARE','shareSave')
 $v21PauseMarkers=@('SAVE_IMPORT_COMMIT','SAVE_IMPORT_REJECTED','browseForOpen','onExternalSaveSelected','validatePortableSave')
 foreach($marker in $v21OfflineMarkers){if($v21OfflineText -notmatch [regex]::Escape($marker)){throw "SWF_V21_SAVE_VERIFY=FAIL class=OfflineSave marker=$marker"}}
@@ -490,8 +490,8 @@ $diagProvider=Read-Source 'android\native\diagnostics\java\com\valverde\armyatta
 '@.TrimEnd() 'runtime_test_save_sources'
   $test=Replace-LiteralOne $test "Require-Contains `$swfPatch 'mobile-engine-v3.32-movement-recovery-rootfix-v20' 'swf_patch_version_is_v20'" "Require-Contains `$swfPatch 'mobile-engine-v3.33-portable-save-share-v21' 'swf_patch_version_is_v21'" 'runtime_test_patch_version_v21'
   $saveAssertions=@'
-Require-Contains $offline 'CURRENT_SAVE_VERSION:int = 8' 'portable_save_version_v8'
-Require-Contains $offline 'armyattack-offline-save/v8' 'portable_save_schema_v8'
+Require-Contains $offline 'CURRENT_SAVE_VERSION:int = 9' 'portable_save_version_v9'
+Require-Contains $offline 'armyattack-offline-save/v9' 'portable_save_schema_v9'
 Require-Contains $offline 'String(gameobj["coord_x"]) + ":" + String(gameobj["coord_y"])' 'structure_save_coordinate_key_is_unambiguous'
 Require-NotContains $offline 'known_objects.push(String(gameobj["coord_x"]) + String(gameobj["coord_y"]))' 'ambiguous_structure_dedupe_removed'
 Require-Contains $offline 'validatePortableSave' 'portable_save_has_preimport_validation'
