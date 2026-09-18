@@ -15,6 +15,7 @@ package game.actions
    import game.isometric.elements.WorldObject;
    import game.isometric.pathfinding.AStarPathfinder;
    import game.net.ServiceIDs;
+   import game.missions.MissionManager;
    import game.states.GameState;
    
    public class EnemyMovingAction extends Action
@@ -141,6 +142,21 @@ package game.actions
             _loc13_ = int.MAX_VALUE;
             _loc15_ = int(_loc1_.length);
             _loc17_ = int(_loc11_.length);
+            var currentDistance:int = int.MAX_VALUE;
+            var currentTargetIndex:int = 0;
+            var currentTargetCell:GridCell = null;
+            var currentTargetDistance:int = 0;
+            while(currentTargetIndex < _loc17_)
+            {
+               currentTargetCell = (_loc11_[currentTargetIndex] as Renderable).getCell();
+               if(currentTargetCell)
+               {
+                  currentTargetDistance = (_loc3_.mPosI - currentTargetCell.mPosI) * (_loc3_.mPosI - currentTargetCell.mPosI) + (_loc3_.mPosJ - currentTargetCell.mPosJ) * (_loc3_.mPosJ - currentTargetCell.mPosJ);
+                  if(currentTargetDistance < currentDistance) currentDistance = currentTargetDistance;
+               }
+               currentTargetIndex++;
+            }
+            if(currentDistance == int.MAX_VALUE) return null;
             _loc18_ = 0;
             while(_loc18_ < _loc15_)
             {
@@ -149,7 +165,7 @@ package game.actions
                while(_loc19_ < _loc17_)
                {
                   _loc20_ = (_loc16_ = _loc11_[_loc19_] as Renderable).getCell();
-                  if((_loc21_ = (_loc14_.mPosI - _loc20_.mPosI) * (_loc14_.mPosI - _loc20_.mPosI) + (_loc14_.mPosJ - _loc20_.mPosJ) * (_loc14_.mPosJ - _loc20_.mPosJ)) < _loc13_)
+                  if((_loc21_ = (_loc14_.mPosI - _loc20_.mPosI) * (_loc14_.mPosI - _loc20_.mPosI) + (_loc14_.mPosJ - _loc20_.mPosJ) * (_loc14_.mPosJ - _loc20_.mPosJ)) < _loc13_ && _loc21_ < currentDistance)
                   {
                      _loc13_ = _loc21_;
                      _loc12_ = _loc14_;
@@ -331,6 +347,10 @@ package game.actions
             else
             {
                (mActor as IsometricCharacter).mDestinationCell = this.findClosestPlayerCell();
+               if(!(mActor as IsometricCharacter).mDestinationCell)
+               {
+                  (mActor as IsometricCharacter).mDestinationCell = this.headToThePlayerArea();
+               }
             }
          }
          else
@@ -354,22 +374,41 @@ package game.actions
       
       protected function execute() : void
       {
-         mActor.mScene.characterArrivedInCell(mActor as IsometricCharacter,mActor.getCell());
-         mActor.getCell().mCharacterComingToThisTile = null;
+         var arrivalCell:GridCell = (mActor as IsometricCharacter).mDestinationCell ? (mActor as IsometricCharacter).mDestinationCell : mActor.getCell();
+         if(!arrivalCell) arrivalCell = mActor.getCell();
+         var territoryOwnerBefore:int = arrivalCell ? arrivalCell.mOwner : MapData.TILE_OWNER_NEUTRAL;
+         var campaignCapture:Boolean = Config.OFFLINE_MODE && GameState.mInstance.mState == GameState.STATE_PLAY && String(GameState.mInstance.mCurrentMapId).indexOf("pvp_") != 0;
+         if(campaignCapture && arrivalCell && arrivalCell.mOwner == MapData.TILE_OWNER_FRIENDLY)
+         {
+            arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY;
+            GameState.mInstance.mMapData.mUpdateRequired = true;
+            MissionManager.increaseCounter("Conquer",new Array(arrivalCell.mPosI,arrivalCell.mPosJ),-1);
+         }
+         if(arrivalCell)
+         {
+            mActor.mScene.characterArrivedInCell(mActor as IsometricCharacter,arrivalCell);
+            arrivalCell.mCharacterComingToThisTile = null;
+         }
          mActor.setAnimationAction(AnimationController.CHARACTER_ANIMATION_IDLE,false,true);
-         var _loc1_:GridCell = mActor.getCell();
-         var _loc2_:Object = {
-            "coord_x":this.mOriginCell.mPosI,
-            "coord_y":this.mOriginCell.mPosJ,
-            "new_coord_x":_loc1_.mPosI,
-            "new_coord_y":_loc1_.mPosJ
-         };
+         var territoryOwnerAfter:int = arrivalCell ? arrivalCell.mOwner : territoryOwnerBefore;
+         if(campaignCapture && arrivalCell && territoryOwnerBefore != territoryOwnerAfter)
+         {
+            var territoryVisualCommit:Boolean = true;
+            if(mActor.mScene.mTilemapGraphic)
+            {
+               mActor.mScene.mTilemapGraphic.recalculateBorderEdgesAround(arrivalCell.mPosI,arrivalCell.mPosJ);
+               mActor.mScene.mTilemapGraphic.markOwnershipDirty(arrivalCell);
+               territoryVisualCommit = mActor.mScene.mTilemapGraphic.commitOwnershipVisualNow();
+            }
+            Utils.DiagEvent("CAMPAIGN_TERRITORY_CAPTURE","map=" + GameState.mInstance.mCurrentMapId + ";side=enemy;enemy=" + ((mActor as EnemyUnit).mUnitId) + ";x=" + arrivalCell.mPosI + ";y=" + arrivalCell.mPosJ + ";before=" + territoryOwnerBefore + ";after=" + territoryOwnerAfter + ";visual_commit=" + territoryVisualCommit);
+         }
+         var _loc1_:GridCell = arrivalCell ? arrivalCell : mActor.getCell();
+         var _loc2_:Object = {"coord_x":this.mOriginCell.mPosI,"coord_y":this.mOriginCell.mPosJ,"new_coord_x":_loc1_.mPosI,"new_coord_y":_loc1_.mPosJ};
          GameState.mInstance.mServer.serverCallServiceWithParameters(ServiceIDs.MOVE_ENEMY,_loc2_,false);
          (mActor as IsometricCharacter).mPreviousTile = this.mOriginCell;
-         if(Config.DEBUG_MODE)
-         {
-         }
+         (mActor as IsometricCharacter).mDestinationCell = null;
          GameState.mInstance.enemyMoveMade();
+
       }
    }
 }

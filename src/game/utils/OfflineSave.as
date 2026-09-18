@@ -148,6 +148,7 @@
 							unit["activation_time"] = mapgrid[i]["mCharacter"].getActivationTimeInMinutes(); // Probably unused
 						} else if (mapgrid[i]["mCharacter"] is PlayerUnit) {
 							unit["next_action_at"] = Math.round(mapgrid[i]["mCharacter"].getDyingTimer() / 1000); // Time to dying (for not-premium units)
+							unit["repairs_used"] = (mapgrid[i]["mCharacter"] as PlayerUnit).getOfflineRepairsUsed();
 							unit["activation_time"] = 0;
 						} else { // PlayerUnit + Buildings
 							unit["activation_time"] = 0;
@@ -443,7 +444,7 @@
 			};
 			var now: Date = new Date();
 			savedata["time_of_last_save"] = now.valueOf();
-			savedata["saveversion"] = 9;
+			savedata["saveversion"] = 10;
 			return savedata;
 		}
 
@@ -505,6 +506,18 @@
 					"last_login_date": "",
 					"last_claim_date": ""
 				};
+			}
+			if (version < 10) {
+				var repairMapIndex: * = 0;
+				var repairUnitIndex: * = 0;
+				var repairUnit: * = null;
+				for (repairMapIndex in savedata["maps"]) {
+					for (repairUnitIndex in savedata["maps"][repairMapIndex]["map_data"]["gamefield_items"]) {
+						repairUnit = savedata["maps"][repairMapIndex]["map_data"]["gamefield_items"][repairUnitIndex];
+						if (repairUnit["item_type"] == "PlayerUnit" && repairUnit["repairs_used"] == null) repairUnit["repairs_used"] = 0;
+					}
+				}
+				savedata["saveversion"] = 10;
 			}
 			return savedata;
 		}

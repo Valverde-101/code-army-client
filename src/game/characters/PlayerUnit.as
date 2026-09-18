@@ -62,6 +62,8 @@
       public static var smPlayerSelectionAmbiance:Boolean;
       
       public static var smPlayerSelectionAmbianceCollection:SoundCollection;
+
+      public static const MAX_OFFLINE_REPAIRS:int = 3;
        
       
       private var mUnitLevel:int;
@@ -83,6 +85,8 @@
       private var mSelectLongSounds:SoundCollection;
       
       protected var mDestroyedPermanently:Boolean = false;
+
+      private var mOfflineRepairsUsed:int = 0;
       
       public function PlayerUnit(param1:int, param2:IsometricScene, param3:MapItem)
       {
@@ -252,6 +256,7 @@
       override public function setupFromServer(param1:Object) : void
       {
          super.setupFromServer(param1);
+         this.mOfflineRepairsUsed = param1.repairs_used != null ? int(Math.max(0,Math.min(MAX_OFFLINE_REPAIRS,int(param1.repairs_used)))) : 0;
          if(mHealth < mMaxHealth)
          {
             if(mMaxHealTimeInMinutes > 0)
@@ -275,6 +280,11 @@
       override public function die() : void
       {
          super.die();
+         if(Config.OFFLINE_MODE && GameState.mInstance.mState != GameState.STATE_PVP && this.mOfflineRepairsUsed >= MAX_OFFLINE_REPAIRS)
+         {
+            this.mDestroyedPermanently = true;
+            Utils.DiagEvent("PLAYER_UNIT_PERMADEATH","unit=" + (mItem ? mItem.mId : "unknown") + ";repairs_used=" + this.mOfflineRepairsUsed + ";max=" + MAX_OFFLINE_REPAIRS);
+         }
          if(GameState.mInstance.mState == GameState.STATE_PVP)
          {
             setAnimationAction(AnimationController.CHARACTER_ANIMATION_EXPLOSION,false,true);
@@ -289,6 +299,31 @@
       public function destroyPermanently() : void
       {
          this.mDestroyedPermanently = true;
+      }
+
+      public function getOfflineRepairsUsed() : int
+      {
+         return this.mOfflineRepairsUsed;
+      }
+
+      public function getOfflineRepairsRemaining() : int
+      {
+         return Math.max(0,MAX_OFFLINE_REPAIRS - this.mOfflineRepairsUsed);
+      }
+
+      public function canRepairOffline() : Boolean
+      {
+         if(!Config.OFFLINE_MODE || GameState.mInstance.mState == GameState.STATE_PVP) return true;
+         return this.getHealth() > 0 || this.mOfflineRepairsUsed < MAX_OFFLINE_REPAIRS;
+      }
+
+      public function registerOfflineRepair() : Boolean
+      {
+         if(!Config.OFFLINE_MODE || GameState.mInstance.mState == GameState.STATE_PVP || this.getHealth() > 0) return true;
+         if(this.mOfflineRepairsUsed >= MAX_OFFLINE_REPAIRS) return false;
+         ++this.mOfflineRepairsUsed;
+         Utils.DiagEvent("PLAYER_UNIT_REPAIR_LIFE","unit=" + (mItem ? mItem.mId : "unknown") + ";repairs_used=" + this.mOfflineRepairsUsed + ";repairs_remaining=" + this.getOfflineRepairsRemaining());
+         return true;
       }
       
       override public function updateDying(param1:int) : void

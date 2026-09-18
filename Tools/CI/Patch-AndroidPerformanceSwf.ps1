@@ -76,6 +76,8 @@ $patchSpecs=@(
   [ordered]@{Class='game.actions.PvPAttackEnemyAction';Source='src\game\actions\PvPAttackEnemyAction.as';Log='ffdec-feature-pvp-attack.log'},
   [ordered]@{Class='game.actions.PvPAttackEnemyInstallationAction';Source='src\game\actions\PvPAttackEnemyInstallationAction.as';Log='ffdec-feature-pvp-installation-attack.log'},
   [ordered]@{Class='game.actions.EnemyAttackingAction';Source='src\game\actions\EnemyAttackingAction.as';Log='ffdec-feature-enemy-attack-priority.log'},
+  [ordered]@{Class='game.characters.PlayerUnit';Source='src\game\characters\PlayerUnit.as';Log='ffdec-feature-player-unit-repair-lives.log'},
+  [ordered]@{Class='game.actions.RepairPlayerUnitAction';Source='src\game\actions\RepairPlayerUnitAction.as';Log='ffdec-feature-player-unit-repair-action.log'},
   [ordered]@{Class='game.actions.FireMissionAction';Source='src\game\actions\FireMissionAction.as';Log='ffdec-feature-firemission-action.log'},
   [ordered]@{Class='game.actions.PvPFireMissionAction';Source='src\game\actions\PvPFireMissionAction.as';Log='ffdec-feature-pvp-firemission.log'},
   [ordered]@{Class='game.gui.popups.DailyRewardWindow';Source='src\game\gui\popups\DailyRewardWindow.as';Log='ffdec-feature-daily-reward.log'},

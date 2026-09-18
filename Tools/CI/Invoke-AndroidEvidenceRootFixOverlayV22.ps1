@@ -81,7 +81,7 @@ try {
   # V21 now owns the runtime-test transition from the repository's literal v9
   # assertions to CURRENT_SAVE_VERSION. Keep V22 focused on its import/picker
   # compatibility seams and fail early if that ownership regresses.
-  foreach($required in @('runtime_test_offline_save_version_v9','runtime_test_daily_reward_saveversion_current')){
+  foreach($required in @('runtime_test_offline_save_version_v10','runtime_test_daily_reward_saveversion_current')){
     if(-not $text.Contains($required)){throw "ANDROID_EVIDENCE_ROOTFIX_V22=FAIL v21_save_version_compat_missing token=$required"}
   }
   Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V22_SAVE_VERSION_COMPAT=PASS owner=v21 schema=v9 semantic_current_version=true'

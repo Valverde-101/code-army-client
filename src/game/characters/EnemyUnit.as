@@ -125,9 +125,13 @@
 
 		private var mWaitingForAirplane: Boolean = false;
 
-		private static const OFFLINE_PRIORITY_ATTACK_SCAN_MS: int = 150;
+		private static const OFFLINE_ATTACK_TWO_CHANCE: Number = 40;
 
-		private var mOfflinePriorityAttackScanElapsed: int = OFFLINE_PRIORITY_ATTACK_SCAN_MS;
+		private static const OFFLINE_ATTACK_THREE_CHANCE: Number = 5;
+
+		private var mOfflineAttackActionsRemaining: int = 0;
+
+		private var mOfflineAttackTurnActive: Boolean = false;
 
 		public function EnemyUnit(param1: int, param2: IsometricScene, param3: MapItem) {
 			var _loc4_: EnemyUnitItem = null;
@@ -541,6 +545,75 @@
 			return best;
 		}
 
+		private function findPriorityPlayerObjectCellInRange(): GridCell {
+			var origin: GridCell = getCell();
+			if (!origin || mAttackRange < 1) return null;
+			var best: GridCell = null;
+			var bestDistanceSq: int = int.MAX_VALUE;
+			var x: int = origin.mPosI - mAttackRange;
+			var y: int = 0;
+			var cell: GridCell = null;
+			var dx: int = 0;
+			var dy: int = 0;
+			var distanceSq: int = 0;
+			var attackable: Boolean = false;
+			while (x <= origin.mPosI + mAttackRange) {
+				y = origin.mPosJ - mAttackRange;
+				while (y <= origin.mPosJ + mAttackRange) {
+					cell = mScene.getCellAt(x, y);
+					attackable = false;
+					if (cell && cell.mObject) {
+						if (cell.mObject is PlayerInstallationObject && (cell.mObject as PlayerInstallationObject).getHealth() > 0) {
+							attackable = true;
+						} else if (cell.mObject is PlayerBuildingObject && !(cell.mObject is ResourceBuildingObject) && !(cell.mObject is SignalObject) && (cell.mObject as PlayerBuildingObject).getHealth() > 0) {
+							attackable = !(cell.mObject is ConstructionObject) || (cell.mObject as ConstructionObject).mHasBeenCompleted;
+						}
+					}
+					if (attackable) {
+						dx = int(Math.abs(x - origin.mPosI));
+						dy = int(Math.abs(y - origin.mPosJ));
+						if (dx <= mAttackRange && dy <= mAttackRange) {
+							distanceSq = dx * dx + dy * dy;
+							if (distanceSq < bestDistanceSq) {
+								best = cell;
+								bestDistanceSq = distanceSq;
+							}
+						}
+					}
+					y++;
+				}
+				x++;
+			}
+			return best;
+		}
+
+		public function hasPriorityAttackTargetInRange(): Boolean {
+			return this.findPriorityPlayerTargetInRange() != null || this.findPriorityPlayerObjectCellInRange() != null;
+		}
+
+		private function beginOfflineAttackTurn(): void {
+			if (!Config.OFFLINE_MODE || this.mOfflineAttackTurnActive) return;
+			var roll: Number = Math.random() * 100;
+			if (roll < OFFLINE_ATTACK_THREE_CHANCE) {
+				this.mOfflineAttackActionsRemaining = 3;
+			} else if (roll < OFFLINE_ATTACK_THREE_CHANCE + OFFLINE_ATTACK_TWO_CHANCE) {
+				this.mOfflineAttackActionsRemaining = 2;
+			} else {
+				this.mOfflineAttackActionsRemaining = 1;
+			}
+			this.mOfflineAttackTurnActive = true;
+			Utils.DiagEvent("ENEMY_ATTACK_TURN","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";attacks=" + this.mOfflineAttackActionsRemaining + ";p2=40;p3=5");
+		}
+
+		private function consumeOfflineAttackAction(): void {
+			if (this.mOfflineAttackTurnActive && this.mOfflineAttackActionsRemaining > 0) --this.mOfflineAttackActionsRemaining;
+		}
+
+		private function endOfflineAttackTurn(): void {
+			this.mOfflineAttackTurnActive = false;
+			this.mOfflineAttackActionsRemaining = 0;
+		}
+
 		private function updateReactionState(param1: int): void {
 			var _loc2_: int = 0;
 			var _loc3_: int = 0;
@@ -554,21 +627,7 @@
 			var _loc11_: TextFormat = null;
 			var _loc12_: PlayerUnit = null;
 			var _loc13_: Boolean = false;
-			if (Config.OFFLINE_MODE && !MissionManager.modalMissionActive() && !this.hasImportantActionsInQueue()) {
-				_loc13_ = this.mReactionState == REACT_STATE_WAIT_FOR_TIMER || this.mReactionState == REACT_STATE_WAIT_FOR_ORDERS || this.mReactionState == REACT_STATE_WAIT_FOR_ORDERS_PREMIUM || this.mNewReactionState == REACT_STATE_WAIT_FOR_TIMER || this.mNewReactionState == REACT_STATE_WAIT_FOR_ORDERS || this.mNewReactionState == REACT_STATE_WAIT_FOR_ORDERS_PREMIUM;
-				if (_loc13_) {
-					this.mOfflinePriorityAttackScanElapsed += param1;
-					if (this.mOfflinePriorityAttackScanElapsed >= OFFLINE_PRIORITY_ATTACK_SCAN_MS) {
-						this.mOfflinePriorityAttackScanElapsed = 0;
-						_loc12_ = this.findPriorityPlayerTargetInRange();
-						if (_loc12_) {
-							this.mReactionStateCounter = 0;
-							this.mNewReactionState = REACT_STATE_ACTION;
-							Utils.DiagEvent("ENEMY_ATTACK_PRIORITY_WAKE","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";from_state=" + this.mReactionState + ";range=" + mAttackRange + ";target_x=" + _loc12_.getCell().mPosI + ";target_y=" + _loc12_.getCell().mPosJ + ";wait_bypassed=true");
-						}
-					}
-				}
-			}
+			var _loc14_: GridCell = null;
 			if (this.mNewReactionState > -1) {
 				this.mReactionState = this.mNewReactionState;
 				this.mNewReactionState = -1;
@@ -600,71 +659,47 @@
 						this.mReactionStateCounter = 0;
 						_loc2_ = getCell().mPosI;
 						_loc3_ = getCell().mPosJ;
-						_loc4_ = false;
-						_loc5_ = false;
-						_loc6_ = false;
 						_loc12_ = this.findPriorityPlayerTargetInRange();
+						_loc14_ = this.findPriorityPlayerObjectCellInRange();
 						if (_loc12_) {
-							Utils.DiagEvent("ENEMY_ATTACK_PRIORITY","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";range=" + mAttackRange + ";enemy_x=" + _loc2_ + ";enemy_y=" + _loc3_ + ";target_x=" + _loc12_.getCell().mPosI + ";target_y=" + _loc12_.getCell().mPosJ + ";camera_independent=true");
+							this.beginOfflineAttackTurn();
+							Utils.DiagEvent("ENEMY_ATTACK_PRIORITY","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";target_type=unit;range=" + mAttackRange + ";enemy_x=" + _loc2_ + ";enemy_y=" + _loc3_ + ";target_x=" + _loc12_.getCell().mPosI + ";target_y=" + _loc12_.getCell().mPosJ + ";turn_remaining=" + this.mOfflineAttackActionsRemaining);
 							this.attackPlayerUnit(_loc12_);
+							this.consumeOfflineAttackAction();
 							this.mMovementStepsLeft = 0;
 							break;
 						}
-						if (mScene.isInsideVisibleArea(getCell())) {
-							_loc8_ = _loc2_ - mAttackRange;
-							while (_loc8_ <= _loc2_ + mAttackRange) {
-								_loc9_ = _loc3_ - mAttackRange;
-								while (_loc9_ <= _loc3_ + mAttackRange) {
-									if (_loc7_ = mScene.getCellAt(_loc8_, _loc9_)) {
-										if (_loc7_.mCharacter && _loc7_.mCharacter is PlayerUnit && _loc7_.mCharacter.isAlive()) {
-											_loc4_ = true;
-											break;
-										}
-										if (_loc7_.mObject && _loc7_.mObject is PlayerInstallationObject && (_loc7_.mObject as PlayerInstallationObject).getHealth() > 0) {
-											_loc6_ = true;
-											break;
-										}
-										if (_loc7_.mObject && _loc7_.mObject is PlayerBuildingObject && !(_loc7_.mObject is ResourceBuildingObject) && !(_loc7_.mObject is SignalObject) && (_loc7_.mObject as PlayerBuildingObject).getHealth() > 0) {
-											if (!(_loc7_.mObject is ConstructionObject) || _loc7_.mObject is ConstructionObject && (_loc7_.mObject as ConstructionObject).mHasBeenCompleted) {
-												_loc5_ = true;
-												break;
-											}
-										}
-									}
-									_loc9_++;
-								}
-								if (_loc4_ || _loc5_ || _loc6_) {
-									if (!isStealth()) {
-										break;
-									}
-									_loc10_ = Math.random() * 100;
-									if (!(_loc4_ && _loc10_ < 30 || _loc6_ && _loc10_ < 50)) {
-										break;
-									}
-									_loc4_ = false;
-									_loc6_ = false;
-									_loc5_ = false;
-								}
-								_loc8_++;
-							}
+						if (_loc14_ && _loc14_.mObject is PlayerInstallationObject) {
+							this.beginOfflineAttackTurn();
+							Utils.DiagEvent("ENEMY_ATTACK_PRIORITY","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";target_type=installation;range=" + mAttackRange + ";target_x=" + _loc14_.mPosI + ";target_y=" + _loc14_.mPosJ + ";turn_remaining=" + this.mOfflineAttackActionsRemaining);
+							this.attackPlayerInstallation(_loc14_.mObject as PlayerInstallationObject);
+							this.consumeOfflineAttackAction();
+							this.mMovementStepsLeft = 0;
+							break;
 						}
-						if (_loc4_) {
-							this.attackPlayerUnit();
+						if (_loc14_ && _loc14_.mObject is PlayerBuildingObject) {
+							this.beginOfflineAttackTurn();
+							Utils.DiagEvent("ENEMY_ATTACK_PRIORITY","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";target_type=building;range=" + mAttackRange + ";target_x=" + _loc14_.mPosI + ";target_y=" + _loc14_.mPosJ + ";turn_remaining=" + this.mOfflineAttackActionsRemaining);
+							this.attackPlayerBuilding(_loc14_.mObject as PlayerBuildingObject);
+							this.consumeOfflineAttackAction();
 							this.mMovementStepsLeft = 0;
-						} else if (_loc6_) {
-							this.attackPlayerInstallation(_loc7_.mObject as PlayerInstallationObject);
-							this.mMovementStepsLeft = 0;
-						} else if (_loc5_) {
-							this.attackPlayerBuilding(_loc7_.mObject as PlayerBuildingObject);
-							this.mMovementStepsLeft = 0;
-						} else {
-							if (this.mMovementStepsLeft <= 0) {
-								this.mMovementStepsLeft = this.mMovementRange;
-							}
-							this.queueAction(new EnemyMovingAction(this));
+							break;
 						}
+						this.endOfflineAttackTurn();
+						if (this.mMovementStepsLeft <= 0) this.mMovementStepsLeft = this.mMovementRange;
+						this.queueAction(new EnemyMovingAction(this));
 						break;
 					case REACT_STATE_ACTION_COMPLETED:
+						if (Config.OFFLINE_MODE && this.mOfflineAttackTurnActive) {
+							if (this.mOfflineAttackActionsRemaining > 0 && this.hasPriorityAttackTargetInRange()) {
+								this.changeReactionState(REACT_STATE_ACTION);
+							} else {
+								this.endOfflineAttackTurn();
+								this.changeReactionState(REACT_STATE_WAIT_FOR_TIMER);
+								this.updateActivationIcon();
+							}
+							break;
+						}
 						--this.mMovementStepsLeft;
 						if (this.mMovementStepsLeft > 0) {
 							this.changeReactionState(REACT_STATE_ACTION);

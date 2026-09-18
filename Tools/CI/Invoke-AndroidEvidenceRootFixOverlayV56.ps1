@@ -31,6 +31,8 @@ $dailyRewardPath=Join-Path $RepoRoot 'src\game\gui\popups\DailyRewardWindow.as'
 $configSourcePath=Join-Path $RepoRoot 'src\Config.as'
 $enemyPath=Join-Path $RepoRoot 'src\game\characters\EnemyUnit.as'
 $enemyAttackPath=Join-Path $RepoRoot 'src\game\actions\EnemyAttackingAction.as'
+$playerUnitPath=Join-Path $RepoRoot 'src\game\characters\PlayerUnit.as'
+$repairPlayerUnitPath=Join-Path $RepoRoot 'src\game\actions\RepairPlayerUnitAction.as'
 
 $backupRoot=Join-Path $RepoRoot ('.work\scratch\android-evidence-rootfix-v56\'+$ExpectedSha)
 $manifestPath=Join-Path $backupRoot 'manifest.json'
@@ -353,34 +355,15 @@ try {
   Reject $pvp 'arrival.mOwner = MapData.TILE_OWNER_ENEMY' 'pvp_forced_owner_forbidden'
   Write-Utf8Bom $pvpMovePath $pvp
 
-  # Campaign movement already performs the correct logical ownership transfer in
-  # IsometricScene.changeCellOwner(). Commit only that already-computed change to
-  # the tile renderer immediately so enemy recapture is visible without waiting
-  # for a later map rebuild. Never force owner state here.
+  # Campaign enemy arrival owns territory directly at the settled destination.
+  # This is intentionally limited to offline STATE_PLAY and never runs in PvP.
   $campaignMove=Normalize-Lf ([IO.File]::ReadAllText($enemyMovePath))
-  $campaignArrival='         mActor.mScene.characterArrivedInCell(mActor as IsometricCharacter,mActor.getCell());'
-  $campaignArrivalWithVisual=@'
-         var territoryCell:GridCell = mActor.getCell();
-         var territoryOwnerBefore:int = territoryCell ? territoryCell.mOwner : MapData.TILE_OWNER_NEUTRAL;
-         mActor.mScene.characterArrivedInCell(mActor as IsometricCharacter,territoryCell);
-         var territoryOwnerAfter:int = territoryCell ? territoryCell.mOwner : territoryOwnerBefore;
-         var territoryVisualCommit:Boolean = true;
-         if(territoryCell && territoryOwnerBefore != territoryOwnerAfter)
-         {
-            if(mActor.mScene.mTilemapGraphic)
-            {
-               mActor.mScene.mTilemapGraphic.recalculateBorderEdgesAround(territoryCell.mPosI,territoryCell.mPosJ);
-               mActor.mScene.mTilemapGraphic.markOwnershipDirty(territoryCell);
-               territoryVisualCommit = mActor.mScene.mTilemapGraphic.commitOwnershipVisualNow();
-            }
-            Utils.DiagEvent("CAMPAIGN_TERRITORY_CAPTURE","map=" + GameState.mInstance.mCurrentMapId + ";side=enemy;x=" + territoryCell.mPosI + ";y=" + territoryCell.mPosJ + ";before=" + territoryOwnerBefore + ";after=" + territoryOwnerAfter + ";visual_commit=" + territoryVisualCommit);
-         }
-'@.TrimEnd()
-  $campaignMove=Replace-ExactOne $campaignMove $campaignArrival (Normalize-Lf $campaignArrivalWithVisual) 'campaign_enemy_territory_visual_commit'
   Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_capture_telemetry'
+  Require $campaignMove 'arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_capture_owner_commit'
+  Require $campaignMove 'MissionManager.increaseCounter("Conquer",new Array(arrivalCell.mPosI,arrivalCell.mPosJ),-1);' 'campaign_capture_counter_decrement'
+  Require $campaignMove 'GameState.mInstance.mState == GameState.STATE_PLAY' 'campaign_capture_state_guard'
+  Require $campaignMove 'String(GameState.mInstance.mCurrentMapId).indexOf("pvp_") != 0' 'campaign_capture_pvp_guard'
   Require $campaignMove 'commitOwnershipVisualNow()' 'campaign_capture_visual_commit'
-  Require $campaignMove 'characterArrivedInCell(mActor as IsometricCharacter,territoryCell)' 'campaign_native_ownership_semantics'
-  Reject $campaignMove 'territoryCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_owner_must_not_be_forced'
   Write-Utf8Bom $enemyMovePath $campaignMove
 
   # Snow contains EliteDroid enemy units. The generic EnemyUnit sound fallback
@@ -463,7 +446,9 @@ try {
   Require $patcher "Class='game.actions.PvPEnemyMovingAction'" 'pvp_move_action_patched_into_swf'
   Require $patcher "Class='game.actions.EnemyMovingAction'" 'campaign_enemy_move_patched_into_swf'
   Require $patcher "Class='game.characters.EnemyUnit'" 'enemy_unit_patched_into_swf'
-  Write-Host 'FINAL_COMPOSITION=PASS classes=AssetManager,Config,DailyRewardWindow,AttackEnemyAction,PvPEnemyMovingAction,EnemyMovingAction,EnemyUnit'
+  Require $patcher "Class='game.characters.PlayerUnit'" 'player_unit_patched_into_swf'
+  Require $patcher "Class='game.actions.RepairPlayerUnitAction'" 'repair_player_unit_action_patched_into_swf'
+  Write-Host 'FINAL_COMPOSITION=PASS classes=AssetManager,Config,DailyRewardWindow,AttackEnemyAction,PvPEnemyMovingAction,EnemyMovingAction,EnemyUnit,PlayerUnit,RepairPlayerUnitAction'
 
   # Validate all final invariants after every historical overlay has run.
   $baseCfg=Get-Content -LiteralPath $configBasePath -Raw|ConvertFrom-Json
@@ -485,6 +470,8 @@ try {
   $configSource=Get-Content -LiteralPath $configSourcePath -Raw
   $enemy=Get-Content -LiteralPath $enemyPath -Raw
   $enemyAttack=Get-Content -LiteralPath $enemyAttackPath -Raw
+  $playerUnit=Get-Content -LiteralPath $playerUnitPath -Raw
+  $repairPlayerUnit=Get-Content -LiteralPath $repairPlayerUnitPath -Raw
   Require $mapData 'TILE_MAP_TYPE_SNOW' 'snow_runtime_type'
   Require $offline 'SNOW_RUNTIME_IDENTITY' 'snow_runtime_identity'
   Require $gameState 'OFFLINE_ENEMY_SPATIAL_TARGET:int = 24' 'spatial_ai_target'
@@ -495,19 +482,30 @@ try {
   Require $enemy 'hasPriorityPlayerTargetInRange' 'campaign_enemy_priority_public_probe_final'
   Require $enemy 'ENEMY_ATTACK_PRIORITY' 'campaign_enemy_priority_telemetry_final'
   Require $enemy 'ENEMY_ATTACK_PRIORITY_WAKE' 'campaign_enemy_wait_bypass_final'
-  Require $enemy 'OFFLINE_PRIORITY_ATTACK_SCAN_MS: int = 150' 'campaign_enemy_priority_scan_budget_final'
+  Require $enemy 'OFFLINE_ATTACK_TWO_CHANCE: Number = 40' 'campaign_enemy_two_attack_probability_final'
+  Require $enemy 'OFFLINE_ATTACK_THREE_CHANCE: Number = 5' 'campaign_enemy_three_attack_probability_final'
+  Require $enemy 'ENEMY_ATTACK_TURN' 'campaign_enemy_turn_budget_telemetry_final'
+  Require $enemy 'hasPriorityAttackTargetInRange' 'campaign_enemy_units_and_structures_priority_final'
+  Reject $enemy 'ENEMY_ATTACK_PRIORITY_WAKE' 'campaign_enemy_no_timer_bypass_loop_final'
   Require $gameState 'this.mScene.isInsideVisibleArea(enemy.getCell())' 'enemy_spatial_visibility_is_viewport_final'
-  Require $gameState 'enemy.hasPriorityPlayerTargetInRange()' 'enemy_spatial_priority_targets_always_active_final'
+  Require $gameState 'enemy.hasPriorityAttackTargetInRange()' 'enemy_spatial_priority_targets_always_active_final'
   Require $enemyAttack 'if(mActor && mActor.getCell())' 'campaign_enemy_attack_camera_independent_final'
   Reject $enemyAttack 'if(GameState.mInstance.mScene.isInsideVisibleArea(mActor.getCell()))' 'campaign_enemy_attack_old_camera_gate_absent'
   Require $pvp 'PVP_TERRITORY_INVARIANT' 'pvp_ownership_immutable_final'
   Reject $pvp 'PVP_TERRITORY_CAPTURE' 'pvp_capture_absent_final'
   Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_enemy_capture_visible_final'
+  Require $campaignMove 'arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_enemy_capture_owner_final'
+  Require $campaignMove '_loc21_ < currentDistance' 'campaign_enemy_strict_forward_progress_final'
+  Require $campaignMove 'this.headToThePlayerArea();' 'campaign_enemy_pathfinding_fallback_final'
+  Require $playerUnit 'MAX_OFFLINE_REPAIRS:int = 3' 'player_unit_three_repairs_final'
+  Require $playerUnit 'PLAYER_UNIT_PERMADEATH' 'player_unit_permadeath_telemetry_final'
+  Require $repairPlayerUnit 'registerOfflineRepair()' 'player_unit_repair_life_consumed_final'
+  Require $offline 'unit["repairs_used"]' 'player_unit_repair_lives_persisted_final'
   Require $configSource 'ENABLE_DAILY_REWARDS:Boolean = true' 'daily_reward_enabled_final'
   Require $offline 'DAILY_REWARD_MAX_STREAK: int = 360' 'daily_reward_360_state_final'
-  Require $offline 'CURRENT_SAVE_VERSION:int = 9' 'offline_current_save_version_v9_final'
-  Require $offline 'SAVE_SCHEMA:String = "armyattack-offline-save/v9"' 'portable_save_schema_v9_final'
-  Require $offline 'savedata["saveversion"] = CURRENT_SAVE_VERSION;' 'daily_reward_save_v9_final'
+  Require $offline 'CURRENT_SAVE_VERSION:int = 10' 'offline_current_save_version_v10_final'
+  Require $offline 'SAVE_SCHEMA:String = "armyattack-offline-save/v10"' 'portable_save_schema_v10_final'
+  Require $offline 'savedata["saveversion"] = CURRENT_SAVE_VERSION;' 'daily_reward_save_v10_final'
   Reject $offline 'CURRENT_SAVE_VERSION:int = 8' 'offline_stale_v8_version_absent_final'
   Reject $offline 'armyattack-offline-save/v8' 'offline_stale_v8_schema_absent_final'
   Require $gameState 'setOfflineDailyRewardState' 'daily_reward_state_bridge_final'
@@ -515,7 +513,7 @@ try {
   Require $dailyReward 'MAX_STREAK_DAY:int = 360' 'daily_reward_popup_360_final'
   Require $dailyReward 'OfflineSave.claimDailyReward' 'daily_reward_offline_claim_final'
 
-  Write-Host 'REGRESSION_CHECK=PASS name=daily_reward_360_offline streak=360 missed_day_reset=true one_claim_per_day=true saveversion=9 representation=CURRENT_SAVE_VERSION popup_window=5day_page'
+  Write-Host 'REGRESSION_CHECK=PASS name=daily_reward_360_offline streak=360 missed_day_reset=true one_claim_per_day=true saveversion=10 representation=CURRENT_SAVE_VERSION popup_window=5day_page'
   Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_attack_priority player_in_range=attack wait_timer_bypassed=true queue_wait_bypassed=true camera_independent=true explicit_target=true pvp_untouched=true'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_budget target=24 viewport_visibility=true in_range_targets_always_active=true container_visible_not_used=true'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_tile_ownership_is_immutable_during_unit_movement capture_call=false owner_write=false v43_invariant=true'
@@ -525,7 +523,7 @@ try {
   Write-Host 'REGRESSION_CHECK=PASS name=snow_final_product_invariant world_map=true unlocked=true runtime_type=true runtime_identity=true switch_transaction=requestWorldMapSwitch'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_optimization_preserved target=24 refresh_ms=1500 visual_update_ms=250'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_authentic_only maps=1 native=1 synthetic_disabled=11 probability_metadata=preserved zoom_mobile=40,75,100 full_config_case_sensitive=true'
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha campaign_capture_visual=true pvp_ownership_immutable=true snow_elitedroid=true daily_reward_360=true campaign_enemy_attack_priority=true enemy_spatial_budget=true attack_budget_ms=220 pvp_maps=1 synthetic_pvp_disabled=11 spatial_ai=true powershell51_safe=true"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha campaign_capture_visual=true pvp_ownership_immutable=true snow_elitedroid=true daily_reward_360=true campaign_enemy_turn_budget=true enemy_spatial_budget=true attack_budget_ms=220 pvp_maps=1 synthetic_pvp_disabled=11 spatial_ai=true powershell51_safe=true"
 }
 catch {
   $failure=$_
