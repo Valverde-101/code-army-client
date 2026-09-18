@@ -16,6 +16,7 @@ $v55=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV55.ps1'
 if(-not(Test-Path -LiteralPath $v55 -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL predecessor_missing=$v55"}
 
 $pvpMovePath=Join-Path $RepoRoot 'src\game\actions\PvPEnemyMovingAction.as'
+$enemyMovePath=Join-Path $RepoRoot 'src\game\actions\EnemyMovingAction.as'
 $attackPath=Join-Path $RepoRoot 'src\game\actions\AttackEnemyAction.as'
 $assetPath=Join-Path $RepoRoot 'src\AssetManager.as'
 $worldMapPath=Join-Path $RepoRoot 'src\game\gui\popups\WorldMapWindow.as'
@@ -337,11 +338,13 @@ try {
 
   $owned=@(
     [ordered]@{Repo='src\game\actions\PvPEnemyMovingAction.as';Path=$pvpMovePath;Backup='PvPEnemyMovingAction.post-v55.as'},
+    [ordered]@{Repo='src\game\actions\EnemyMovingAction.as';Path=$enemyMovePath;Backup='EnemyMovingAction.post-v55.as'},
     [ordered]@{Repo='src\game\actions\AttackEnemyAction.as';Path=$attackPath;Backup='AttackEnemyAction.post-v55.as'},
     [ordered]@{Repo='src\AssetManager.as';Path=$assetPath;Backup='AssetManager.post-v55.as'},
     [ordered]@{Repo='src\game\gui\popups\WorldMapWindow.as';Path=$worldMapPath;Backup='WorldMapWindow.post-v55.as'},
     [ordered]@{Repo='src\config\army_config_base.json';Path=$configBasePath;Backup='army_config_base.post-v55.json'},
-    [ordered]@{Repo='src\config\army_config.json';Path=$configFullPath;Backup='army_config.post-v55.json'}
+    [ordered]@{Repo='src\config\army_config.json';Path=$configFullPath;Backup='army_config.post-v55.json'},
+    [ordered]@{Repo='src\game\characters\EnemyUnit.as';Path=$enemyPath;Backup='EnemyUnit.post-v55.as'}
   )
   foreach($e in $owned){if(-not(Test-Path -LiteralPath $e.Path -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL required_file_missing=$($e.Repo)"}}
   foreach($p in @($mapDataPath,$offlinePath,$gameStatePath,$enemyPath,$patcherPath)){if(-not(Test-Path -LiteralPath $p -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL invariant_file_missing=$p"}}
@@ -361,61 +364,62 @@ try {
   }
   Save-Manifest $files $generated
 
-  # V43 accidentally reversed V40/V41. Restore enemy ownership transfer at the
-  # same movement commit boundary and make border refresh part of that transaction.
+  # V43 is the product invariant: PvP is transient tactical combat and must not
+  # mutate campaign-style tile ownership. Preserve V41 arrival resolution but do
+  # not call campaign characterArrivedInCell or write owner state from PvP.
   $pvp=Normalize-Lf ([IO.File]::ReadAllText($pvpMovePath))
-  if(-not $pvp.Contains('import game.battlefield.MapData;')){
-    $pvp=Replace-ExactOne $pvp '   import game.characters.PvPEnemyUnit;' "   import game.characters.PvPEnemyUnit;`n   import game.battlefield.MapData;" 'pvp_mapdata_import'
-  }
-  $oldTerritory=@'
-         var arrival:GridCell = this.mReservedCell ? this.mReservedCell : current;
-         if(param2 && actor && arrival && mOriginCell && (mActor as Element).mScene)
-         {
-            var ownerBefore:int = arrival.mOwner;
-            Utils.DiagEvent("PVP_TERRITORY_INVARIANT","side=enemy;x=" + arrival.mPosI + ";y=" + arrival.mPosJ + ";owner=" + ownerBefore + ";result=preserved_by_design");
-            actor.mPreviousTile = mOriginCell;
-         }
-'@.TrimEnd()
-  $newTerritory=@'
-         var arrival:GridCell = this.mReservedCell ? this.mReservedCell : current;
-         if(param2 && actor && arrival && mOriginCell && (mActor as Element).mScene)
-         {
-            var scene:IsometricScene = (mActor as Element).mScene;
-            var ownerBefore:int = arrival.mOwner;
-            scene.characterArrivedInCell(mActor as PvPEnemyUnit,arrival);
-            if(ownerBefore == MapData.TILE_OWNER_FRIENDLY && arrival.mOwner != MapData.TILE_OWNER_ENEMY)
-            {
-               arrival.mOwner = MapData.TILE_OWNER_ENEMY;
-            }
-            var ownerAfter:int = arrival.mOwner;
-            var visualCommit:Boolean = true;
-            if(ownerBefore != ownerAfter)
-            {
-               if(GameState.mInstance && GameState.mInstance.mMapData)
-               {
-                  GameState.mInstance.mMapData.mUpdateRequired = true;
-               }
-               if(scene.mTilemapGraphic)
-               {
-                  scene.mTilemapGraphic.recalculateBorderEdgesAround(arrival.mPosI,arrival.mPosJ);
-                  scene.mTilemapGraphic.markOwnershipDirty(arrival);
-                  visualCommit = scene.mTilemapGraphic.commitOwnershipVisualNow();
-               }
-               Utils.DiagEvent("PVP_TERRITORY_CAPTURE","side=enemy;x=" + arrival.mPosI + ";y=" + arrival.mPosJ + ";before=" + ownerBefore + ";after=" + ownerAfter + ";visual_commit=" + visualCommit);
-            }
-            else
-            {
-               Utils.DiagEvent("PVP_TERRITORY_CAPTURE","side=enemy;x=" + arrival.mPosI + ";y=" + arrival.mPosJ + ";before=" + ownerBefore + ";after=" + ownerAfter + ";result=no_change");
-            }
-            actor.mPreviousTile = mOriginCell;
-         }
-'@.TrimEnd()
-  if($pvp.Contains('PVP_TERRITORY_INVARIANT')){
-    $pvp=Replace-ExactOne $pvp (Normalize-Lf $oldTerritory) (Normalize-Lf $newTerritory) 'pvp_enemy_capture_v43_regression'
-  }
-  foreach($token in @('PVP_TERRITORY_CAPTURE','arrival.mOwner = MapData.TILE_OWNER_ENEMY','commitOwnershipVisualNow()','characterArrivedInCell(mActor as PvPEnemyUnit,arrival)')){Require $pvp $token ('pvp_capture_'+$token)}
-  Reject $pvp 'PVP_TERRITORY_INVARIANT' 'obsolete_immutable_territory'
+  Require $pvp 'PVP_ENEMY_ARRIVAL_RESOLVED' 'pvp_arrival_contract_preserved'
+  Require $pvp 'PVP_TERRITORY_INVARIANT' 'pvp_territory_invariant_preserved'
+  Reject $pvp 'PVP_TERRITORY_CAPTURE' 'pvp_capture_forbidden'
+  Reject $pvp 'characterArrivedInCell(mActor as PvPEnemyUnit,arrival)' 'pvp_campaign_arrival_forbidden'
+  Reject $pvp 'arrival.mOwner = MapData.TILE_OWNER_ENEMY' 'pvp_forced_owner_forbidden'
   Write-Utf8Bom $pvpMovePath $pvp
+
+  # Campaign movement already performs the correct logical ownership transfer in
+  # IsometricScene.changeCellOwner(). Commit only that already-computed change to
+  # the tile renderer immediately so enemy recapture is visible without waiting
+  # for a later map rebuild. Never force owner state here.
+  $campaignMove=Normalize-Lf ([IO.File]::ReadAllText($enemyMovePath))
+  $campaignArrival='         mActor.mScene.characterArrivedInCell(mActor as IsometricCharacter,mActor.getCell());'
+  $campaignArrivalWithVisual=@'
+         var territoryCell:GridCell = mActor.getCell();
+         var territoryOwnerBefore:int = territoryCell ? territoryCell.mOwner : MapData.TILE_OWNER_NEUTRAL;
+         mActor.mScene.characterArrivedInCell(mActor as IsometricCharacter,territoryCell);
+         var territoryOwnerAfter:int = territoryCell ? territoryCell.mOwner : territoryOwnerBefore;
+         var territoryVisualCommit:Boolean = true;
+         if(territoryCell && territoryOwnerBefore != territoryOwnerAfter)
+         {
+            if(mActor.mScene.mTilemapGraphic)
+            {
+               mActor.mScene.mTilemapGraphic.recalculateBorderEdgesAround(territoryCell.mPosI,territoryCell.mPosJ);
+               mActor.mScene.mTilemapGraphic.markOwnershipDirty(territoryCell);
+               territoryVisualCommit = mActor.mScene.mTilemapGraphic.commitOwnershipVisualNow();
+            }
+            Utils.DiagEvent("CAMPAIGN_TERRITORY_CAPTURE","map=" + GameState.mInstance.mCurrentMapId + ";side=enemy;x=" + territoryCell.mPosI + ";y=" + territoryCell.mPosJ + ";before=" + territoryOwnerBefore + ";after=" + territoryOwnerAfter + ";visual_commit=" + territoryVisualCommit);
+         }
+'@.TrimEnd()
+  $campaignMove=Replace-ExactOne $campaignMove $campaignArrival (Normalize-Lf $campaignArrivalWithVisual) 'campaign_enemy_territory_visual_commit'
+  Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_capture_telemetry'
+  Require $campaignMove 'commitOwnershipVisualNow()' 'campaign_capture_visual_commit'
+  Require $campaignMove 'characterArrivedInCell(mActor as IsometricCharacter,territoryCell)' 'campaign_native_ownership_semantics'
+  Reject $campaignMove 'territoryCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_owner_must_not_be_forced'
+  Write-Utf8Bom $enemyMovePath $campaignMove
+
+  # Snow contains EliteDroid enemy units. The generic EnemyUnit sound fallback
+  # assigned usable sounds and then threw, aborting the entire map transition.
+  # Support the authored EliteDroid explicitly while retaining the default throw
+  # for genuinely unknown enemy IDs.
+  $enemy=Normalize-Lf ([IO.File]::ReadAllText($enemyPath))
+  if(-not $enemy.Contains('UNIT_ID_ELITE_DROID')){
+    $enemy=Replace-ExactOne $enemy '      public static const UNIT_ID_DROID:String = "Droid";' ("      public static const UNIT_ID_DROID:String = \"Droid\";\n\n      public static const UNIT_ID_ELITE_DROID:String = \"EliteDroid\";") 'snow_elite_droid_constant'
+  }
+  $droidCase='            case UNIT_ID_DROID:'
+  if(-not $enemy.Contains('case UNIT_ID_ELITE_DROID:')){
+    $enemy=Replace-ExactOne $enemy $droidCase ($droidCase+"\n            case UNIT_ID_ELITE_DROID:") 'snow_elite_droid_sound_case'
+  }
+  Require $enemy 'UNIT_ID_ELITE_DROID:String = "EliteDroid"' 'snow_elite_droid_constant'
+  Require $enemy 'case UNIT_ID_ELITE_DROID:' 'snow_elite_droid_sound_case'
+  Write-Utf8Bom $enemyPath $enemy
 
   # Combat state commits in a few hundred ms; projectile/hit animations remain
   # autonomous and keep their own lifecycle/watchdogs.
@@ -467,7 +471,9 @@ try {
   Require $patcher "Class='AssetManager'" 'assetmanager_patched_into_swf'
   Require $patcher "Class='game.actions.AttackEnemyAction'" 'attack_action_patched_into_swf'
   Require $patcher "Class='game.actions.PvPEnemyMovingAction'" 'pvp_move_action_patched_into_swf'
-  Write-Host 'FINAL_COMPOSITION=PASS classes=AssetManager,AttackEnemyAction,PvPEnemyMovingAction'
+  Require $patcher "Class='game.actions.EnemyMovingAction'" 'campaign_enemy_move_patched_into_swf'
+  Require $patcher "Class='game.characters.EnemyUnit'" 'enemy_unit_patched_into_swf'
+  Write-Host 'FINAL_COMPOSITION=PASS classes=AssetManager,AttackEnemyAction,PvPEnemyMovingAction,EnemyMovingAction,EnemyUnit'
 
   # Validate all final invariants after every historical overlay has run.
   $baseCfg=Get-Content -LiteralPath $configBasePath -Raw|ConvertFrom-Json
@@ -490,13 +496,19 @@ try {
   Require $gameState 'OFFLINE_ENEMY_SPATIAL_TARGET:int = 24' 'spatial_ai_target'
   Require $gameState 'OFFLINE_ENEMY_SPATIAL_REFRESH_MS:int = 1500' 'spatial_ai_refresh'
   Require $enemy 'OFFLINE_SLEEP_VISUAL_INTERVAL_MS:int = 250' 'enemy_visual_throttle'
+  Require $enemy 'UNIT_ID_ELITE_DROID:String = "EliteDroid"' 'snow_elite_droid_sound_support'
+  Require $pvp 'PVP_TERRITORY_INVARIANT' 'pvp_ownership_immutable_final'
+  Reject $pvp 'PVP_TERRITORY_CAPTURE' 'pvp_capture_absent_final'
+  Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_enemy_capture_visible_final'
 
-  Write-Host 'REGRESSION_CHECK=PASS name=pvp_enemy_arrival_captures_friendly_tile owner=enemy visual_commit=immediate v43_regression=false'
+  Write-Host 'REGRESSION_CHECK=PASS name=pvp_tile_ownership_is_immutable_during_unit_movement capture_call=false owner_write=false v43_invariant=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_capture_uses_native_owner_transfer visual_commit=immediate forced_owner=false'
+  Write-Host 'REGRESSION_CHECK=PASS name=snow_elite_droid_sound_supported transition_abort_on_elitedroid=false'
   Write-Host 'REGRESSION_CHECK=PASS name=attack_logic_decoupled_from_visual budget_ms=220 shooting_length_dependency=false effect_length_dependency=false'
   Write-Host 'REGRESSION_CHECK=PASS name=snow_final_product_invariant world_map=true unlocked=true runtime_type=true runtime_identity=true switch_transaction=requestWorldMapSwitch'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_optimization_preserved target=24 refresh_ms=1500 visual_update_ms=250'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_complete maps=12 native=1 reconstructed=11 probability_metadata=preserved zoom_mobile=40,75,100 full_config_case_sensitive=true'
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha capture=true snow=true attack_budget_ms=220 pvp_maps=12 spatial_ai=true powershell51_safe=true"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha campaign_capture_visual=true pvp_ownership_immutable=true snow_elitedroid=true attack_budget_ms=220 pvp_maps=12 spatial_ai=true powershell51_safe=true"
 }
 catch {
   $failure=$_
