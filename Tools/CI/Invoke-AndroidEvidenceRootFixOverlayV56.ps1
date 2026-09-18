@@ -411,11 +411,16 @@ try {
   # for genuinely unknown enemy IDs.
   $enemy=Normalize-Lf ([IO.File]::ReadAllText($enemyPath))
   if(-not $enemy.Contains('UNIT_ID_ELITE_DROID')){
-    $enemy=Replace-ExactOne $enemy '      public static const UNIT_ID_DROID:String = "Droid";' ("      public static const UNIT_ID_DROID:String = \"Droid\";\n\n      public static const UNIT_ID_ELITE_DROID:String = \"EliteDroid\";") 'snow_elite_droid_constant'
+    $eliteDroidConstants=@'
+      public static const UNIT_ID_DROID:String = "Droid";
+
+      public static const UNIT_ID_ELITE_DROID:String = "EliteDroid";
+'@.TrimEnd()
+    $enemy=Replace-ExactOne $enemy '      public static const UNIT_ID_DROID:String = "Droid";' (Normalize-Lf $eliteDroidConstants) 'snow_elite_droid_constant'
   }
   $droidCase='            case UNIT_ID_DROID:'
   if(-not $enemy.Contains('case UNIT_ID_ELITE_DROID:')){
-    $enemy=Replace-ExactOne $enemy $droidCase ($droidCase+"\n            case UNIT_ID_ELITE_DROID:") 'snow_elite_droid_sound_case'
+    $enemy=Replace-ExactOne $enemy $droidCase ($droidCase+"`n            case UNIT_ID_ELITE_DROID:") 'snow_elite_droid_sound_case'
   }
   Require $enemy 'UNIT_ID_ELITE_DROID:String = "EliteDroid"' 'snow_elite_droid_constant'
   Require $enemy 'case UNIT_ID_ELITE_DROID:' 'snow_elite_droid_sound_case'
