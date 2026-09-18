@@ -291,9 +291,14 @@ $1if(_loc1_ && _loc1_.parent)
   # Ensure these source fixes are actually replaced into the Android SWF and version provenance changes.
   $patcherTarget=Get-TargetPath 'patcher'
   $patcher=Normalize-Lf ([IO.File]::ReadAllText($patcherTarget))
-  $versionNeedle='$patchVersion=''mobile-engine-v3.21-android-boot-product-rootfix'''
-  $versionReplacement='$patchVersion=''mobile-engine-v3.22-combat-lifecycle-rootfix'''
-  $patcher=Replace-LiteralOnce $patcher $versionNeedle $versionReplacement 'patch_version_v3_22'
+  $versionPattern='(?m)^\$patchVersion=''[^'']+''$'
+  $versionMatches=[regex]::Matches($patcher,$versionPattern)
+  if($versionMatches.Count -ne 1){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=patch_version_composed reason=semantic_pattern_count actual=$($versionMatches.Count)"}
+  $previousPatchVersion=$versionMatches[0].Value
+  $versionReplacement='$patchVersion=''mobile-engine-v3.23-composed-runtime-rootfix'''
+  $versionMatch=$versionMatches[0]
+  $patcher=$patcher.Substring(0,$versionMatch.Index)+$versionReplacement+$patcher.Substring($versionMatch.Index+$versionMatch.Length)
+  Write-Host "ANIMATION_PATCH_VERSION=PASS semantic=true previous=$previousPatchVersion current=$versionReplacement"
   $specNeedle="  [ordered]@{Class='game.isometric.characters.IsometricCharacter';Source='src\game\isometric\characters\IsometricCharacter.as';Log='ffdec-feature-character-hints.log'},"
   $specReplacement=@"
 $specNeedle
@@ -303,7 +308,7 @@ $specNeedle
   [ordered]@{Class='game.battlefield.MapGUIEffectsLayer';Source='src\game\battlefield\MapGUIEffectsLayer.as';Log='ffdec-feature-map-gui-lifecycle.log'},
 "@
   $patcher=Replace-LiteralOnce $patcher $specNeedle $specReplacement.TrimEnd() 'combat_lifecycle_patch_specs'
-  foreach($required in @('game.actions.AttackEnemyAction','game.gameElements.Missile','game.utils.HitEffect','game.battlefield.MapGUIEffectsLayer','mobile-engine-v3.22-combat-lifecycle-rootfix')){
+  foreach($required in @('game.actions.AttackEnemyAction','game.gameElements.Missile','game.utils.HitEffect','game.battlefield.MapGUIEffectsLayer','mobile-engine-v3.23-composed-runtime-rootfix')){
     if(-not $patcher.Contains($required)){throw "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=FAIL patch=patcher_verification missing=$required"}
   }
   Write-Utf8Bom $patcherTarget $patcher
@@ -318,7 +323,7 @@ $specNeedle
   Write-Host 'REGRESSION_CHECK=PASS name=map_gui_cleanup_idempotent stale_parent_safe=true methods=clearHighlights,clearMoveDisabledArea'
   Write-Host 'REGRESSION_CHECK=PASS name=range_highlight_cache_reset_on_clear'
   Write-Host 'REGRESSION_CHECK=PASS name=render_hotpath_contract_preserved dirty_region_overlay_untouched=true'
-  Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=apply sha=$ExpectedSha schema=v3 combat_lifecycle=true swf_patch_version=mobile-engine-v3.22-combat-lifecycle-rootfix"
+  Write-Host "ANDROID_ANIMATION_LIFECYCLE_OVERLAY=PASS mode=apply sha=$ExpectedSha schema=v3 combat_lifecycle=true swf_patch_version=mobile-engine-v3.23-composed-runtime-rootfix version_hook=semantic"
 }catch{
   $failure=$_
   foreach($key in $targets.Keys){

@@ -59,7 +59,7 @@ package game.actions
             {
                case STATE_BEFORE_ATTACK:
                   _loc2_ = false;
-                  if(GameState.mInstance.mScene.isInsideVisibleArea(mActor.getCell()))
+                  if(mActor && mActor.getCell())
                   {
                      if(!mTarget)
                      {

@@ -30,6 +30,7 @@ $gameHudPath=Join-Path $RepoRoot 'src\game\gui\GameHUD.as'
 $dailyRewardPath=Join-Path $RepoRoot 'src\game\gui\popups\DailyRewardWindow.as'
 $configSourcePath=Join-Path $RepoRoot 'src\Config.as'
 $enemyPath=Join-Path $RepoRoot 'src\game\characters\EnemyUnit.as'
+$enemyAttackPath=Join-Path $RepoRoot 'src\game\actions\EnemyAttackingAction.as'
 
 $backupRoot=Join-Path $RepoRoot ('.work\scratch\android-evidence-rootfix-v56\'+$ExpectedSha)
 $manifestPath=Join-Path $backupRoot 'manifest.json'
@@ -458,6 +459,7 @@ try {
   Require $patcher "Class='Config'" 'daily_reward_config_patched_into_swf'
   Require $patcher "Class='game.gui.popups.DailyRewardWindow'" 'daily_reward_window_patched_into_swf'
   Require $patcher "Class='game.actions.AttackEnemyAction'" 'attack_action_patched_into_swf'
+  Require $patcher "Class='game.actions.EnemyAttackingAction'" 'enemy_attack_action_patched_into_swf'
   Require $patcher "Class='game.actions.PvPEnemyMovingAction'" 'pvp_move_action_patched_into_swf'
   Require $patcher "Class='game.actions.EnemyMovingAction'" 'campaign_enemy_move_patched_into_swf'
   Require $patcher "Class='game.characters.EnemyUnit'" 'enemy_unit_patched_into_swf'
@@ -482,12 +484,17 @@ try {
   $dailyReward=Get-Content -LiteralPath $dailyRewardPath -Raw
   $configSource=Get-Content -LiteralPath $configSourcePath -Raw
   $enemy=Get-Content -LiteralPath $enemyPath -Raw
+  $enemyAttack=Get-Content -LiteralPath $enemyAttackPath -Raw
   Require $mapData 'TILE_MAP_TYPE_SNOW' 'snow_runtime_type'
   Require $offline 'SNOW_RUNTIME_IDENTITY' 'snow_runtime_identity'
   Require $gameState 'OFFLINE_ENEMY_SPATIAL_TARGET:int = 24' 'spatial_ai_target'
   Require $gameState 'OFFLINE_ENEMY_SPATIAL_REFRESH_MS:int = 1500' 'spatial_ai_refresh'
   Require $enemy 'OFFLINE_SLEEP_VISUAL_INTERVAL_MS:int = 250' 'enemy_visual_throttle'
   Require $enemy 'UNIT_ID_ELITE_DROID: String = "EliteDroid"' 'snow_elite_droid_sound_support'
+  Require $enemy 'findPriorityPlayerTargetInRange' 'campaign_enemy_priority_target_final'
+  Require $enemy 'ENEMY_ATTACK_PRIORITY' 'campaign_enemy_priority_telemetry_final'
+  Require $enemyAttack 'if(mActor && mActor.getCell())' 'campaign_enemy_attack_camera_independent_final'
+  Reject $enemyAttack 'if(GameState.mInstance.mScene.isInsideVisibleArea(mActor.getCell()))' 'campaign_enemy_attack_old_camera_gate_absent'
   Require $pvp 'PVP_TERRITORY_INVARIANT' 'pvp_ownership_immutable_final'
   Reject $pvp 'PVP_TERRITORY_CAPTURE' 'pvp_capture_absent_final'
   Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_enemy_capture_visible_final'
@@ -500,6 +507,7 @@ try {
   Require $dailyReward 'OfflineSave.claimDailyReward' 'daily_reward_offline_claim_final'
 
   Write-Host 'REGRESSION_CHECK=PASS name=daily_reward_360_offline streak=360 missed_day_reset=true one_claim_per_day=true saveversion=8 popup_window=5day_page'
+  Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_attack_priority player_in_range=attack camera_independent=true explicit_target=true stealth_random_bypass=true pvp_untouched=true'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_tile_ownership_is_immutable_during_unit_movement capture_call=false owner_write=false v43_invariant=true'
   Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_capture_uses_native_owner_transfer visual_commit=immediate forced_owner=false'
   Write-Host 'REGRESSION_CHECK=PASS name=snow_elite_droid_sound_supported transition_abort_on_elitedroid=false'
@@ -507,7 +515,7 @@ try {
   Write-Host 'REGRESSION_CHECK=PASS name=snow_final_product_invariant world_map=true unlocked=true runtime_type=true runtime_identity=true switch_transaction=requestWorldMapSwitch'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_optimization_preserved target=24 refresh_ms=1500 visual_update_ms=250'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_authentic_only maps=1 native=1 synthetic_disabled=11 probability_metadata=preserved zoom_mobile=40,75,100 full_config_case_sensitive=true'
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha campaign_capture_visual=true pvp_ownership_immutable=true snow_elitedroid=true daily_reward_360=true attack_budget_ms=220 pvp_maps=1 synthetic_pvp_disabled=11 spatial_ai=true powershell51_safe=true"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha campaign_capture_visual=true pvp_ownership_immutable=true snow_elitedroid=true daily_reward_360=true campaign_enemy_attack_priority=true attack_budget_ms=220 pvp_maps=1 synthetic_pvp_disabled=11 spatial_ai=true powershell51_safe=true"
 }
 catch {
   $failure=$_

@@ -496,6 +496,43 @@
 			}
 		}
 
+		private function findPriorityPlayerTargetInRange(): PlayerUnit {
+			var origin: GridCell = getCell();
+			if (!origin || mAttackRange < 1) {
+				return null;
+			}
+			var best: PlayerUnit = null;
+			var bestDistanceSq: int = int.MAX_VALUE;
+			var x: int = origin.mPosI - mAttackRange;
+			var y: int = 0;
+			var cell: GridCell = null;
+			var candidate: PlayerUnit = null;
+			var dx: int = 0;
+			var dy: int = 0;
+			var distanceSq: int = 0;
+			while (x <= origin.mPosI + mAttackRange) {
+				y = origin.mPosJ - mAttackRange;
+				while (y <= origin.mPosJ + mAttackRange) {
+					cell = mScene.getCellAt(x, y);
+					if (cell && cell.mCharacter && cell.mCharacter is PlayerUnit && cell.mCharacter.isAlive()) {
+						candidate = cell.mCharacter as PlayerUnit;
+						dx = int(Math.abs(x - origin.mPosI));
+						dy = int(Math.abs(y - origin.mPosJ));
+						if (dx <= mAttackRange && dy <= mAttackRange) {
+							distanceSq = dx * dx + dy * dy;
+							if (distanceSq < bestDistanceSq) {
+								best = candidate;
+								bestDistanceSq = distanceSq;
+							}
+						}
+					}
+					y++;
+				}
+				x++;
+			}
+			return best;
+		}
+
 		private function updateReactionState(param1: int): void {
 			var _loc2_: int = 0;
 			var _loc3_: int = 0;
@@ -507,6 +544,7 @@
 			var _loc9_: int = 0;
 			var _loc10_: int = 0;
 			var _loc11_: TextFormat = null;
+			var _loc12_: PlayerUnit = null;
 			if (this.mNewReactionState > -1) {
 				this.mReactionState = this.mNewReactionState;
 				this.mNewReactionState = -1;
@@ -541,6 +579,13 @@
 						_loc4_ = false;
 						_loc5_ = false;
 						_loc6_ = false;
+						_loc12_ = this.findPriorityPlayerTargetInRange();
+						if (_loc12_) {
+							Utils.DiagEvent("ENEMY_ATTACK_PRIORITY","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";range=" + mAttackRange + ";enemy_x=" + _loc2_ + ";enemy_y=" + _loc3_ + ";target_x=" + _loc12_.getCell().mPosI + ";target_y=" + _loc12_.getCell().mPosJ + ";camera_independent=true");
+							this.attackPlayerUnit(_loc12_);
+							this.mMovementStepsLeft = 0;
+							break;
+						}
 						if (mScene.isInsideVisibleArea(getCell())) {
 							_loc8_ = _loc2_ - mAttackRange;
 							while (_loc8_ <= _loc2_ + mAttackRange) {
