@@ -415,7 +415,7 @@
 				this.mGame.mServer.serverCallServiceWithParameters(ServiceIDs.GET_GOLD_AND_CASH, {
 					"ver": 1
 				}, false);
-				if (Config.ENABLE_DAILY_REWARDS) {
+				if (Config.ENABLE_DAILY_REWARDS && !Config.OFFLINE_MODE) {
 					this.mGame.mServer.serverCallService(ServiceIDs.GET_DAILY_REWARD, false);
 				}
 				this.mFirstUpdate = false;
@@ -1460,6 +1460,12 @@
 					file2.addEventListener(PermissionEvent.PERMISSION_STATUS, onPermission);
 					file2.requestPermission();
 				}
+			}
+		}
+
+		public function requestImmediateSave(): void {
+			CONFIG::BUILD_FOR_MOBILE_AIR {
+				this.autoSaveGame(null);
 			}
 		}
 

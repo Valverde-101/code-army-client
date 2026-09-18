@@ -26,6 +26,9 @@ $patcherPath=Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1'
 $mapDataPath=Join-Path $RepoRoot 'src\game\battlefield\MapData.as'
 $offlinePath=Join-Path $RepoRoot 'src\game\utils\OfflineSave.as'
 $gameStatePath=Join-Path $RepoRoot 'src\game\states\GameState.as'
+$gameHudPath=Join-Path $RepoRoot 'src\game\gui\GameHUD.as'
+$dailyRewardPath=Join-Path $RepoRoot 'src\game\gui\popups\DailyRewardWindow.as'
+$configSourcePath=Join-Path $RepoRoot 'src\Config.as'
 $enemyPath=Join-Path $RepoRoot 'src\game\characters\EnemyUnit.as'
 
 $backupRoot=Join-Path $RepoRoot ('.work\scratch\android-evidence-rootfix-v56\'+$ExpectedSha)
@@ -452,11 +455,13 @@ try {
   # The final SWF patch plan must include every source changed here.
   $patcher=Normalize-Lf ([IO.File]::ReadAllText($patcherPath))
   Require $patcher "Class='AssetManager'" 'assetmanager_patched_into_swf'
+  Require $patcher "Class='Config'" 'daily_reward_config_patched_into_swf'
+  Require $patcher "Class='game.gui.popups.DailyRewardWindow'" 'daily_reward_window_patched_into_swf'
   Require $patcher "Class='game.actions.AttackEnemyAction'" 'attack_action_patched_into_swf'
   Require $patcher "Class='game.actions.PvPEnemyMovingAction'" 'pvp_move_action_patched_into_swf'
   Require $patcher "Class='game.actions.EnemyMovingAction'" 'campaign_enemy_move_patched_into_swf'
   Require $patcher "Class='game.characters.EnemyUnit'" 'enemy_unit_patched_into_swf'
-  Write-Host 'FINAL_COMPOSITION=PASS classes=AssetManager,AttackEnemyAction,PvPEnemyMovingAction,EnemyMovingAction,EnemyUnit'
+  Write-Host 'FINAL_COMPOSITION=PASS classes=AssetManager,Config,DailyRewardWindow,AttackEnemyAction,PvPEnemyMovingAction,EnemyMovingAction,EnemyUnit'
 
   # Validate all final invariants after every historical overlay has run.
   $baseCfg=Get-Content -LiteralPath $configBasePath -Raw|ConvertFrom-Json
@@ -473,6 +478,9 @@ try {
   $mapData=Get-Content -LiteralPath $mapDataPath -Raw
   $offline=Get-Content -LiteralPath $offlinePath -Raw
   $gameState=Get-Content -LiteralPath $gameStatePath -Raw
+  $gameHud=Get-Content -LiteralPath $gameHudPath -Raw
+  $dailyReward=Get-Content -LiteralPath $dailyRewardPath -Raw
+  $configSource=Get-Content -LiteralPath $configSourcePath -Raw
   $enemy=Get-Content -LiteralPath $enemyPath -Raw
   Require $mapData 'TILE_MAP_TYPE_SNOW' 'snow_runtime_type'
   Require $offline 'SNOW_RUNTIME_IDENTITY' 'snow_runtime_identity'
@@ -483,7 +491,15 @@ try {
   Require $pvp 'PVP_TERRITORY_INVARIANT' 'pvp_ownership_immutable_final'
   Reject $pvp 'PVP_TERRITORY_CAPTURE' 'pvp_capture_absent_final'
   Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_enemy_capture_visible_final'
+  Require $configSource 'ENABLE_DAILY_REWARDS:Boolean = true' 'daily_reward_enabled_final'
+  Require $offline 'DAILY_REWARD_MAX_STREAK: int = 360' 'daily_reward_360_state_final'
+  Require $offline 'savedata["saveversion"] = 8;' 'daily_reward_save_v8_final'
+  Require $gameState 'setOfflineDailyRewardState' 'daily_reward_state_bridge_final'
+  Require $gameHud 'requestImmediateSave' 'daily_reward_immediate_save_final'
+  Require $dailyReward 'MAX_STREAK_DAY:int = 360' 'daily_reward_popup_360_final'
+  Require $dailyReward 'OfflineSave.claimDailyReward' 'daily_reward_offline_claim_final'
 
+  Write-Host 'REGRESSION_CHECK=PASS name=daily_reward_360_offline streak=360 missed_day_reset=true one_claim_per_day=true saveversion=8 popup_window=5day_page'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_tile_ownership_is_immutable_during_unit_movement capture_call=false owner_write=false v43_invariant=true'
   Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_capture_uses_native_owner_transfer visual_commit=immediate forced_owner=false'
   Write-Host 'REGRESSION_CHECK=PASS name=snow_elite_droid_sound_supported transition_abort_on_elitedroid=false'
@@ -491,7 +507,7 @@ try {
   Write-Host 'REGRESSION_CHECK=PASS name=snow_final_product_invariant world_map=true unlocked=true runtime_type=true runtime_identity=true switch_transaction=requestWorldMapSwitch'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_optimization_preserved target=24 refresh_ms=1500 visual_update_ms=250'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_catalog_authentic_only maps=1 native=1 synthetic_disabled=11 probability_metadata=preserved zoom_mobile=40,75,100 full_config_case_sensitive=true'
-  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha campaign_capture_visual=true pvp_ownership_immutable=true snow_elitedroid=true attack_budget_ms=220 pvp_maps=1 synthetic_pvp_disabled=11 spatial_ai=true powershell51_safe=true"
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V56=PASS mode=apply predecessor=v55 sha=$ExpectedSha campaign_capture_visual=true pvp_ownership_immutable=true snow_elitedroid=true daily_reward_360=true attack_budget_ms=220 pvp_maps=1 synthetic_pvp_disabled=11 spatial_ai=true powershell51_safe=true"
 }
 catch {
   $failure=$_

@@ -30,6 +30,18 @@
 
 		public static var mMissions: * = {};
 
+		public static const DAILY_REWARD_MAX_STREAK: int = 360;
+
+		private static var mDailyRewardStreakDay: int = 0;
+
+		private static var mDailyRewardLastLoginDate: String = "";
+
+		private static var mDailyRewardLastClaimDate: String = "";
+
+		private static var mDailyRewardPending: Boolean = false;
+
+		private static var mDailyRewardStateReady: Boolean = false;
+
 		public var mSwitchingMap: Boolean = false;
 
 		mMissions["missions_incomplete"] = [];
@@ -38,6 +50,65 @@
 
 		public function OfflineSave() {
 			super();
+		}
+
+		private static function dailyRewardDateKey(param1: Date = null): String {
+			if (param1 == null) param1 = new Date();
+			var month: int = param1.month + 1;
+			var day: int = param1.date;
+			return param1.fullYear + "-" + (month < 10 ? "0" : "") + month + "-" + (day < 10 ? "0" : "") + day;
+		}
+
+		private static function dailyRewardDateOrdinal(param1: String): Number {
+			if (param1 == null || param1.length == 0) return NaN;
+			var parts: Array = param1.split("-");
+			if (parts.length != 3) return NaN;
+			return Math.floor(Date.UTC(int(parts[0]), int(parts[1]) - 1, int(parts[2])) / 86400000);
+		}
+
+		public static function initializeDailyReward(param1: * = null): void {
+			var state: * = param1 != null ? param1["daily_reward"] : null;
+			mDailyRewardStreakDay = state != null && state["streak_day"] != null ? int(state["streak_day"]) : 0;
+			mDailyRewardLastLoginDate = state != null && state["last_login_date"] != null ? String(state["last_login_date"]) : "";
+			mDailyRewardLastClaimDate = state != null && state["last_claim_date"] != null ? String(state["last_claim_date"]) : "";
+			var today: String = dailyRewardDateKey();
+			var previousOrdinal: Number = dailyRewardDateOrdinal(mDailyRewardLastLoginDate);
+			var todayOrdinal: Number = dailyRewardDateOrdinal(today);
+			var delta: Number = isNaN(previousOrdinal) ? NaN : todayOrdinal - previousOrdinal;
+			if (mDailyRewardLastLoginDate.length == 0 || isNaN(delta)) {
+				mDailyRewardStreakDay = 1;
+			} else if (delta < 0) {
+				mDailyRewardPending = false;
+				mDailyRewardStateReady = true;
+				Utils.DiagEvent("DAILY_REWARD_CLOCK_ROLLBACK","today=" + today + ";last_login=" + mDailyRewardLastLoginDate + ";streak=" + mDailyRewardStreakDay);
+				if (GameState.mInstance != null) GameState.mInstance.setOfflineDailyRewardState(mDailyRewardStreakDay, false);
+				return;
+			} else if (delta == 1) {
+				mDailyRewardStreakDay = mDailyRewardStreakDay >= DAILY_REWARD_MAX_STREAK ? 1 : int(Math.max(1, mDailyRewardStreakDay + 1));
+			} else if (delta > 1) {
+				mDailyRewardStreakDay = 1;
+			}
+			if (mDailyRewardStreakDay < 1 || mDailyRewardStreakDay > DAILY_REWARD_MAX_STREAK) mDailyRewardStreakDay = 1;
+			mDailyRewardLastLoginDate = today;
+			mDailyRewardPending = mDailyRewardLastClaimDate != today;
+			mDailyRewardStateReady = true;
+			Utils.DiagEvent("DAILY_REWARD_STATE","day=" + mDailyRewardStreakDay + ";pending=" + mDailyRewardPending + ";today=" + today + ";last_claim=" + mDailyRewardLastClaimDate);
+			if (GameState.mInstance != null) GameState.mInstance.setOfflineDailyRewardState(mDailyRewardStreakDay, mDailyRewardPending);
+		}
+
+		public static function claimDailyReward(param1: int, param2: Item, param3: int): Boolean {
+			var today: String = dailyRewardDateKey();
+			if (!mDailyRewardStateReady || !mDailyRewardPending || param1 != mDailyRewardStreakDay || mDailyRewardLastLoginDate != today || mDailyRewardLastClaimDate == today || param2 == null) {
+				Utils.DiagEvent("DAILY_REWARD_CLAIM_REJECTED","requested_day=" + param1 + ";current_day=" + mDailyRewardStreakDay + ";pending=" + mDailyRewardPending + ";today=" + today + ";last_login=" + mDailyRewardLastLoginDate + ";last_claim=" + mDailyRewardLastClaimDate);
+				return false;
+			}
+			if (GameState.mInstance == null || GameState.mInstance.mPlayerProfile == null || GameState.mInstance.mPlayerProfile.mInventory == null) return false;
+			GameState.mInstance.mPlayerProfile.mInventory.addItems(param2, 1);
+			mDailyRewardLastClaimDate = today;
+			mDailyRewardPending = false;
+			Utils.DiagEvent("DAILY_REWARD_CLAIMED","day=" + mDailyRewardStreakDay + ";choice=" + param3 + ";item=" + param2.mId + ";date=" + today);
+			if (GameState.mInstance.mHUD != null) GameState.mInstance.mHUD.requestImmediateSave();
+			return true;
 		}
 
 		public static function generateGamefieldJson(): * {
@@ -365,9 +436,14 @@
 			}
 			savedata["isFogOfWarOff"] = GameState.mInstance.isFogOfWarOn();
 			savedata["active_map_id"] = map_id.indexOf("pvp_") == -1 ? map_id : "Home";
+			savedata["daily_reward"] = {
+				"streak_day": mDailyRewardStreakDay,
+				"last_login_date": mDailyRewardLastLoginDate,
+				"last_claim_date": mDailyRewardLastClaimDate
+			};
 			var now: Date = new Date();
 			savedata["time_of_last_save"] = now.valueOf();
-			savedata["saveversion"] = 7;
+			savedata["saveversion"] = 8;
 			return savedata;
 		}
 
@@ -423,6 +499,13 @@
 				}
 			}
 			if (version < 7) savedata["offline_pvp_booster_seed_cleanup_pending"] = true;
+			if (version < 8 && savedata["daily_reward"] == null) {
+				savedata["daily_reward"] = {
+					"streak_day": 0,
+					"last_login_date": "",
+					"last_claim_date": ""
+				};
+			}
 			return savedata;
 		}
 
@@ -553,6 +636,7 @@
 			// Convert old saves
 			var saveversion: int = int(savedata["saveversion"]);
 			savedata = fixOldSave(savedata, saveversion);
+			initializeDailyReward(savedata);
 
 			var activeMapId: String = "Home";
 			if (savedata["active_map_id"] != null) {

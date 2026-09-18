@@ -47,9 +47,10 @@ if($ffdec.Extension -eq '.jar'){
 $outDir=Split-Path -Parent $OutputSwf
 New-Item -ItemType Directory -Force -Path $outDir|Out-Null
 if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.json'}
-$patchVersion='mobile-engine-v3.21-android-boot-product-rootfix'
+$patchVersion='mobile-engine-v3.22-offline-daily-reward-360'
 $patchSpecs=@(
   [ordered]@{Class='AssetManager';Source='src\AssetManager.as';Log='ffdec-feature-asset-manager.log'},
+  [ordered]@{Class='Config';Source='src\Config.as';Log='ffdec-feature-config.log'},
   [ordered]@{Class='FeatureTuner';Source='src\FeatureTuner.as';Log='ffdec-feature-tuner.log'},
   [ordered]@{Class='game.environment.EnvEffectManager';Source='src\game\environment\EnvEffectManager.as';Log='ffdec-performance-environment.log'},
   [ordered]@{Class='game.battlefield.TileMapGraphic';Source='src\game\battlefield\TileMapGraphic.as';Log='ffdec-performance-tilemap.log'},
@@ -76,6 +77,7 @@ $patchSpecs=@(
   [ordered]@{Class='game.actions.PvPAttackEnemyInstallationAction';Source='src\game\actions\PvPAttackEnemyInstallationAction.as';Log='ffdec-feature-pvp-installation-attack.log'},
   [ordered]@{Class='game.actions.FireMissionAction';Source='src\game\actions\FireMissionAction.as';Log='ffdec-feature-firemission-action.log'},
   [ordered]@{Class='game.actions.PvPFireMissionAction';Source='src\game\actions\PvPFireMissionAction.as';Log='ffdec-feature-pvp-firemission.log'},
+  [ordered]@{Class='game.gui.popups.DailyRewardWindow';Source='src\game\gui\popups\DailyRewardWindow.as';Log='ffdec-feature-daily-reward.log'},
   [ordered]@{Class='game.gui.GameHUD';Source='src\game\gui\GameHUD.as';Log='ffdec-feature-gamehud.log'},
   [ordered]@{Class='game.gui.pvp.PvPDebriefingDialog';Source='src\game\gui\pvp\PvPDebriefingDialog.as';Log='ffdec-feature-pvp-debriefing.log'},
   [ordered]@{Class='game.gui.GiveFilePermissionDialog';Source='src\game\gui\GiveFilePermissionDialog.as';Log='ffdec-feature-save-permission.log'},
@@ -275,7 +277,9 @@ $manifest=[ordered]@{
     'android_bootstrap_assetmanager_bytecode_replaced',
     'android_loading_first_bytecode_replaced',
     'android_loading_second_bytecode_replaced',
-    'legacy_map_2_removed_from_bootstrap_registry'
+    'legacy_map_2_removed_from_bootstrap_registry',
+    'offline_daily_reward_360_state_persisted',
+    'offline_daily_reward_popup_bytecode_replaced'
   )
   feature_patch_version='offline-systems-v5-root-recovery'
   optimizations=@(

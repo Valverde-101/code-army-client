@@ -885,6 +885,7 @@
 								this.mShowWelcome = false;
 							} else if (this.mGrantDailyReward && MissionManager.isTutorialCompleted()) {
 								this.mHUD.openDailyRewardTextBox(this.mDailyRewardDay, this.mGrantDailyRewardSpecial);
+								if (Config.OFFLINE_MODE) this.mHUD.requestImmediateSave();
 								this.mGrantDailyReward = false;
 							} else if (this.mShowFreeUnitsReceived && MissionManager.isTutorialCompleted()) {
 								this.mHUD.openFreeUnitReceivedWindow();
@@ -905,12 +906,14 @@
 						// Check if a legacy save file (from v21) exists, use if yes
 						file = File.applicationStorageDirectory.resolvePath("savefile.txt");
 						if (!file.exists) {
+							OfflineSave.initializeDailyReward(null);
 							return
 						}
 					}
 				} else if (mSaveLocation == "legacy") {
 					file = File.applicationStorageDirectory.resolvePath("savefile.txt");
 					if (!file.exists) {
+						OfflineSave.initializeDailyReward(null);
 						return
 					}
 				}
@@ -2909,6 +2912,14 @@
 		private function handleFBCreditsData(param1: ServerCall): void {
 			var _loc2_: int = int(param1.mData.gold);
 			this.mPlayerProfile.addPremium(_loc2_ - this.mPlayerProfile.mPremium);
+		}
+
+		public function setOfflineDailyRewardState(param1: int, param2: Boolean): void {
+			if (!Config.OFFLINE_MODE) return;
+			this.mDailyRewardDay = int(Math.max(1, Math.min(OfflineSave.DAILY_REWARD_MAX_STREAK, param1)));
+			this.mGrantDailyRewardSpecial = false;
+			this.mGrantDailyReward = param2;
+			Utils.DiagEvent("DAILY_REWARD_GAMESTATE","day=" + this.mDailyRewardDay + ";grant=" + this.mGrantDailyReward);
 		}
 
 		private function handleDailyRewardData(param1: ServerCall): void {
