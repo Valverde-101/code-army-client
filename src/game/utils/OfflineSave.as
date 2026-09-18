@@ -443,7 +443,7 @@
 			};
 			var now: Date = new Date();
 			savedata["time_of_last_save"] = now.valueOf();
-			savedata["saveversion"] = 8;
+			savedata["saveversion"] = 9;
 			return savedata;
 		}
 
@@ -499,7 +499,7 @@
 				}
 			}
 			if (version < 7) savedata["offline_pvp_booster_seed_cleanup_pending"] = true;
-			if (version < 8 && savedata["daily_reward"] == null) {
+			if (version < 9 && savedata["daily_reward"] == null) {
 				savedata["daily_reward"] = {
 					"streak_day": 0,
 					"last_login_date": "",

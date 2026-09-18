@@ -125,6 +125,10 @@
 
 		private var mWaitingForAirplane: Boolean = false;
 
+		private static const OFFLINE_PRIORITY_ATTACK_SCAN_MS: int = 150;
+
+		private var mOfflinePriorityAttackScanElapsed: int = OFFLINE_PRIORITY_ATTACK_SCAN_MS;
+
 		public function EnemyUnit(param1: int, param2: IsometricScene, param3: MapItem) {
 			var _loc4_: EnemyUnitItem = null;
 			var _loc5_: Object = null;
@@ -496,6 +500,10 @@
 			}
 		}
 
+		public function hasPriorityPlayerTargetInRange(): Boolean {
+			return this.findPriorityPlayerTargetInRange() != null;
+		}
+
 		private function findPriorityPlayerTargetInRange(): PlayerUnit {
 			var origin: GridCell = getCell();
 			if (!origin || mAttackRange < 1) {
@@ -545,6 +553,22 @@
 			var _loc10_: int = 0;
 			var _loc11_: TextFormat = null;
 			var _loc12_: PlayerUnit = null;
+			var _loc13_: Boolean = false;
+			if (Config.OFFLINE_MODE && !MissionManager.modalMissionActive() && !this.hasImportantActionsInQueue()) {
+				_loc13_ = this.mReactionState == REACT_STATE_WAIT_FOR_TIMER || this.mReactionState == REACT_STATE_WAIT_FOR_ORDERS || this.mReactionState == REACT_STATE_WAIT_FOR_ORDERS_PREMIUM || this.mNewReactionState == REACT_STATE_WAIT_FOR_TIMER || this.mNewReactionState == REACT_STATE_WAIT_FOR_ORDERS || this.mNewReactionState == REACT_STATE_WAIT_FOR_ORDERS_PREMIUM;
+				if (_loc13_) {
+					this.mOfflinePriorityAttackScanElapsed += param1;
+					if (this.mOfflinePriorityAttackScanElapsed >= OFFLINE_PRIORITY_ATTACK_SCAN_MS) {
+						this.mOfflinePriorityAttackScanElapsed = 0;
+						_loc12_ = this.findPriorityPlayerTargetInRange();
+						if (_loc12_) {
+							this.mReactionStateCounter = 0;
+							this.mNewReactionState = REACT_STATE_ACTION;
+							Utils.DiagEvent("ENEMY_ATTACK_PRIORITY_WAKE","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";from_state=" + this.mReactionState + ";range=" + mAttackRange + ";target_x=" + _loc12_.getCell().mPosI + ";target_y=" + _loc12_.getCell().mPosJ + ";wait_bypassed=true");
+						}
+					}
+				}
+			}
 			if (this.mNewReactionState > -1) {
 				this.mReactionState = this.mNewReactionState;
 				this.mNewReactionState = -1;

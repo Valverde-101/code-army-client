@@ -245,9 +245,9 @@ private var mTrackedMainEnemyActionStartedAt:int = 0;
 				if (enemy && enemy.isAlive()) {
 					distance = this.enemyDistanceToFriendlyTerritory(enemy,friendly);
 					state = enemy.getReactionState();
-					visible = enemy.getContainer() && enemy.getContainer().visible;
+					visible = enemy.getCell() && this.mScene.isInsideVisibleArea(enemy.getCell());
 					candidates.push({enemy:enemy,distance:distance,index:i});
-					if (visible || distance <= OFFLINE_ENEMY_IMMEDIATE_RADIUS || state == EnemyUnit.REACT_STATE_ACTION || state == EnemyUnit.REACT_STATE_ACTION_COMPLETED) {
+					if (visible || enemy.hasPriorityPlayerTargetInRange() || distance <= OFFLINE_ENEMY_IMMEDIATE_RADIUS || state == EnemyUnit.REACT_STATE_ACTION || state == EnemyUnit.REACT_STATE_ACTION_COMPLETED) {
 						active[enemy] = true;
 						always.push(enemy);
 					}
@@ -306,7 +306,7 @@ private var mTrackedMainEnemyActionStartedAt:int = 0;
 			var sceneChanged:Boolean = this.mOfflineEnemyAiTunedScene != this.mScene;
 '@.TrimEnd() 'spatial_ai_refresh_from_tuner'
   $game=Replace-One $game 'if (enemy && enemy.isAlive()) {' 'if (enemy && enemy.isAlive() && this.isOfflineEnemySpatiallyActive(enemy)) {' 'ai_tuning_active_set_only'
-  foreach($token in @('OFFLINE_ENEMY_SPATIAL_TARGET:int = 24','OFFLINE_ENEMY_SPATIAL_REFRESH_MS:int = 1500','OFFLINE_ENEMY_IMMEDIATE_RADIUS:int = 3','ENEMY_AI_SPATIAL_SET','enemyDistanceToFriendlyTerritory','isOfflineEnemySpatiallyActive','this.refreshOfflineEnemySpatialSet(param1);')){Require $game $token $token}
+  foreach($token in @('OFFLINE_ENEMY_SPATIAL_TARGET:int = 24','OFFLINE_ENEMY_SPATIAL_REFRESH_MS:int = 1500','OFFLINE_ENEMY_IMMEDIATE_RADIUS:int = 3','ENEMY_AI_SPATIAL_SET','enemyDistanceToFriendlyTerritory','isOfflineEnemySpatiallyActive','this.refreshOfflineEnemySpatialSet(param1);','this.mScene.isInsideVisibleArea(enemy.getCell())','enemy.hasPriorityPlayerTargetInRange()')){Require $game $token $token}
   Write-Utf8Bom $gameStatePath $game
 
   # Sleeping enemies do not advance AI timers or pathfinding. They still receive a
