@@ -126,7 +126,8 @@ Reglas:
 - Si otro recurso o popup está cargándose, la recompensa **no se pierde**: queda pendiente y **se reintenta hasta que la ventana se abra realmente**.
 - Cerrar o fallar al abrir la ventana no equivale a reclamar la recompensa.
 - Después de reclamarla, no vuelve a abrirse ese mismo día.
-- Al siguiente día de entrada se presenta el día siguiente.
+- Al siguiente día se presenta el día siguiente **sólo si la recompensa anterior fue reclamada**.
+- Si se entró el día anterior pero no se reclamó, el mismo día de recompensa continúa pendiente y vuelve a mostrarse al entrar.
 - Si el jugador deja pasar un día completo sin entrar, la racha se reinicia.
 - Después del día 360, la secuencia vuelve al día 1.
 - Las definiciones originales de cinco días pueden reutilizarse cíclicamente cuando no exista una definición explícita para un día superior.
@@ -138,6 +139,8 @@ Telemetría:
 - `DAILY_REWARD_OPEN_REQUEST`
 - `DAILY_REWARD_OPEN_DEFERRED`
 - `DAILY_REWARD_OPENED`
+- `DAILY_REWARD_ADVANCE`
+- `DAILY_REWARD_CARRY_PENDING`
 - `DAILY_REWARD_CLAIMED`
 - `DAILY_REWARD_CLAIM_REJECTED`
 

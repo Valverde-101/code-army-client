@@ -535,6 +535,9 @@ try {
   Require $offline 'unit["repairs_used"]' 'player_unit_repair_lives_persisted_final'
   Require $configSource 'ENABLE_DAILY_REWARDS:Boolean = true' 'daily_reward_enabled_final'
   Require $offline 'DAILY_REWARD_MAX_STREAK: int = 360' 'daily_reward_360_state_final'
+  Require $offline 'mDailyRewardLastClaimDate == mDailyRewardLastLoginDate' 'daily_reward_advance_requires_previous_claim_final'
+  Require $offline 'DAILY_REWARD_CARRY_PENDING' 'daily_reward_unclaimed_day_carry_final'
+  Require $offline 'DAILY_REWARD_ADVANCE' 'daily_reward_claimed_day_advance_telemetry_final'
   Require $offline 'CURRENT_SAVE_VERSION:int = 10' 'offline_current_save_version_v10_final'
   Require $offline 'SAVE_SCHEMA:String = "armyattack-offline-save/v10"' 'portable_save_schema_v10_final'
   Require $offline 'savedata["saveversion"] = CURRENT_SAVE_VERSION;' 'daily_reward_save_v10_final'
@@ -549,7 +552,7 @@ try {
   Require $dailyReward 'MAX_STREAK_DAY:int = 360' 'daily_reward_popup_360_final'
   Require $dailyReward 'OfflineSave.claimDailyReward' 'daily_reward_offline_claim_final'
 
-  Write-Host 'REGRESSION_CHECK=PASS name=daily_reward_360_offline streak=360 missed_day_reset=true one_claim_per_day=true retry_until_actual_open=true saveversion=10 representation=CURRENT_SAVE_VERSION popup_window=5day_page'
+  Write-Host 'REGRESSION_CHECK=PASS name=daily_reward_360_offline streak=360 missed_day_reset=true one_claim_per_day=true advance_only_after_claim=true carry_unclaimed_day=true retry_until_actual_open=true saveversion=10 representation=CURRENT_SAVE_VERSION popup_window=5day_page'
   Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_attack_turn response_primary_units=3 targets=units+structures move_then_attack_same_turn=true group_assists_free=true attacks_min=1 attacks_one_pct=55 attacks_two_pct=40 attacks_three_pct=5 autonomous_turns=false camera_independent=true pvp_untouched=true'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_budget target=24 viewport_visibility=actual_render_viewport in_range_targets_always_active=true container_visible_not_used=true'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_tile_ownership_is_immutable_during_unit_movement capture_call=false owner_write=false v43_invariant=true'

@@ -84,7 +84,12 @@
 				if (GameState.mInstance != null) GameState.mInstance.setOfflineDailyRewardState(mDailyRewardStreakDay, false);
 				return;
 			} else if (delta == 1) {
-				mDailyRewardStreakDay = mDailyRewardStreakDay >= DAILY_REWARD_MAX_STREAK ? 1 : int(Math.max(1, mDailyRewardStreakDay + 1));
+				if (mDailyRewardLastClaimDate == mDailyRewardLastLoginDate) {
+					mDailyRewardStreakDay = mDailyRewardStreakDay >= DAILY_REWARD_MAX_STREAK ? 1 : int(Math.max(1, mDailyRewardStreakDay + 1));
+					Utils.DiagEvent("DAILY_REWARD_ADVANCE","from_date=" + mDailyRewardLastLoginDate + ";to_date=" + today + ";day=" + mDailyRewardStreakDay + ";reason=previous_day_claimed");
+				} else {
+					Utils.DiagEvent("DAILY_REWARD_CARRY_PENDING","from_date=" + mDailyRewardLastLoginDate + ";to_date=" + today + ";day=" + mDailyRewardStreakDay + ";reason=previous_day_unclaimed");
+				}
 			} else if (delta > 1) {
 				mDailyRewardStreakDay = 1;
 			}
