@@ -4720,7 +4720,7 @@
 				}
 			} else if (param1 is EnemyUnit) {
 				if (param3) {
-					this.mGame.setPlayerInstallationsToAttack(param1 as EnemyUnit);
+					this.mGame.setPlayerInstallationsToAttack(param1 as EnemyUnit,param2);
 				}
 			}
 			if (param2.mPowerUp) {
