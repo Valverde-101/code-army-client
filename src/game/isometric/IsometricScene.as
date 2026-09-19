@@ -4789,6 +4789,35 @@
 		// A destroyed campaign building loses its occupied territory, not merely its sprite.
 		// Use the same ownership transition as enemy movement so border/topology and
 		// exported cell owners observe the identical canonical map state.
+		// One-point, side-neutral blast on the mine's own tile and its eight neighbours.
+		// Damage is based on current occupied cells, independent of the attacker's side.
+		public function detonateCampaignMine(param1:Renderable):void {
+			if (!Config.OFFLINE_MODE || !this.mGame || this.mGame.mState != GameState.STATE_PLAY || !param1 || !param1.mItem || param1.mItem.mId != "Mines") return;
+			var tiles:Array = this.getTilesUnderObject(param1);
+			var origin:GridCell = null;
+			var adjacent:GridCell = null;
+			var victim:IsometricCharacter = null;
+			var damaged:Dictionary = new Dictionary(true);
+			var damagedCount:int = 0;
+			var dx:int = 0;
+			var dy:int = 0;
+			for each (origin in tiles) {
+				if (!origin) continue;
+				for (dx = -1; dx <= 1; ++dx) {
+					for (dy = -1; dy <= 1; ++dy) {
+						adjacent = this.getCellAt(origin.mPosI + dx,origin.mPosJ + dy);
+						victim = adjacent && adjacent.mCharacter is IsometricCharacter ? adjacent.mCharacter as IsometricCharacter : null;
+						if (victim && victim.isAlive() && (victim is PlayerUnit || victim is EnemyUnit) && damaged[victim] !== true) {
+							damaged[victim] = true;
+							victim.reduceHealth(1);
+							++damagedCount;
+						}
+					}
+				}
+			}
+			Utils.DiagEvent("CAMPAIGN_MINE_DETONATED","map=" + this.mGame.mCurrentMapId + ";x=" + (tiles.length ? GridCell(tiles[0]).mPosI : -1) + ";y=" + (tiles.length ? GridCell(tiles[0]).mPosJ : -1) + ";victims=" + damagedCount + ";damage_each=1");
+		}
+
 		public function captureDestroyedPlayerBuildingTerritory(param1:PlayerBuildingObject):void {
 			if (!Config.OFFLINE_MODE || !this.mGame || this.mGame.mState != GameState.STATE_PLAY || !param1 || !this.mGame.mMapData) return;
 			var cells:Array = this.getTilesUnderObject(param1);
