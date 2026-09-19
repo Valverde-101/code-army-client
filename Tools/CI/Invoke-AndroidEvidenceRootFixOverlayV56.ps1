@@ -548,6 +548,17 @@ try {
   Require $offline 'savedata["saveversion"] = CURRENT_SAVE_VERSION;' 'daily_reward_save_v10_final'
   Reject $offline 'CURRENT_SAVE_VERSION:int = 8' 'offline_stale_v8_version_absent_final'
   Reject $offline 'armyattack-offline-save/v8' 'offline_stale_v8_schema_absent_final'
+  # Compose-time regression contracts: V46 must not erase V45's response
+  # dispatcher, and both popup routes must honor the new-campaign unlock.
+  Require $gameState 'this.tryStartOfflineEnemyResponseAfterPlayerVisuals();' 'enemy_response_dispatch_survives_final_overlay'
+  Require $gameState 'this.mOfflineEnemyPlayerRoundsPending > 0 && !this.mOfflineEnemyResponseActive' 'enemy_response_pending_barrier_final'
+  Require $gameState 'nextOfflineAction.isEnemyAction()' 'enemy_response_player_queue_barrier_final'
+  Require $gameState 'OfflineSave.isDailyRewardPopupUnlocked()' 'first_reward_both_routes_gated_final'
+  Require $offline 'FIRST_DAILY_REWARD_TUTORIAL_DELAY_MS:int = 3 * 60 * 1000' 'first_reward_3min_delay_final'
+  Require $offline 'first_reward_tutorial_gate_required' 'first_reward_gate_persisted_final'
+  Require $offline 'first_reward_tutorial_completed_at' 'first_reward_time_persisted_final'
+  Require $offline 'DAILY_REWARD_FIRST_UNLOCK_ARMED' 'first_reward_tutorial_telemetry_final'
+  Require $offline '!isDailyRewardPopupUnlocked()' 'first_reward_claim_guard_final'
   Require $gameState 'setOfflineDailyRewardState' 'daily_reward_state_bridge_final'
   Require $gameHud 'requestImmediateSave' 'daily_reward_immediate_save_final'
   Require $gameHud 'mDailyRewardOpenRequestPending' 'daily_reward_open_request_latch_final'
