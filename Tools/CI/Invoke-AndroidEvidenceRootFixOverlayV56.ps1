@@ -466,6 +466,10 @@ try {
   Require $patcher "Class='game.actions.EnemyAttackingAction'" 'enemy_attack_action_patched_into_swf'
   Require $patcher "Class='game.actions.PvPEnemyMovingAction'" 'pvp_move_action_patched_into_swf'
   Require $patcher "Class='game.actions.EnemyMovingAction'" 'campaign_enemy_move_patched_into_swf'
+  Require $patcher "Class='game.gameElements.EnemyInstallationObject'" 'enemy_mine_wrecking_patched_into_swf'
+  Require $patcher "Class='game.gameElements.PlayerInstallationObject'" 'friendly_turret_patched_into_swf'
+  Require $patcher "Class='game.gameElements.DecorationObject'" 'friendly_mine_patched_into_swf'
+  Require $patcher "Class='game.isometric.pathfinding.PathfindCriteria'" 'side_aware_pathfinding_patched_into_swf'
   Require $patcher "Class='game.characters.EnemyUnit'" 'enemy_unit_patched_into_swf'
   Require $patcher "Class='game.characters.PlayerUnit'" 'player_unit_patched_into_swf'
   Require $patcher "Class='game.actions.RepairPlayerUnitAction'" 'repair_player_unit_action_patched_into_swf'
@@ -474,6 +478,9 @@ try {
 
   # Validate all final invariants after every historical overlay has run.
   $baseCfg=Get-Content -LiteralPath $configBasePath -Raw|ConvertFrom-Json
+  $waterPlantFinal=(Get-JsonProperty ((Get-JsonProperty $baseCfg 'ResourceBuilding').Value) 'WaterPlant').Value
+  if($null -eq $waterPlantFinal -or [string]$waterPlantFinal.AvailableInMaps -ne 'Home,Desert' -or [int]$waterPlantFinal.RequiredFriends -ne 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V56=FAIL offline_waterplant_final_access'}
+  Write-Host 'REGRESSION_CHECK=PASS name=offline_desert_water_source producer=WaterPlant maps=Home,Desert friends=0 recipes=original passive_regen=false'
   $baseMapSetup=(Get-JsonProperty $baseCfg 'MapSetup').Value
   foreach($map in $pvpMaps){
     $id=[string]$map.Id
@@ -493,6 +500,11 @@ try {
   $configSource=Get-Content -LiteralPath $configSourcePath -Raw
   $enemy=Get-Content -LiteralPath $enemyPath -Raw
   $enemyAttack=Get-Content -LiteralPath $enemyAttackPath -Raw
+  $enemyInstall=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\EnemyInstallationObject.as') -Raw
+  $playerInstall=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\PlayerInstallationObject.as') -Raw
+  $friendlyMine=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\DecorationObject.as') -Raw
+  $pathfind=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\isometric\pathfinding\PathfindCriteria.as') -Raw
+  $playerBuilding=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\PlayerBuildingObject.as') -Raw
   $playerUnit=Get-Content -LiteralPath $playerUnitPath -Raw
   $repairPlayerUnit=Get-Content -LiteralPath $repairPlayerUnitPath -Raw
   $recapturePlayerBuilding=Get-Content -LiteralPath $recapturePlayerBuildingPath -Raw
@@ -576,6 +588,24 @@ try {
   Require $offline 'first_reward_tutorial_completed_at' 'first_reward_time_persisted_final'
   Require $offline 'DAILY_REWARD_FIRST_UNLOCK_ARMED' 'first_reward_tutorial_telemetry_final'
   Require $offline '!isDailyRewardPopupUnlocked()' 'first_reward_claim_guard_final'
+  # Fail the final composed source, not just the pre-overlay edits.
+  Require $gameState 'ENEMY_RESPONSE_PRIORITY' 'enemy_recent_hit_frontline_priority_final'
+  Require $enemy 'ENEMY_RESPONSE_HIT_PRIORITY' 'enemy_hit_priority_event_final'
+  Require $enemy 'noteOfflinePlayerAttacker' 'enemy_true_attacker_retaliation_final'
+  Require $gameState 'TURRET_MANUAL_SHOT_QUEUED' 'manual_turret_attack_route_final'
+  Require $gameState 'TURRET_AUTO_SHOT_QUEUED' 'automatic_turret_attack_route_final'
+  Require $gameState 'param2 ? param2 : param1.getCell()' 'turret_actual_arrival_cell_final'
+  Require $playerInstall 'selectOfflineManualTurret(this)' 'turret_tap_arms_manual_attack_final'
+  Require $enemyAttack 'this.mManualInstallationAttack' 'manual_turret_player_turn_final'
+  Require $scene 'captureDestroyedPlayerBuildingTerritory' 'destroyed_city_owner_final'
+  Require $playerBuilding 'mScene.captureDestroyedPlayerBuildingTerritory(this)' 'city_destroy_triggers_owner_final'
+  Require $scene 'detonateCampaignMine' 'symmetric_mine_blast_final'
+  Require $enemyInstall 'this.mCampaignWreckingElapsed' 'destroyed_obstacle_cleanup_timer_final'
+  Require $enemyInstall 'mScene.detonateCampaignMine(this)' 'enemy_mine_detonates_final'
+  Require $friendlyMine 'mScene.detonateCampaignMine(this)' 'friendly_mine_detonates_final'
+  Require $pathfind 'friendlyMoverForDeco' 'owner_specific_mine_and_barricade_passability_final'
+  Require $pathfind 'ownEnemyMineOrBarricade' 'enemy_own_mine_barricade_passability_final'
+  Write-Host 'REGRESSION_CHECK=PASS name=campaign_combat_terrain_contract source_composition=true hit_priority=true arrival_turret=true manual_turret_turn=true destroyed_city_owner=true mine_damage_each=1 wreck_cleanup=true side_aware_pathfinding=true'
   Require $gameState 'setOfflineDailyRewardState' 'daily_reward_state_bridge_final'
   Require $gameHud 'requestImmediateSave' 'daily_reward_immediate_save_final'
   Require $gameHud 'mDailyRewardOpenRequestPending' 'daily_reward_open_request_latch_final'
