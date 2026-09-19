@@ -807,7 +807,7 @@
 			// The offline bonus must get a chance before the mission-popup conveyor.
 			// Do not require a tutorial cookie once the offline campaign is playable.
 			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY && this.mLoadingStatesOver &&
-				!this.mFirstUpdate && this.mGrantDailyReward && !PopUpManager.isAnyPopupActive() &&
+				!this.mFirstUpdate && this.mGrantDailyReward && OfflineSave.isDailyRewardPopupUnlocked() && !PopUpManager.isAnyPopupActive() &&
 				!this.mHUD.isDailyRewardOpenRequestPending()) {
 				if (!this.mHUD.openDailyRewardTextBox(this.mDailyRewardDay, this.mGrantDailyRewardSpecial)) {
 					Utils.DiagEvent("DAILY_REWARD_OPEN_DEFERRED","day=" + this.mDailyRewardDay + ";reason=early_hud_resource_busy");
@@ -913,7 +913,7 @@
 									this.mHUD.openWelcomeWindow(this.mEnemiesSpawned, _loc24_, this.mKilledPlayerUnits, this.mProductionsReadyToHarvest);
 								}
 								this.mShowWelcome = false;
-							} else if (this.mGrantDailyReward && (Config.OFFLINE_MODE || MissionManager.isTutorialCompleted())) {
+							} else if (this.mGrantDailyReward && (Config.OFFLINE_MODE ? OfflineSave.isDailyRewardPopupUnlocked() : MissionManager.isTutorialCompleted())) {
 								if (!this.mHUD.isDailyRewardOpenRequestPending()) {
 									if (!this.mHUD.openDailyRewardTextBox(this.mDailyRewardDay, this.mGrantDailyRewardSpecial)) {
 										Utils.DiagEvent("DAILY_REWARD_OPEN_DEFERRED","day=" + this.mDailyRewardDay + ";reason=hud_resource_busy");
@@ -1308,8 +1308,12 @@
 
 		public function requestOfflineEnemyResponseAfterPlayerAction(param1:String):void {
 			if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY || !this.mScene) return;
+			// Preserve the earliest pending player's response deadline. Resetting this
+			// on every rapid command would postpone the enemy indefinitely.
+			if (this.mOfflineEnemyPlayerRoundsPending == 0) {
+				this.mOfflineEnemyResponseReadyAt = getTimer() + OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS;
+			}
 			++this.mOfflineEnemyPlayerRoundsPending;
-			this.mOfflineEnemyResponseReadyAt = getTimer() + OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS;
 			Utils.DiagEvent("PLAYER_TURN_ENEMY_RESPONSE_ARMED","map=" + this.mCurrentMapId + ";action=" + param1 + ";pending=" + this.mOfflineEnemyPlayerRoundsPending + ";settle_ms=" + OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS);
 		}
 
