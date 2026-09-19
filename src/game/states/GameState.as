@@ -1777,7 +1777,7 @@
 						if (_loc12_ = _loc7_[_loc14_] as GridCell) {
 							if (_loc12_.mWalkable) {
 								if (this.mScene.isInsideOpenArea(_loc12_)) {
-									if (_loc12_ != _loc6_ && !_loc12_.mCharacter && (!_loc12_.mObject || _loc12_.mObject is DebrisObject)) {
+									if (_loc12_ != _loc6_ && !_loc12_.mCharacter && (!_loc12_.mObject || _loc12_.mObject is DebrisObject || Config.OFFLINE_MODE && this.mState == STATE_PLAY && _loc12_.mObject is DecorationObject && (_loc12_.mObject.mItem.mId == "Mines" || _loc12_.mObject.mItem.mId == "Barbwire" || _loc12_.mObject.mItem.mId == "Barricade"))) {
 										if (_loc12_.mG < _loc5_ + 0.5) {
 											this.mActiveCharacteWalkableCells.push(_loc12_);
 										}
