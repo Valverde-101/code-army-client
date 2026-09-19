@@ -264,6 +264,49 @@ public function updateDying(param1: int): void {
   # Convert the bound to wall clock and hide its index-3 effect immediately at cleanup.
   $enemyPath=Target-Path 'enemyInstallation'
   $enemy=Normalize-Lf ([IO.File]::ReadAllText($enemyPath))
+  if($enemy.Contains('private var mCampaignWreckingElapsed:int = 0;')){
+    # Do not replace the current mine/barricade lifecycle with V5's obsolete timer.
+    # Make the pre-existing campaign cleanup wall-clock bounded and visual-safe.
+    if(-not $enemy.Contains('import flash.utils.getTimer;')){
+      $enemy=Replace-LiteralOne $enemy '   import flash.events.MouseEvent;' @'
+   import flash.events.MouseEvent;
+   import flash.utils.getTimer;
+'@ 'installation_campaign_wallclock_import'
+    }
+    $enemy=Replace-LiteralOne $enemy '      private var mCampaignWreckingElapsed:int = 0;' @'
+      private var mCampaignWreckingElapsed:int = 0;
+      private var mCampaignWreckingStartedAt:int = 0;
+'@ 'installation_campaign_wallclock_field'
+    $enemy=Replace-LiteralOne $enemy '               this.mCampaignWreckingElapsed += Math.max(0,param1);' @'
+               this.mCampaignWreckingElapsed += Math.max(0,param1);
+               var wreckElapsedReal:int = this.mCampaignWreckingStartedAt > 0 ? Math.max(0,getTimer() - this.mCampaignWreckingStartedAt) : this.mCampaignWreckingElapsed;
+'@ 'installation_campaign_wallclock_elapsed'
+    $enemy=Replace-LiteralOne $enemy 'this.mCampaignWreckingElapsed >= wreckingMaxMs' 'wreckElapsedReal >= wreckingMaxMs' 'installation_campaign_wallclock_limit'
+    $enemy=Replace-LiteralOne $enemy '               this.mCampaignWreckingElapsed = 0;' @'
+               this.mCampaignWreckingElapsed = 0;
+               this.mCampaignWreckingStartedAt = getTimer();
+'@ 'installation_campaign_wallclock_arm'
+    $enemy=Replace-LiteralOne $enemy '                   if(!wreckingLabelEnd && Config.OFFLINE_MODE) Utils.DiagEvent("INSTALLATION_WRECKING_CLEANUP","item=" + (mItem ? mItem.mId : "") + ";elapsed_ms=" + this.mCampaignWreckingElapsed + ";reason=missing_end_label");' @'
+                   if(!wreckingLabelEnd && Config.OFFLINE_MODE)
+                   {
+                      Utils.DiagEvent("INSTALLATION_WRECKING_TIMEOUT","item=" + (mItem ? mItem.mId : "") + ";elapsed_real_ms=" + wreckElapsedReal + ";elapsed_logic_ms=" + this.mCampaignWreckingElapsed + ";limit_ms=" + wreckingMaxMs);
+                   }
+                   Utils.DiagEvent("INSTALLATION_WRECKING_CLEANUP","item=" + (mItem ? mItem.mId : "") + ";reason=" + (wreckingLabelEnd ? "end_label" : "wallclock_timeout") + ";elapsed_real_ms=" + wreckElapsedReal + ";elapsed_logic_ms=" + this.mCampaignWreckingElapsed);
+                   if(mAnimationController)
+                   {
+                      var campaignWreckClip:MovieClip = mAnimationController.getCurrentAnimation();
+                      mAnimationController.stopCurrentAnimation();
+                      if(campaignWreckClip)
+                      {
+                         campaignWreckClip.visible = false;
+                      }
+                   }
+                   this.mCampaignWreckingStartedAt = 0;
+'@ 'installation_campaign_wrecking_visual_cleanup'
+    foreach($token in @('mCampaignWreckingStartedAt:int','wreckElapsedReal','elapsed_real_ms=','elapsed_logic_ms=','this.mCampaignWreckingStartedAt = getTimer();','mCampaignMineBlastApplied','wreckingMaxMs','mScene.detonateCampaignMine(this)')){Require-Token $enemy $token 'installation_campaign'}
+    Write-Host 'REGRESSION_CHECK=PASS name=installation_campaign_wrecking_v5_composition mine_damage_preserved=true side_specific_timeout_preserved=true wallclock=true'
+  }
+  else {
   if(-not $enemy.Contains('import flash.utils.getTimer;')){
     $enemy=Replace-LiteralOne $enemy '   import flash.events.MouseEvent;' @'
    import flash.events.MouseEvent;
@@ -308,6 +351,7 @@ case STATE_WRECKING:
   $wreckArmReplacement='$1this.mWreckingSafetyTimer = 0;' + "`n               " + 'this.mWreckingStartedAt = getTimer();'
   $enemy=Replace-RegexOne $enemy $wreckArmPattern $wreckArmReplacement 'installation_wrecking_wallclock_arm'
   foreach($token in @('mWreckingStartedAt:int','wreckElapsedReal','elapsed_real_ms=','elapsed_logic_ms=','this.mWreckingStartedAt = getTimer();')){Require-Token $enemy $token 'installation'}
+  }
   Write-Utf8Bom $enemyPath $enemy
 
   # E) Make the exact runtime patch provenance distinguishable from v3.25/v4.
