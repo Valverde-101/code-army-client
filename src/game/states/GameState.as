@@ -1318,7 +1318,7 @@
 		}
 
 		private function isOfflineEnemyResponseCandidate(param1:EnemyUnit):Boolean {
-			return param1 != null && param1.isAlive() && this.isOfflineEnemySpatiallyActive(param1) && this.mOfflineEnemyResponseParticipants[param1] !== true && param1.canStartOfflineResponseTurn();
+			return param1 != null && param1.isAlive() && this.mOfflineEnemyResponseParticipants[param1] !== true && param1.canStartOfflineResponseTurn();
 		}
 
 		private function selectNextOfflineEnemyPrimary():EnemyUnit {

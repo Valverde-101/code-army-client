@@ -306,7 +306,21 @@ private var mTrackedMainEnemyActionStartedAt:int = 0;
 			var sceneChanged:Boolean = this.mOfflineEnemyAiTunedScene != this.mScene;
 '@.TrimEnd() 'spatial_ai_refresh_from_tuner'
   $game=Replace-One $game 'if (enemy && enemy.isAlive()) {' 'if (enemy && enemy.isAlive() && this.isOfflineEnemySpatiallyActive(enemy)) {' 'ai_tuning_active_set_only'
-  foreach($token in @('OFFLINE_ENEMY_SPATIAL_TARGET:int = 24','OFFLINE_ENEMY_SPATIAL_REFRESH_MS:int = 1500','OFFLINE_ENEMY_IMMEDIATE_RADIUS:int = 3','ENEMY_AI_SPATIAL_SET','enemyDistanceToFriendlyTerritory','isOfflineEnemySpatiallyActive','this.refreshOfflineEnemySpatialSet(param1);','this.mScene.isRenderableActuallyInViewport(enemy)','enemy.hasPriorityAttackTargetInRange()')){Require $game $token $token}
+
+  # Bind response-round selection to the spatial working set only after V48
+  # has introduced isOfflineEnemySpatiallyActive(). The canonical source must
+  # remain independently compilable before overlays are applied.
+  $responseCandidateBase='return param1 != null && param1.isAlive() && this.mOfflineEnemyResponseParticipants[param1] !== true && param1.canStartOfflineResponseTurn();'
+  $responseCandidateSpatial='return param1 != null && param1.isAlive() && this.isOfflineEnemySpatiallyActive(param1) && this.mOfflineEnemyResponseParticipants[param1] !== true && param1.canStartOfflineResponseTurn();'
+  if($game.Contains($responseCandidateSpatial)){
+    Write-Host 'EVIDENCE_ROOTFIX_V48_HOOK=PASS name=response_primary_spatial_budget state=already_applied'
+  }elseif($game.Contains($responseCandidateBase)){
+    $game=Replace-One $game $responseCandidateBase $responseCandidateSpatial 'response_primary_spatial_budget'
+    Write-Host 'EVIDENCE_ROOTFIX_V48_HOOK=PASS name=response_primary_spatial_budget state=applied'
+  }else{
+    throw 'ANDROID_EVIDENCE_ROOTFIX_V48=FAIL patch=response_primary_spatial_budget anchor_missing'
+  }
+  foreach($token in @('OFFLINE_ENEMY_SPATIAL_TARGET:int = 24','OFFLINE_ENEMY_SPATIAL_REFRESH_MS:int = 1500','OFFLINE_ENEMY_IMMEDIATE_RADIUS:int = 3','ENEMY_AI_SPATIAL_SET','enemyDistanceToFriendlyTerritory','isOfflineEnemySpatiallyActive','this.refreshOfflineEnemySpatialSet(param1);','this.mScene.isRenderableActuallyInViewport(enemy)','enemy.hasPriorityAttackTargetInRange()','this.isOfflineEnemySpatiallyActive(param1)')){Require $game $token $token}
   Write-Utf8Bom $gameStatePath $game
 
   # Sleeping enemies do not advance AI timers or pathfinding. They still receive a

@@ -65,7 +65,17 @@ try {
   # One player action used to advance only one enemy in the reaction queue. In
   # offline campaign play that makes a map with 50-70 enemies feel inert. Keep
   # the original call site but route it through a bounded three-slot advance.
-  $game=Replace-One $game 'this.mScene.reduceEnemyUnitQueueNumber();' 'this.advanceEnemyOrderQueue();' 'enemy_order_batch_advance'
+    # Patch only the player-energy turn-consumption call. A response-round helper
+  # also legitimately contains reduceEnemyUnitQueueNumber(), so a global literal
+  # replacement becomes ambiguous once the fixed turn coordinator is present.
+  $reduceEnergyStart=$game.IndexOf("public function reduceEnergy(",[StringComparison]::Ordinal)
+  if($reduceEnergyStart -lt 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V45=FAIL patch=enemy_order_batch_advance reduce_energy_start_missing'}
+  $reduceEnergyEnd=$game.IndexOf("public function reduceMapResource",$reduceEnergyStart,[StringComparison]::Ordinal)
+  if($reduceEnergyEnd -lt 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V45=FAIL patch=enemy_order_batch_advance reduce_energy_end_missing'}
+  $reduceEnergyBlock=$game.Substring($reduceEnergyStart,$reduceEnergyEnd-$reduceEnergyStart)
+  $reduceEnergyBlock=Replace-One $reduceEnergyBlock 'this.mScene.reduceEnemyUnitQueueNumber();' 'this.advanceEnemyOrderQueue();' 'enemy_order_batch_advance'
+  $game=$game.Substring(0,$reduceEnergyStart)+$reduceEnergyBlock+$game.Substring($reduceEnergyEnd)
+  Write-Host 'EVIDENCE_ROOTFIX_V45_HOOK=PASS name=enemy_order_batch_advance scope=reduceEnergy semantic=true'
 
   $fieldAnchor='\t\tpublic var mMainActionQueue: ActionQueue;'.Replace('\t',"`t")
   $fieldBlock=@'
