@@ -2,6 +2,10 @@
 {
    import flash.geom.Point;
    import game.battlefield.MapData;
+   import game.gameElements.EnemyInstallationObject;
+   import game.gameElements.PlayerInstallationObject;
+   import game.gameElements.DecorationObject;
+   import game.gameElements.DebrisObject;
    import game.isometric.GridCell;
    import game.isometric.IsometricScene;
    import game.isometric.characters.IsometricCharacter;
@@ -95,6 +99,23 @@
                if((param2 & IsometricCharacter.MOVER_TYPE_STEALTH_FLAG) == 0)
                {
                   return false;
+               }
+            }
+         }
+         if(Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && param1.mObject && !param1.mObject.isWalkable())
+         {
+            var friendlyMover:Boolean = (param2 & IsometricCharacter.MOVER_TYPE_FRIENDLY_FLAG) > 0;
+            var enemyDefence:EnemyInstallationObject = param1.mObject as EnemyInstallationObject;
+            var friendlyMine:DecorationObject = param1.mObject as DecorationObject;
+            var friendlyTower:PlayerInstallationObject = param1.mObject as PlayerInstallationObject;
+            var ownEnemyMineOrBarricade:Boolean = !friendlyMover && enemyDefence != null && enemyDefence.isAlive() && (enemyDefence.mItem.mId == "Mines" || enemyDefence.mItem.mId == "Barricade");
+            var ownPlayerMine:Boolean = friendlyMover && friendlyMine != null && friendlyMine.isAlive() && friendlyMine.mItem.mId == "Mines";
+            if(!ownEnemyMineOrBarricade && !ownPlayerMine && !(param1.mObject is DebrisObject))
+            {
+               // No stealth/animation may permit an opponent to phase through a live defence.
+               if(enemyDefence == null || enemyDefence.isAlive())
+               {
+                  if(friendlyTower == null || friendlyTower.isAlive()) return false;
                }
             }
          }
