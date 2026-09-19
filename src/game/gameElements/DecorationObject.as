@@ -15,6 +15,8 @@ package game.gameElements
    public class DecorationObject extends PlayerBuildingObject
    {
        
+      private var mCampaignMineBlastApplied:Boolean = false;
+
       
       public function DecorationObject(param1:int, param2:IsometricScene, param3:MapItem, param4:Point, param5:DisplayObject = null, param6:String = null)
       {
@@ -38,6 +40,12 @@ package game.gameElements
       override public function setHealth(param1:int) : void
       {
          var _loc2_:int = mHealth;
+         // Decorative friendly mines use the same side-neutral damage as enemy mines.
+         if(_loc2_ > 0 && param1 <= 0 && !this.mCampaignMineBlastApplied && Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && mScene && mItem && mItem.mId == "Mines")
+         {
+            this.mCampaignMineBlastApplied = true;
+            mScene.detonateCampaignMine(this);
+         }
          super.setHealth(param1);
          if(DecorationItem(mItem).mLeaveRuins)
          {

@@ -392,6 +392,9 @@ package game.gameElements
       override public function MousePressed(param1:MouseEvent) : void
       {
          GameState.mInstance.moveCameraToSeeRenderable(this);
+         if(Config.OFFLINE_MODE && GameState.mInstance.mState == GameState.STATE_PLAY && this.canAttack()) {
+            GameState.mInstance.selectOfflineManualTurret(this);
+         }
       }
       
       override public function MouseOut(param1:MouseEvent) : void

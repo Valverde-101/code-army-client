@@ -18,6 +18,7 @@
 	import flash.text.TextFormat;
 	import flash.text.TextFormatAlign;
 	import flash.ui.Keyboard;
+	import flash.utils.Dictionary;
 	import flash.utils.Timer;
 	import flash.utils.getTimer;
 	import game.actions.Action;
@@ -342,6 +343,28 @@
 		private var mGrantDailyRewardSpecial: Boolean;
 
 		private var mDailyRewardDay: int;
+
+		private static const OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS:int = 3;
+
+		private static const OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS:int = 1200;
+
+		private var mOfflineEnemyResponseRoundId:int = 0;
+
+		private var mOfflineEnemyResponsePrimaryRemaining:int = 0;
+
+		private var mOfflineEnemyResponseParticipants:Dictionary = new Dictionary(true);
+
+		private var mOfflineEnemyResponseActive:Boolean = false;
+
+		private var mOfflineEnemyPendingResponseRounds:int = 0;
+
+		private var mOfflineEnemyResponseCursor:int = 0;
+
+		private var mOfflineEnemyPlayerRoundsPending:int = 0;
+
+		private var mOfflineEnemyResponseReadyAt:int = 0;
+
+		private var mOfflineManualTurret:PlayerInstallationObject = null;
 
 		private var mEnemiesSpawned: int;
 
@@ -783,6 +806,15 @@
 					}
 			}
 			this.getHud().logicUpdate(param1);
+			// The offline bonus must get a chance before the mission-popup conveyor.
+			// Do not require a tutorial cookie once the offline campaign is playable.
+			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY && this.mLoadingStatesOver &&
+				!this.mFirstUpdate && this.mGrantDailyReward && OfflineSave.isDailyRewardPopupUnlocked() && !PopUpManager.isAnyPopupActive() &&
+				!this.mHUD.isDailyRewardOpenRequestPending()) {
+				if (!this.mHUD.openDailyRewardTextBox(this.mDailyRewardDay, this.mGrantDailyRewardSpecial)) {
+					Utils.DiagEvent("DAILY_REWARD_OPEN_DEFERRED","day=" + this.mDailyRewardDay + ";reason=early_hud_resource_busy");
+				}
+			}
 			if (PopUpManager.isModalPopupActive()) {
 				return;
 			}
@@ -876,16 +908,19 @@
 			if (!this.mFirstUpdate) {
 				if (this.mLoadingStatesOver) {
 					if (this.mState != STATE_PVP) {
-						if (!PopUpManager.isAnyPopupActive()) {
+						if (!PopUpManager.isAnyPopupActive() && !this.mHUD.isDailyRewardOpenRequestPending()) {
 							if (this.mShowWelcome) {
 								_loc24_ = this.mScene.getNumberOfEnemiesReadyToAct();
 								if (this.mEnemiesSpawned > 0 || _loc24_ > 0 || this.mKilledPlayerUnits > 0 || this.mProductionsReadyToHarvest > 0) {
 									this.mHUD.openWelcomeWindow(this.mEnemiesSpawned, _loc24_, this.mKilledPlayerUnits, this.mProductionsReadyToHarvest);
 								}
 								this.mShowWelcome = false;
-							} else if (this.mGrantDailyReward && MissionManager.isTutorialCompleted()) {
-								this.mHUD.openDailyRewardTextBox(this.mDailyRewardDay, this.mGrantDailyRewardSpecial);
-								this.mGrantDailyReward = false;
+							} else if (this.mGrantDailyReward && (Config.OFFLINE_MODE ? OfflineSave.isDailyRewardPopupUnlocked() : MissionManager.isTutorialCompleted())) {
+								if (!this.mHUD.isDailyRewardOpenRequestPending()) {
+									if (!this.mHUD.openDailyRewardTextBox(this.mDailyRewardDay, this.mGrantDailyRewardSpecial)) {
+										Utils.DiagEvent("DAILY_REWARD_OPEN_DEFERRED","day=" + this.mDailyRewardDay + ";reason=hud_resource_busy");
+									}
+								}
 							} else if (this.mShowFreeUnitsReceived && MissionManager.isTutorialCompleted()) {
 								this.mHUD.openFreeUnitReceivedWindow();
 								this.mShowFreeUnitsReceived = false;
@@ -905,12 +940,14 @@
 						// Check if a legacy save file (from v21) exists, use if yes
 						file = File.applicationStorageDirectory.resolvePath("savefile.txt");
 						if (!file.exists) {
+							OfflineSave.initializeDailyReward(null);
 							return
 						}
 					}
 				} else if (mSaveLocation == "legacy") {
 					file = File.applicationStorageDirectory.resolvePath("savefile.txt");
 					if (!file.exists) {
+						OfflineSave.initializeDailyReward(null);
 						return
 					}
 				}
@@ -1265,6 +1302,21 @@
 					this.mServer.serverCallServiceWithParameters(ServiceIDs.INCREMENT_TURN_COUNTERS, _loc5_, false);
 				}
 			}
+			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY && this.mCurrentAction &&
+				(this.mCurrentAction is WalkingAction || this.mCurrentAction is AttackEnemyAction || this.mCurrentAction is AttackEnemyInstallationAction)) {
+				this.requestOfflineEnemyResponseAfterPlayerAction(this.mCurrentAction.mName);
+			}
+		}
+
+		public function requestOfflineEnemyResponseAfterPlayerAction(param1:String):void {
+			if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY || !this.mScene) return;
+			// Preserve the earliest pending player's response deadline. Resetting this
+			// on every rapid command would postpone the enemy indefinitely.
+			if (this.mOfflineEnemyPlayerRoundsPending == 0) {
+				this.mOfflineEnemyResponseReadyAt = getTimer() + OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS;
+			}
+			++this.mOfflineEnemyPlayerRoundsPending;
+			Utils.DiagEvent("PLAYER_TURN_ENEMY_RESPONSE_ARMED","map=" + this.mCurrentMapId + ";action=" + param1 + ";pending=" + this.mOfflineEnemyPlayerRoundsPending + ";settle_ms=" + OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS);
 		}
 
 		public function enemyMoveMade(): void {
@@ -1275,6 +1327,132 @@
 						this.mPvPHUD.mTextUpdateRequired = true;
 					}
 				}
+			}
+		}
+
+
+		public function beginOfflineEnemyResponseRound(param1:int):void {
+			if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY || !this.mScene) {
+				if (this.mScene) this.mScene.reduceEnemyUnitQueueNumber();
+				return;
+			}
+			if (this.mOfflineEnemyResponseActive) {
+				++this.mOfflineEnemyPendingResponseRounds;
+				Utils.DiagEvent("ENEMY_RESPONSE_ROUND_QUEUED","map=" + this.mCurrentMapId + ";round=" + this.mOfflineEnemyResponseRoundId + ";pending=" + this.mOfflineEnemyPendingResponseRounds);
+				return;
+			}
+			++this.mOfflineEnemyResponseRoundId;
+			this.mOfflineEnemyResponsePrimaryRemaining = int(Math.max(1,param1));
+			this.mOfflineEnemyResponseParticipants = new Dictionary(true);
+			this.mOfflineEnemyResponseActive = true;
+			Utils.DiagEvent("ENEMY_RESPONSE_ROUND_BEGIN","map=" + this.mCurrentMapId + ";round=" + this.mOfflineEnemyResponseRoundId + ";primary_slots=" + this.mOfflineEnemyResponsePrimaryRemaining);
+			this.dispatchNextOfflineEnemyPrimary();
+		}
+
+		private function isOfflineEnemyResponseCandidate(param1:EnemyUnit):Boolean {
+			return param1 != null && param1.isAlive() && this.mOfflineEnemyResponseParticipants[param1] !== true && param1.canStartOfflineResponseTurn();
+		}
+
+		private function selectNextOfflineEnemyPrimary():EnemyUnit {
+			if (!this.mScene) return null;
+			var enemies:Array = this.mScene.getEnemyUnits();
+			if (!enemies || enemies.length == 0) return null;
+			var players:Array = this.mScene.getPlayerAliveUnits();
+			var count:int = int(enemies.length);
+			var offset:int = 0;
+			var index:int = 0;
+			var enemy:EnemyUnit = null;
+			var player:PlayerUnit = null;
+			var origin:GridCell = null;
+			var playerCell:GridCell = null;
+			var proximity:int = 999999;
+			var distance:int = 0;
+			var rank:int = 0;
+			var bestRank:int = 999999;
+			var bestDistance:int = 999999;
+			var bestIndex:int = -1;
+			var j:int = 0;
+			while (offset < count) {
+				index = (this.mOfflineEnemyResponseCursor + offset) % count;
+				enemy = enemies[index] as EnemyUnit;
+				if (this.isOfflineEnemyResponseCandidate(enemy) && (origin = enemy.getCell()) != null) {
+					proximity = 999999;
+					j = 0;
+					while (players && j < players.length) {
+						player = players[j] as PlayerUnit;
+						playerCell = player && player.isAlive() ? player.getCell() : null;
+						if (playerCell) {
+							distance = Math.abs(origin.mPosI - playerCell.mPosI) + Math.abs(origin.mPosJ - playerCell.mPosJ);
+							if (distance < proximity) proximity = distance;
+						}
+						++j;
+					}
+					// Previously hit enemies first; then those able to fight immediately;
+					// then the nearest frontline. Remote patrols take only spare slots.
+					rank = enemy.wasRecentlyAttackedForOfflineResponse() ? 0 : (enemy.hasPriorityAttackTargetInRange() ? 1 : (proximity <= 12 ? 2 : 3));
+					if (rank < bestRank || (rank == bestRank && proximity < bestDistance)) {
+						bestRank = rank;
+						bestDistance = proximity;
+						bestIndex = index;
+					}
+				}
+				++offset;
+			}
+			if (bestIndex < 0) {
+				Utils.DiagEvent("ENEMY_RESPONSE_NO_CANDIDATE","map=" + this.mCurrentMapId + ";enemies=" + count + ";players=" + (players ? players.length : 0));
+				return null;
+			}
+			this.mOfflineEnemyResponseCursor = (bestIndex + 1) % count;
+			enemy = enemies[bestIndex] as EnemyUnit;
+			Utils.DiagEvent("ENEMY_RESPONSE_PRIORITY","map=" + this.mCurrentMapId + ";enemy=" + enemy.mUnitId + ";rank=" + bestRank + ";nearest_player_tiles=" + bestDistance + ";recent_hit=" + enemy.wasRecentlyAttackedForOfflineResponse());
+			return enemy;
+		}
+
+		private function dispatchNextOfflineEnemyPrimary():void {
+			if (!this.mOfflineEnemyResponseActive) return;
+			if (this.mOfflineEnemyResponsePrimaryRemaining <= 0) {
+				this.finishOfflineEnemyResponseRound("primary_slots_complete");
+				return;
+			}
+			var enemy:EnemyUnit = this.selectNextOfflineEnemyPrimary();
+			if (!enemy) {
+				this.finishOfflineEnemyResponseRound("no_eligible_enemy");
+				return;
+			}
+			this.mOfflineEnemyResponseParticipants[enemy] = true;
+			--this.mOfflineEnemyResponsePrimaryRemaining;
+			Utils.DiagEvent("ENEMY_RESPONSE_PRIMARY","map=" + this.mCurrentMapId + ";round=" + this.mOfflineEnemyResponseRoundId + ";enemy=" + enemy.mUnitId + ";remaining_primary=" + this.mOfflineEnemyResponsePrimaryRemaining + ";attack_ready=" + enemy.hasPriorityAttackTargetInRange());
+			enemy.prepareOfflineResponseTurn(this.mOfflineEnemyResponseRoundId,true);
+		}
+
+		public function registerOfflineEnemyAssist(param1:EnemyUnit, param2:int):Boolean {
+			if (!this.mOfflineEnemyResponseActive || param2 != this.mOfflineEnemyResponseRoundId || !param1) return false;
+			if (this.mOfflineEnemyResponseParticipants[param1] === true) return false;
+			this.mOfflineEnemyResponseParticipants[param1] = true;
+			Utils.DiagEvent("ENEMY_RESPONSE_ASSIST_REGISTER","map=" + this.mCurrentMapId + ";round=" + param2 + ";enemy=" + param1.mUnitId);
+			return true;
+		}
+
+		public function releaseOfflineEnemyAssist(param1:EnemyUnit, param2:int):void {
+			if (!this.mOfflineEnemyResponseActive || param2 != this.mOfflineEnemyResponseRoundId || !param1) return;
+			if (this.mOfflineEnemyResponseParticipants[param1] === true) delete this.mOfflineEnemyResponseParticipants[param1];
+		}
+
+		public function completeOfflineEnemyResponseTurn(param1:EnemyUnit, param2:int, param3:Boolean, param4:String):void {
+			if (!this.mOfflineEnemyResponseActive || param2 != this.mOfflineEnemyResponseRoundId) return;
+			Utils.DiagEvent("ENEMY_RESPONSE_TURN_COMPLETE","map=" + this.mCurrentMapId + ";round=" + param2 + ";enemy=" + (param1 ? param1.mUnitId : "") + ";primary=" + param3 + ";reason=" + param4 + ";remaining_primary=" + this.mOfflineEnemyResponsePrimaryRemaining);
+			if (param3) this.dispatchNextOfflineEnemyPrimary();
+		}
+
+		private function finishOfflineEnemyResponseRound(param1:String):void {
+			var finishedRound:int = this.mOfflineEnemyResponseRoundId;
+			this.mOfflineEnemyResponseActive = false;
+			this.mOfflineEnemyResponsePrimaryRemaining = 0;
+			this.mOfflineEnemyResponseParticipants = new Dictionary(true);
+			Utils.DiagEvent("ENEMY_RESPONSE_ROUND_END","map=" + this.mCurrentMapId + ";round=" + finishedRound + ";reason=" + param1 + ";pending=" + this.mOfflineEnemyPendingResponseRounds);
+			if (this.mOfflineEnemyPendingResponseRounds > 0) {
+				--this.mOfflineEnemyPendingResponseRounds;
+				this.beginOfflineEnemyResponseRound(OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS);
 			}
 		}
 
@@ -2019,14 +2197,15 @@
 			return false;
 		}
 
-		public function setPlayerInstallationsToAttack(param1: EnemyUnit): void {
+		public function setPlayerInstallationsToAttack(param1: EnemyUnit, param2: GridCell = null): void {
 			var _loc4_: PlayerInstallationObject = null;
 			var _loc7_: int = 0;
 			var _loc8_: int = 0;
 			var _loc9_: int = 0;
 			var _loc10_: int = 0;
 			var _loc11_: int = 0;
-			var _loc2_: GridCell = param1.getCell();
+			var _loc2_: GridCell = param2 ? param2 : param1.getCell();
+			if (!_loc2_) return;
 			var _loc3_: Array = this.mScene.getPlayerInstallations();
 			var _loc5_: int = int(_loc3_.length);
 			var _loc6_: int = 0;
@@ -2042,6 +2221,7 @@
 							if (_loc2_.mPosJ >= _loc10_ - _loc7_) {
 								if (_loc2_.mPosJ < _loc10_ + _loc11_ + _loc7_) {
 									this.queueAction(new AttackEnemyAction(null, _loc4_, param1, false), true);
+									Utils.DiagEvent("TURRET_AUTO_SHOT_QUEUED","map=" + this.mCurrentMapId + ";target_x=" + _loc2_.mPosI + ";target_y=" + _loc2_.mPosJ + ";turret=" + (_loc4_.mItem ? _loc4_.mItem.mId : ""));
 								}
 							}
 						}
@@ -2052,6 +2232,12 @@
 		}
 
 		public function setAttacksToExtraAttackStyleEnemyInstallations(param1: IsometricCharacter): void {}
+
+		public function selectOfflineManualTurret(param1:PlayerInstallationObject):void {
+			if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY || !param1 || !param1.canAttack() || param1.mScene != this.mScene) return;
+			this.mOfflineManualTurret = param1;
+			Utils.DiagEvent("TURRET_MANUAL_SELECT","map=" + this.mCurrentMapId + ";x=" + param1.getCell().mPosI + ";y=" + param1.getCell().mPosJ + ";range=" + param1.mAttackRange);
+		}
 
 		public function attackEnemy(param1: Renderable): void {
 			var _loc3_: Action = null;
@@ -2066,6 +2252,27 @@
 			var _loc12_: int = 0;
 			var _loc13_: int = 0;
 			var _loc14_: Action = null;
+			// Tapping a friendly turret arms one explicit shot against the next enemy
+			// selected in its actual range. This shot costs one PLAYER TURN, not energy.
+			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY && param1 is EnemyUnit && this.mOfflineManualTurret) {
+				var manualTurret:PlayerInstallationObject = this.mOfflineManualTurret;
+				this.mOfflineManualTurret = null;
+				var turretCell:GridCell = manualTurret.getCell();
+				var enemyCell:GridCell = param1.getCell();
+				if (manualTurret.canAttack() && manualTurret.mScene == this.mScene && turretCell && enemyCell && (param1 as EnemyUnit).isAlive() &&
+					enemyCell.mPosI >= turretCell.mPosI - manualTurret.mAttackRange &&
+					enemyCell.mPosI < turretCell.mPosI + manualTurret.getTileSize().x + manualTurret.mAttackRange &&
+					enemyCell.mPosJ >= turretCell.mPosJ - manualTurret.mAttackRange &&
+					enemyCell.mPosJ < turretCell.mPosJ + manualTurret.getTileSize().y + manualTurret.mAttackRange) {
+					this.mCounterAttackAction = null;
+					var manualShot:AttackEnemyAction = new AttackEnemyAction(null,manualTurret,param1 as EnemyUnit,false);
+					manualShot.mManualInstallationAttack = true;
+					this.queueAction(manualShot);
+					Utils.DiagEvent("TURRET_MANUAL_SHOT_QUEUED","map=" + this.mCurrentMapId + ";x=" + enemyCell.mPosI + ";y=" + enemyCell.mPosJ);
+					return;
+				}
+				Utils.DiagEvent("TURRET_MANUAL_TARGET_OUT_OF_RANGE","map=" + this.mCurrentMapId);
+			}
 			var _loc2_: Array = this.searchAttackablePlayerUnits(param1);
 			this.mCounterAttackAction = null;
 			if (!_loc2_ || _loc2_.length == 0) {
@@ -2909,6 +3116,21 @@
 		private function handleFBCreditsData(param1: ServerCall): void {
 			var _loc2_: int = int(param1.mData.gold);
 			this.mPlayerProfile.addPremium(_loc2_ - this.mPlayerProfile.mPremium);
+		}
+
+		public function setOfflineDailyRewardState(param1: int, param2: Boolean): void {
+			if (!Config.OFFLINE_MODE) return;
+			this.mDailyRewardDay = int(Math.max(1, Math.min(OfflineSave.DAILY_REWARD_MAX_STREAK, param1)));
+			this.mGrantDailyRewardSpecial = false;
+			this.mGrantDailyReward = param2;
+			Utils.DiagEvent("DAILY_REWARD_GAMESTATE","day=" + this.mDailyRewardDay + ";grant=" + this.mGrantDailyReward);
+		}
+
+		public function acknowledgeOfflineDailyRewardOpened():void {
+			if (!Config.OFFLINE_MODE) return;
+			Utils.DiagEvent("DAILY_REWARD_OPENED","day=" + this.mDailyRewardDay + ";grant_before=" + this.mGrantDailyReward);
+			this.mGrantDailyReward = false;
+			if (this.mHUD) this.mHUD.requestImmediateSave();
 		}
 
 		private function handleDailyRewardData(param1: ServerCall): void {
@@ -4777,8 +4999,9 @@
 		}
 
 		public function setFogOfWarOn(param1: Boolean): void {
+			if (this.mFogOfWarOn == param1) return;
 			this.mFogOfWarOn = param1;
-			// Doin- a little challenge: most inefficient way to reload the game lmao
+			Utils.DiagEvent("SETTINGS_FOG_CHANGED","value=" + param1 + ";apply=next_scene_init;full_reload=false");
 		}
 
 		public function isFogOfWarOn(): Boolean {
@@ -4786,15 +5009,14 @@
 		}
 
 		public function setAnimations(param1: Boolean): void {
+			if (this.mAnimationsOn == param1) return;
 			this.mAnimationsOn = param1;
 			Cookie.saveCookieVariable(Config.COOKIE_SETTINGS_NAME, Config.COOKIE_SETTINGS_NAME_ANIMATION, param1);
-			// We're doing the same challenge as above xD
-			// Need to look for a better way
-			var savedata: * = this.mHUD.generateSaveJson();
-			(PopUpManager.getPopUp(PauseDialog) as PauseDialog).loadProgress(savedata);
-			(PopUpManager.getPopUp(SettingsDialogClass) as SettingsDialogClass).closeSettingsAuto();
-			(PopUpManager.getPopUp(PauseDialog) as PauseDialog).closePauseMenuAuto();
-			this.mScene.mCamera.moveTo(this.mScene.mCamera.getCameraX() + 1, this.mScene.mCamera.getCameraY() + 1);
+			if (this.mScene) {
+				if (param1) this.mScene.startCharacterAnimations();
+				else this.mScene.stopCharacterAnimations();
+			}
+			Utils.DiagEvent("SETTINGS_ANIMATIONS_CHANGED","value=" + param1 + ";full_reload=false;save_reload=false;camera_nudge=false");
 		}
 
 		public function isAnimationsOn(): Boolean {

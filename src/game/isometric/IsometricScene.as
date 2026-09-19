@@ -3274,6 +3274,10 @@
 				screenY <= this.mGame.getStageHeight() + VIEWPORT_CULL_MARGIN;
 		}
 
+		public function isRenderableActuallyInViewport(param1: Renderable): Boolean {
+			return param1 != null && this.isRenderableInViewport(param1);
+		}
+
 		private function sortAll(param1: Boolean = true, param2: Boolean = true): void {
 			var perfStart:int = getTimer();
 			var changed:Boolean = false;
@@ -4697,8 +4701,17 @@
 		}
 
 		public function characterArrivedInCell(param1: IsometricCharacter, param2: GridCell, param3: Boolean = true): void {
-			if (param1.isInOpponentsTile()) {
-				this.changeCellOwner(param2);
+			var arrivalOwnerBefore:int = param2 ? param2.mOwner : MapData.TILE_OWNER_NEUTRAL;
+			var campaignArrival:Boolean = this.mGame && this.mGame.mState != GameState.STATE_PVP;
+			if (campaignArrival && param2) {
+				if (param1 is PlayerUnit && param2.mOwner == MapData.TILE_OWNER_ENEMY) {
+					this.changeCellOwner(param2);
+				} else if (param1 is EnemyUnit && param2.mOwner == MapData.TILE_OWNER_FRIENDLY) {
+					this.changeCellOwner(param2);
+				}
+			}
+			if (Config.OFFLINE_MODE && this.mGame && this.mGame.mState == GameState.STATE_PLAY && param1 is EnemyUnit && param2) {
+				Utils.DiagEvent("CAMPAIGN_ARRIVAL_OWNERSHIP","map=" + this.mGame.mCurrentMapId + ";enemy=" + (param1.mItem ? param1.mItem.mId : "") + ";x=" + param2.mPosI + ";y=" + param2.mPosJ + ";before=" + arrivalOwnerBefore + ";after=" + param2.mOwner + ";captured=" + (arrivalOwnerBefore == MapData.TILE_OWNER_FRIENDLY && param2.mOwner == MapData.TILE_OWNER_ENEMY));
 			}
 			if (param1 is PlayerUnit) {
 				this.mGame.updateWalkableCellsForActiveCharacter();
@@ -4707,7 +4720,7 @@
 				}
 			} else if (param1 is EnemyUnit) {
 				if (param3) {
-					this.mGame.setPlayerInstallationsToAttack(param1 as EnemyUnit);
+					this.mGame.setPlayerInstallationsToAttack(param1 as EnemyUnit,param2);
 				}
 			}
 			if (param2.mPowerUp) {
@@ -4771,6 +4784,52 @@
 				}
 				_loc6_++;
 			}
+		}
+
+		// A destroyed campaign building loses its occupied territory, not merely its sprite.
+		// Use the same ownership transition as enemy movement so border/topology and
+		// exported cell owners observe the identical canonical map state.
+		// One-point, side-neutral blast on the mine's own tile and its eight neighbours.
+		// Damage is based on current occupied cells, independent of the attacker's side.
+		public function detonateCampaignMine(param1:Renderable):void {
+			if (!Config.OFFLINE_MODE || !this.mGame || this.mGame.mState != GameState.STATE_PLAY || !param1 || !param1.mItem || param1.mItem.mId != "Mines") return;
+			var tiles:Array = this.getTilesUnderObject(param1);
+			var origin:GridCell = null;
+			var adjacent:GridCell = null;
+			var victim:IsometricCharacter = null;
+			var damaged:Dictionary = new Dictionary(true);
+			var damagedCount:int = 0;
+			var dx:int = 0;
+			var dy:int = 0;
+			for each (origin in tiles) {
+				if (!origin) continue;
+				for (dx = -1; dx <= 1; ++dx) {
+					for (dy = -1; dy <= 1; ++dy) {
+						adjacent = this.getCellAt(origin.mPosI + dx,origin.mPosJ + dy);
+						victim = adjacent && adjacent.mCharacter is IsometricCharacter ? adjacent.mCharacter as IsometricCharacter : null;
+						if (victim && victim.isAlive() && (victim is PlayerUnit || victim is EnemyUnit) && damaged[victim] !== true) {
+							damaged[victim] = true;
+							victim.reduceHealth(1);
+							++damagedCount;
+						}
+					}
+				}
+			}
+			Utils.DiagEvent("CAMPAIGN_MINE_DETONATED","map=" + this.mGame.mCurrentMapId + ";x=" + (tiles.length ? GridCell(tiles[0]).mPosI : -1) + ";y=" + (tiles.length ? GridCell(tiles[0]).mPosJ : -1) + ";victims=" + damagedCount + ";damage_each=1");
+		}
+
+		public function captureDestroyedPlayerBuildingTerritory(param1:PlayerBuildingObject):void {
+			if (!Config.OFFLINE_MODE || !this.mGame || this.mGame.mState != GameState.STATE_PLAY || !param1 || !this.mGame.mMapData) return;
+			var cells:Array = this.getTilesUnderObject(param1);
+			var cell:GridCell = null;
+			var captured:int = 0;
+			for each (cell in cells) {
+				if (cell && cell.mOwner == MapData.TILE_OWNER_FRIENDLY) {
+					this.changeCellOwner(cell);
+					++captured;
+				}
+			}
+			Utils.DiagEvent("CITY_DESTROYED_TERRITORY","map=" + this.mGame.mCurrentMapId + ";item=" + (param1.mItem ? param1.mItem.mId : "") + ";captured=" + captured + ";cells=" + cells.length);
 		}
 
 		private function changeCellOwner(param1: GridCell): void {

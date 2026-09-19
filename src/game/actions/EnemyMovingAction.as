@@ -7,6 +7,7 @@ package game.actions
    import game.characters.PlayerUnit;
    import game.gameElements.ConstructionObject;
    import game.gameElements.DebrisObject;
+   import game.gameElements.EnemyInstallationObject;
    import game.gameElements.PlayerInstallationObject;
    import game.isometric.GridCell;
    import game.isometric.characters.IsometricCharacter;
@@ -70,9 +71,9 @@ package game.actions
                {
                   if(_loc10_ != _loc3_)
                   {
-                     if(_loc10_.mWalkable)
+                     if(_loc10_.mWalkable || Config.OFFLINE_MODE && _loc10_.mObject is EnemyInstallationObject && ((_loc10_.mObject as EnemyInstallationObject).mItem.mId == "Mines" || (_loc10_.mObject as EnemyInstallationObject).mItem.mId == "Barricade"))
                      {
-                        if((mActor as Element).mScene.isInsideVisibleArea(_loc10_))
+                        if(_loc10_)
                         {
                            if(_loc10_ == (mActor as IsometricCharacter).mPreviousTile)
                            {
@@ -98,7 +99,11 @@ package game.actions
                            else if(_loc10_.mObject)
                            {
                               _loc7_ = false;
-                              if(_loc10_.mObject is DebrisObject)
+                              if(Config.OFFLINE_MODE && _loc10_.mObject is EnemyInstallationObject && ((_loc10_.mObject as EnemyInstallationObject).mItem.mId == "Mines" || (_loc10_.mObject as EnemyInstallationObject).mItem.mId == "Barricade"))
+                              {
+                                 _loc7_ = true;
+                              }
+                              else if(_loc10_.mObject is DebrisObject)
                               {
                                  _loc7_ = true;
                               }
@@ -141,6 +146,21 @@ package game.actions
             _loc13_ = int.MAX_VALUE;
             _loc15_ = int(_loc1_.length);
             _loc17_ = int(_loc11_.length);
+            var currentDistance:int = int.MAX_VALUE;
+            var currentTargetIndex:int = 0;
+            var currentTargetCell:GridCell = null;
+            var currentTargetDistance:int = 0;
+            while(currentTargetIndex < _loc17_)
+            {
+               currentTargetCell = (_loc11_[currentTargetIndex] as Renderable).getCell();
+               if(currentTargetCell)
+               {
+                  currentTargetDistance = (_loc3_.mPosI - currentTargetCell.mPosI) * (_loc3_.mPosI - currentTargetCell.mPosI) + (_loc3_.mPosJ - currentTargetCell.mPosJ) * (_loc3_.mPosJ - currentTargetCell.mPosJ);
+                  if(currentTargetDistance < currentDistance) currentDistance = currentTargetDistance;
+               }
+               currentTargetIndex++;
+            }
+            if(currentDistance == int.MAX_VALUE) return null;
             _loc18_ = 0;
             while(_loc18_ < _loc15_)
             {
@@ -149,7 +169,7 @@ package game.actions
                while(_loc19_ < _loc17_)
                {
                   _loc20_ = (_loc16_ = _loc11_[_loc19_] as Renderable).getCell();
-                  if((_loc21_ = (_loc14_.mPosI - _loc20_.mPosI) * (_loc14_.mPosI - _loc20_.mPosI) + (_loc14_.mPosJ - _loc20_.mPosJ) * (_loc14_.mPosJ - _loc20_.mPosJ)) < _loc13_)
+                  if((_loc21_ = (_loc14_.mPosI - _loc20_.mPosI) * (_loc14_.mPosI - _loc20_.mPosI) + (_loc14_.mPosJ - _loc20_.mPosJ) * (_loc14_.mPosJ - _loc20_.mPosJ)) < _loc13_ && _loc21_ < currentDistance)
                   {
                      _loc13_ = _loc21_;
                      _loc12_ = _loc14_;
@@ -205,7 +225,7 @@ package game.actions
                   {
                      if(_loc12_.mWalkable)
                      {
-                        if((mActor as Element).mScene.isInsideVisibleArea(_loc12_))
+                        if(_loc12_)
                         {
                            if(_loc8_)
                            {
@@ -242,7 +262,7 @@ package game.actions
             }
             _loc9_++;
          }
-         var _loc10_:Array = (mActor as Element).mScene.getPlayerBuildingTargets();
+         var _loc10_:Array = (mActor as Element).mScene.getPlayerUnitsAndObjects();
          if(_loc1_.length > 0)
          {
             _loc14_ = int.MAX_VALUE;
@@ -331,6 +351,10 @@ package game.actions
             else
             {
                (mActor as IsometricCharacter).mDestinationCell = this.findClosestPlayerCell();
+               if(!(mActor as IsometricCharacter).mDestinationCell)
+               {
+                  (mActor as IsometricCharacter).mDestinationCell = this.headToThePlayerArea();
+               }
             }
          }
          else
@@ -354,22 +378,28 @@ package game.actions
       
       protected function execute() : void
       {
-         mActor.mScene.characterArrivedInCell(mActor as IsometricCharacter,mActor.getCell());
-         mActor.getCell().mCharacterComingToThisTile = null;
+         var arrivalCell:GridCell = (mActor as IsometricCharacter).mDestinationCell ? (mActor as IsometricCharacter).mDestinationCell : mActor.getCell();
+         if(!arrivalCell) arrivalCell = mActor.getCell();
+         var territoryOwnerBefore:int = arrivalCell ? arrivalCell.mOwner : MapData.TILE_OWNER_NEUTRAL;
+         var campaignCapture:Boolean = Config.OFFLINE_MODE && GameState.mInstance.mState == GameState.STATE_PLAY && String(GameState.mInstance.mCurrentMapId).indexOf("pvp_") != 0;
+         if(arrivalCell)
+         {
+            mActor.mScene.characterArrivedInCell(mActor as IsometricCharacter,arrivalCell);
+            arrivalCell.mCharacterComingToThisTile = null;
+         }
          mActor.setAnimationAction(AnimationController.CHARACTER_ANIMATION_IDLE,false,true);
-         var _loc1_:GridCell = mActor.getCell();
-         var _loc2_:Object = {
-            "coord_x":this.mOriginCell.mPosI,
-            "coord_y":this.mOriginCell.mPosJ,
-            "new_coord_x":_loc1_.mPosI,
-            "new_coord_y":_loc1_.mPosJ
-         };
+         var territoryOwnerAfter:int = arrivalCell ? arrivalCell.mOwner : territoryOwnerBefore;
+         if(campaignCapture && arrivalCell && territoryOwnerBefore != territoryOwnerAfter)
+         {
+            Utils.DiagEvent("CAMPAIGN_TERRITORY_CAPTURE","map=" + GameState.mInstance.mCurrentMapId + ";side=enemy;enemy=" + ((mActor as EnemyUnit).mUnitId) + ";x=" + arrivalCell.mPosI + ";y=" + arrivalCell.mPosJ + ";before=" + territoryOwnerBefore + ";after=" + territoryOwnerAfter + ";reason=arrival;visual_commit=scene");
+         }
+         var _loc1_:GridCell = arrivalCell ? arrivalCell : mActor.getCell();
+         var _loc2_:Object = {"coord_x":this.mOriginCell.mPosI,"coord_y":this.mOriginCell.mPosJ,"new_coord_x":_loc1_.mPosI,"new_coord_y":_loc1_.mPosJ};
          GameState.mInstance.mServer.serverCallServiceWithParameters(ServiceIDs.MOVE_ENEMY,_loc2_,false);
          (mActor as IsometricCharacter).mPreviousTile = this.mOriginCell;
-         if(Config.DEBUG_MODE)
-         {
-         }
+         (mActor as IsometricCharacter).mDestinationCell = null;
          GameState.mInstance.enemyMoveMade();
+
       }
    }
 }

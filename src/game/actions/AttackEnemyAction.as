@@ -2,6 +2,7 @@
 	import game.characters.AnimationController;
 	import game.characters.EnemyUnit;
 	import game.characters.PvPEnemyUnit;
+	import game.characters.PlayerUnit;
 	import game.gameElements.PlayerInstallationObject;
 	import game.gui.TextEffect;
 	import game.isometric.GridCell;
@@ -37,6 +38,9 @@
 		protected var mNewState: int;
 
 		private var mEnableSupportsForEnemy: Boolean;
+
+		// Manual player-issued turret fire costs one player turn, unlike automatic fire.
+		public var mManualInstallationAttack:Boolean = false;
 
 		public function AttackEnemyAction(param1: Array, param2: PlayerInstallationObject, param3: IsometricCharacter, param4: Boolean = true) {
 			super("AttackEnemy");
@@ -195,7 +199,7 @@
 			if (mSkipped) {
 				return;
 			}
-			if (mTarget == null || !mTarget.isAlive() || Boolean((mTarget as EnemyUnit).mCurrentAction)) {
+			if (mTarget == null || !mTarget.isAlive() || (Boolean((mTarget as EnemyUnit).mCurrentAction) && !(Config.OFFLINE_MODE && GameState.mInstance.mState == GameState.STATE_PLAY && mActor is PlayerInstallationObject))) {
 				skip();
 				return;
 			}
@@ -326,6 +330,9 @@
 				_loc15_ = true;
 				_loc14_ = 0;
 			}
+			if (Config.OFFLINE_MODE && _loc1_.mState == GameState.STATE_PLAY && mCharacterActors && mCharacterActors.length > 0 && mCharacterActors[0] is PlayerUnit) {
+				(_loc4_ as EnemyUnit).noteOfflinePlayerAttacker(mCharacterActors[0] as PlayerUnit);
+			}
 			_loc4_.reduceHealth(_loc13_);
 			(_loc4_ as EnemyUnit).changeReactionState(EnemyUnit.REACT_STATE_WAIT_FOR_TIMER);
 			this.mNewState = STATE_OVER;
@@ -366,9 +373,10 @@
 					_loc21_++;
 				}
 			}
-			if (mCharacterActors) {
+			if (mCharacterActors || (this.mManualInstallationAttack && Config.OFFLINE_MODE && _loc1_.mState == GameState.STATE_PLAY)) {
 				_loc1_.playerMoveMade();
 			}
+			if (this.mManualInstallationAttack) Utils.DiagEvent("TURRET_MANUAL_TURN_CONSUMED","map=" + _loc1_.mCurrentMapId + ";target=" + (_loc4_.mItem ? _loc4_.mItem.mId : ""));
 		}
 	}
 }

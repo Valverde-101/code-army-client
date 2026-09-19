@@ -162,17 +162,18 @@ package game.actions
          var _loc2_:GamePlayerProfile = GameState.mInstance.mPlayerProfile;
          var _loc3_:IsometricScene = GameState.mInstance.mScene;
          var _loc4_:GridCell = (mTarget as PlayerBuildingObject).getCell();
-         if(!_loc3_.isInsideOpenArea(_loc4_))
+         var enemyAttack:Boolean = mCharacterActors != null && mCharacterActors.length > 0 && mCharacterActors[0] is EnemyUnit;
+         if(!enemyAttack && !_loc3_.isInsideOpenArea(_loc4_))
          {
             _loc1_.openAreaLockedWindow(_loc3_.getContainingArea(_loc4_));
             skip();
          }
-         else if(_loc2_.mEnergy <= 0)
+         else if(!enemyAttack && _loc2_.mEnergy <= 0)
          {
             _loc1_.openOutOfEnergyWindow();
             skip();
          }
-         else if(!_loc2_.hasEnoughMapResource(1))
+         else if(!enemyAttack && !_loc2_.hasEnoughMapResource(1))
          {
             _loc1_.openOutOfMapResourceWindow();
             skip();
