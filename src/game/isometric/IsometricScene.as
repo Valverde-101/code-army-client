@@ -3979,7 +3979,17 @@
 						}
 						_loc10_++;
 					}
-					if (_loc6_.mObject && !_loc6_.mCharacter && !(_loc6_.mObject is DebrisObject && _loc6_.mOwner == MapData.TILE_OWNER_ENEMY) && !(_loc7_ && _loc6_.mObject is DebrisObject) && !(Boolean(_loc7_) && _loc6_.mObject is ConstructionObject && ConstructionObject(_loc6_.mObject).getState() == PlayerBuildingObject.STATE_RUINS) && !(Boolean(_loc7_) && _loc6_.mObject is ResourceBuildingObject && ResourceBuildingObject(_loc6_.mObject).getState() == PlayerBuildingObject.STATE_RUINS)) {
+					// A friendly mine/barbed wire is an occupied cell but is still a legal
+					// walking destination for its owner. Resolve movement BEFORE
+					// the generic object-click branch deactivates the active unit.
+					if (_loc7_ && Config.OFFLINE_MODE && this.mGame.mState == GameState.STATE_PLAY && _loc6_.mObject is DecorationObject &&
+						(_loc6_.mObject.mItem.mId == "Mines" || _loc6_.mObject.mItem.mId == "Barbwire" || _loc6_.mObject.mItem.mId == "Barricade") &&
+						this.mGame.isInWalkingDistance(_loc6_) && !_loc6_.mCharacter) {
+						_loc15_ = this.mGame.doPlayerWalkAction(this.getCenterPointXOfCell(_loc6_), this.getCenterPointYOfCell(_loc6_));
+						this.mGame.moveCameraToSeeCell(_loc6_);
+						this.mGame.unActivatePlayerUnit();
+						Utils.DiagEvent("CAMPAIGN_OWN_DEFENCE_WALK","map=" + this.mGame.mCurrentMapId + ";item=" + _loc6_.mObject.mItem.mId + ";x=" + _loc6_.mPosI + ";y=" + _loc6_.mPosJ + ";queued=" + _loc15_);
+					} else if (_loc6_.mObject && !_loc6_.mCharacter && !(_loc6_.mObject is DebrisObject && _loc6_.mOwner == MapData.TILE_OWNER_ENEMY) && !(_loc7_ && _loc6_.mObject is DebrisObject) && !(Boolean(_loc7_) && _loc6_.mObject is ConstructionObject && ConstructionObject(_loc6_.mObject).getState() == PlayerBuildingObject.STATE_RUINS) && !(Boolean(_loc7_) && _loc6_.mObject is ResourceBuildingObject && ResourceBuildingObject(_loc6_.mObject).getState() == PlayerBuildingObject.STATE_RUINS)) {
 						if (!(this.mGame.mCurrentAction is WalkingAction) || _loc6_.mObject is PlayerBuildingObject) {
 							_loc6_.mObject.MousePressed(null);
 							this.mGame.unActivatePlayerUnit();
