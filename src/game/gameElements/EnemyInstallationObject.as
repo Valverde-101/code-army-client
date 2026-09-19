@@ -60,6 +60,8 @@
       protected var mState:int;
       
       protected var mNewState:int;
+      private var mCampaignWreckingElapsed:int = 0;
+      private var mCampaignMineBlastApplied:Boolean = false;
       
       private var mReactionState:int;
       
@@ -261,8 +263,12 @@
             case STATE_BEING_HIT:
                break;
             case STATE_WRECKING:
-               if(getCurrentAnimationFrameLabel() == "end")
+               this.mCampaignWreckingElapsed += Math.max(0,param1);
+               var wreckingLabelEnd:Boolean = getCurrentAnimationFrameLabel() == "end";
+               var wreckingMaxMs:int = mItem && (mItem.mId == "Mines" || mItem.mId == "Barricade") ? 2500 : 7500;
+               if(wreckingLabelEnd || (Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && this.mCampaignWreckingElapsed >= wreckingMaxMs))
                {
+                  if(!wreckingLabelEnd && Config.OFFLINE_MODE) Utils.DiagEvent("INSTALLATION_WRECKING_CLEANUP","item=" + (mItem ? mItem.mId : "") + ";elapsed_ms=" + this.mCampaignWreckingElapsed + ";reason=missing_end_label");
                   this.mNewState = STATE_DESTROYED;
                }
                break;
@@ -292,6 +298,7 @@
             case STATE_BEING_HIT:
                break;
             case STATE_WRECKING:
+               this.mCampaignWreckingElapsed = 0;
                if(getTileSize().z == 0)
                {
                   GameState.mInstance.mScene.addEffect(null,EffectController.EFFECT_TYPE_BIG_EXPLOSION,mX + mScene.mGridDimX * getTileSize().x / 2,mY + mScene.mGridDimY * getTileSize().y / 2);
@@ -522,6 +529,7 @@
       
       public function remove() : void
       {
+         if(this.mNewState == STATE_WRECKING || this.mState == STATE_DESTROYED) return;
          this.mNewState = STATE_WRECKING;
          hideLoadingBar();
          if(GameState.mInstance.mState != GameState.STATE_VISITING_NEIGHBOUR)
@@ -591,6 +599,10 @@
       {
          var _loc2_:int = this.mHealth;
          this.mHealth = Math.max(0,param1);
+         if(_loc2_ > 0 && this.mHealth == 0 && !this.mCampaignMineBlastApplied && Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && mItem && mItem.mId == "Mines") {
+            this.mCampaignMineBlastApplied = true;
+            mScene.detonateCampaignMine(this);
+         }
 	     // Fix defences staying at 0 HP
 		 // Not sure what this check was meant for, so it might break something
          //if(this.mHealth != _loc2_)
