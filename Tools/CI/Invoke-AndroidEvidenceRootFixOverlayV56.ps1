@@ -493,6 +493,8 @@ try {
   Require $enemy 'ENEMY_ATTACK_TURN' 'campaign_enemy_turn_budget_telemetry_final'
   Require $gameState 'OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS:int = 3' 'enemy_response_three_primary_units_final'
   Require $gameState 'beginOfflineEnemyResponseRound' 'enemy_response_round_coordinator_final'
+  Reject $gameState 'param1:int = OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS' 'enemy_response_ffdec_default_constant_absent_final'
+  Require $gameState 'this.isOfflineEnemySpatiallyActive(param1)' 'enemy_response_primary_respects_spatial_budget_final'
   Require $gameState 'registerOfflineEnemyAssist' 'enemy_response_group_assist_registry_final'
   Require $enemy 'prepareOfflineResponseTurn' 'enemy_response_primary_turn_bridge_final'
   Require $enemy 'ENEMY_GROUP_ATTACK' 'enemy_group_attack_telemetry_final'

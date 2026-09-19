@@ -1299,7 +1299,7 @@
 		}
 
 
-		public function beginOfflineEnemyResponseRound(param1:int = OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS):void {
+		public function beginOfflineEnemyResponseRound(param1:int):void {
 			if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY || !this.mScene) {
 				if (this.mScene) this.mScene.reduceEnemyUnitQueueNumber();
 				return;
@@ -1318,7 +1318,7 @@
 		}
 
 		private function isOfflineEnemyResponseCandidate(param1:EnemyUnit):Boolean {
-			return param1 != null && param1.isAlive() && this.mOfflineEnemyResponseParticipants[param1] !== true && param1.canStartOfflineResponseTurn();
+			return param1 != null && param1.isAlive() && this.isOfflineEnemySpatiallyActive(param1) && this.mOfflineEnemyResponseParticipants[param1] !== true && param1.canStartOfflineResponseTurn();
 		}
 
 		private function selectNextOfflineEnemyPrimary():EnemyUnit {

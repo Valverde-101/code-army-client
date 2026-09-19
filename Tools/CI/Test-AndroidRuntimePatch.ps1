@@ -515,6 +515,8 @@ Require-Contains $enemyUnit 'ENEMY_ATTACK_PRIORITY' 'campaign_enemy_attack_prior
 Require-Contains $enemyUnit 'ENEMY_ATTACK_TURN' 'campaign_enemy_attack_turn_is_instrumented'
 Require-Contains $game 'OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS:int = 3' 'campaign_enemy_response_has_three_primary_slots'
 Require-Contains $game 'beginOfflineEnemyResponseRound' 'campaign_enemy_response_round_coordinator_exists'
+Require-NotContains $game 'param1:int = OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS' 'campaign_enemy_response_round_has_no_ffdec_default_constant'
+Require-Contains $game 'this.isOfflineEnemySpatiallyActive(param1)' 'campaign_enemy_primary_selection_respects_spatial_working_set'
 Require-Contains $game 'registerOfflineEnemyAssist' 'campaign_enemy_group_assist_registry_exists'
 Require-Contains $v45 'this.beginOfflineEnemyResponseRound(OFFLINE_ENEMY_ORDER_ADVANCE);' 'campaign_player_action_starts_three_primary_response_round'
 Require-Contains $enemyUnit 'prepareOfflineResponseTurn' 'campaign_enemy_primary_turn_bridge_exists'
