@@ -804,6 +804,15 @@
 					}
 			}
 			this.getHud().logicUpdate(param1);
+			// The offline bonus must get a chance before the mission-popup conveyor.
+			// Do not require a tutorial cookie once the offline campaign is playable.
+			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY && this.mLoadingStatesOver &&
+				!this.mFirstUpdate && this.mGrantDailyReward && !PopUpManager.isAnyPopupActive() &&
+				!this.mHUD.isDailyRewardOpenRequestPending()) {
+				if (!this.mHUD.openDailyRewardTextBox(this.mDailyRewardDay, this.mGrantDailyRewardSpecial)) {
+					Utils.DiagEvent("DAILY_REWARD_OPEN_DEFERRED","day=" + this.mDailyRewardDay + ";reason=early_hud_resource_busy");
+				}
+			}
 			if (PopUpManager.isModalPopupActive()) {
 				return;
 			}
@@ -897,14 +906,14 @@
 			if (!this.mFirstUpdate) {
 				if (this.mLoadingStatesOver) {
 					if (this.mState != STATE_PVP) {
-						if (!PopUpManager.isAnyPopupActive()) {
+						if (!PopUpManager.isAnyPopupActive() && !this.mHUD.isDailyRewardOpenRequestPending()) {
 							if (this.mShowWelcome) {
 								_loc24_ = this.mScene.getNumberOfEnemiesReadyToAct();
 								if (this.mEnemiesSpawned > 0 || _loc24_ > 0 || this.mKilledPlayerUnits > 0 || this.mProductionsReadyToHarvest > 0) {
 									this.mHUD.openWelcomeWindow(this.mEnemiesSpawned, _loc24_, this.mKilledPlayerUnits, this.mProductionsReadyToHarvest);
 								}
 								this.mShowWelcome = false;
-							} else if (this.mGrantDailyReward && MissionManager.isTutorialCompleted()) {
+							} else if (this.mGrantDailyReward && (Config.OFFLINE_MODE || MissionManager.isTutorialCompleted())) {
 								if (!this.mHUD.isDailyRewardOpenRequestPending()) {
 									if (!this.mHUD.openDailyRewardTextBox(this.mDailyRewardDay, this.mGrantDailyRewardSpecial)) {
 										Utils.DiagEvent("DAILY_REWARD_OPEN_DEFERRED","day=" + this.mDailyRewardDay + ";reason=hud_resource_busy");
