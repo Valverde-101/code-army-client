@@ -15,7 +15,6 @@ package game.actions
    import game.isometric.elements.WorldObject;
    import game.isometric.pathfinding.AStarPathfinder;
    import game.net.ServiceIDs;
-   import game.missions.MissionManager;
    import game.states.GameState;
    
    public class EnemyMovingAction extends Action
@@ -378,12 +377,6 @@ package game.actions
          if(!arrivalCell) arrivalCell = mActor.getCell();
          var territoryOwnerBefore:int = arrivalCell ? arrivalCell.mOwner : MapData.TILE_OWNER_NEUTRAL;
          var campaignCapture:Boolean = Config.OFFLINE_MODE && GameState.mInstance.mState == GameState.STATE_PLAY && String(GameState.mInstance.mCurrentMapId).indexOf("pvp_") != 0;
-         if(campaignCapture && arrivalCell && arrivalCell.mOwner == MapData.TILE_OWNER_FRIENDLY)
-         {
-            arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY;
-            GameState.mInstance.mMapData.mUpdateRequired = true;
-            MissionManager.increaseCounter("Conquer",new Array(arrivalCell.mPosI,arrivalCell.mPosJ),-1);
-         }
          if(arrivalCell)
          {
             mActor.mScene.characterArrivedInCell(mActor as IsometricCharacter,arrivalCell);
@@ -393,14 +386,7 @@ package game.actions
          var territoryOwnerAfter:int = arrivalCell ? arrivalCell.mOwner : territoryOwnerBefore;
          if(campaignCapture && arrivalCell && territoryOwnerBefore != territoryOwnerAfter)
          {
-            var territoryVisualCommit:Boolean = true;
-            if(mActor.mScene.mTilemapGraphic)
-            {
-               mActor.mScene.mTilemapGraphic.recalculateBorderEdgesAround(arrivalCell.mPosI,arrivalCell.mPosJ);
-               mActor.mScene.mTilemapGraphic.markOwnershipDirty(arrivalCell);
-               territoryVisualCommit = mActor.mScene.mTilemapGraphic.commitOwnershipVisualNow();
-            }
-            Utils.DiagEvent("CAMPAIGN_TERRITORY_CAPTURE","map=" + GameState.mInstance.mCurrentMapId + ";side=enemy;enemy=" + ((mActor as EnemyUnit).mUnitId) + ";x=" + arrivalCell.mPosI + ";y=" + arrivalCell.mPosJ + ";before=" + territoryOwnerBefore + ";after=" + territoryOwnerAfter + ";visual_commit=" + territoryVisualCommit);
+            Utils.DiagEvent("CAMPAIGN_TERRITORY_CAPTURE","map=" + GameState.mInstance.mCurrentMapId + ";side=enemy;enemy=" + ((mActor as EnemyUnit).mUnitId) + ";x=" + arrivalCell.mPosI + ";y=" + arrivalCell.mPosJ + ";before=" + territoryOwnerBefore + ";after=" + territoryOwnerAfter + ";reason=arrival;visual_commit=scene");
          }
          var _loc1_:GridCell = arrivalCell ? arrivalCell : mActor.getCell();
          var _loc2_:Object = {"coord_x":this.mOriginCell.mPosI,"coord_y":this.mOriginCell.mPosJ,"new_coord_x":_loc1_.mPosI,"new_coord_y":_loc1_.mPosJ};

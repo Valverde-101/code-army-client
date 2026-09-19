@@ -356,15 +356,18 @@ try {
   Reject $pvp 'arrival.mOwner = MapData.TILE_OWNER_ENEMY' 'pvp_forced_owner_forbidden'
   Write-Utf8Bom $pvpMovePath $pvp
 
-  # Campaign enemy arrival owns territory directly at the settled destination.
-  # This is intentionally limited to offline STATE_PLAY and never runs in PvP.
+  # Campaign movement delegates ownership to the source-native scene arrival path.
+  # This keeps AMXMLC source builds independent of overlay-only TileMapGraphic APIs;
+  # the composed scene overlay still performs the same-frame partial visual commit.
   $campaignMove=Normalize-Lf ([IO.File]::ReadAllText($enemyMovePath))
   Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_capture_telemetry'
-  Require $campaignMove 'arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_capture_owner_commit'
-  Require $campaignMove 'MissionManager.increaseCounter("Conquer",new Array(arrivalCell.mPosI,arrivalCell.mPosJ),-1);' 'campaign_capture_counter_decrement'
+  Require $campaignMove 'characterArrivedInCell(mActor as IsometricCharacter,arrivalCell)' 'campaign_capture_native_arrival'
   Require $campaignMove 'GameState.mInstance.mState == GameState.STATE_PLAY' 'campaign_capture_state_guard'
   Require $campaignMove 'String(GameState.mInstance.mCurrentMapId).indexOf("pvp_") != 0' 'campaign_capture_pvp_guard'
-  Require $campaignMove 'commitOwnershipVisualNow()' 'campaign_capture_visual_commit'
+  Reject $campaignMove 'arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_capture_no_forced_owner'
+  Reject $campaignMove 'mTilemapGraphic.recalculateBorderEdgesAround' 'campaign_capture_no_overlay_only_tile_api'
+  Reject $campaignMove 'mTilemapGraphic.markOwnershipDirty' 'campaign_capture_no_overlay_only_dirty_api'
+  Reject $campaignMove 'mTilemapGraphic.commitOwnershipVisualNow' 'campaign_capture_no_overlay_only_commit_api'
   Write-Utf8Bom $enemyMovePath $campaignMove
 
   # Snow contains EliteDroid enemy units. The generic EnemyUnit sound fallback
@@ -498,7 +501,12 @@ try {
   Require $pvp 'PVP_TERRITORY_INVARIANT' 'pvp_ownership_immutable_final'
   Reject $pvp 'PVP_TERRITORY_CAPTURE' 'pvp_capture_absent_final'
   Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_enemy_capture_visible_final'
-  Require $campaignMove 'arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_enemy_capture_owner_final'
+  Require $campaignMove 'characterArrivedInCell(mActor as IsometricCharacter,arrivalCell)' 'campaign_enemy_capture_native_arrival_final'
+  Reject $campaignMove 'arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_enemy_capture_no_forced_owner_final'
+  Reject $campaignMove 'mTilemapGraphic.commitOwnershipVisualNow' 'campaign_enemy_source_compile_independent_final'
+  Require $scene 'commitOwnershipVisualNow();' 'campaign_enemy_visual_commit_delegated_to_scene_final'
+  Require $enemy 'reconcileCampaignTerritoryUnderEnemy' 'campaign_enemy_stale_save_tile_reconcile_final'
+  Require $enemy 'reason=turn_reconcile' 'campaign_enemy_stale_save_reconcile_telemetry_final'
   Require $campaignMove '_loc21_ < currentDistance' 'campaign_enemy_strict_forward_progress_final'
   Require $campaignMove 'this.headToThePlayerArea();' 'campaign_enemy_pathfinding_fallback_final'
   Require $campaignMove 'getPlayerUnitsAndObjects();' 'campaign_enemy_pathfinding_targets_units_and_structures_final'

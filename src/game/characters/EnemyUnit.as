@@ -591,6 +591,17 @@
 			return this.findPriorityPlayerTargetInRange() != null || this.findPriorityPlayerObjectCellInRange() != null;
 		}
 
+		private function reconcileCampaignTerritoryUnderEnemy(): void {
+			if (!Config.OFFLINE_MODE || !GameState.mInstance || GameState.mInstance.mState != GameState.STATE_PLAY || String(GameState.mInstance.mCurrentMapId).indexOf("pvp_") == 0) return;
+			var cell: GridCell = getCell();
+			if (!cell || cell.mOwner != MapData.TILE_OWNER_FRIENDLY) return;
+			var ownerBefore: int = cell.mOwner;
+			mScene.characterArrivedInCell(this, cell, false);
+			if (cell.mOwner != ownerBefore) {
+				Utils.DiagEvent("CAMPAIGN_TERRITORY_CAPTURE","map=" + GameState.mInstance.mCurrentMapId + ";side=enemy;enemy=" + this.mUnitId + ";x=" + cell.mPosI + ";y=" + cell.mPosJ + ";before=" + ownerBefore + ";after=" + cell.mOwner + ";reason=turn_reconcile;visual_commit=scene");
+			}
+		}
+
 		private function beginOfflineAttackTurn(): void {
 			if (!Config.OFFLINE_MODE || this.mOfflineAttackTurnActive) return;
 			var roll: Number = Math.random() * 100;
@@ -657,6 +668,7 @@
 						break;
 					case REACT_STATE_ACTION:
 						this.mReactionStateCounter = 0;
+						this.reconcileCampaignTerritoryUnderEnemy();
 						_loc2_ = getCell().mPosI;
 						_loc3_ = getCell().mPosJ;
 						_loc12_ = this.findPriorityPlayerTargetInRange();
