@@ -631,6 +631,7 @@ try {
   Require $offline '!isDailyRewardPopupUnlocked()' 'first_reward_claim_guard_final'
   # Fail the final composed source, not just the pre-overlay edits.
   Require $gameState 'ENEMY_RESPONSE_PRIORITY' 'enemy_recent_hit_frontline_priority_final'
+  Require $gameState 'candidateVisible = enemy.mVisible && this.mScene.isRenderableActuallyInViewport(enemy);' 'enemy_visible_frontline_tiebreak_final'
   Require $enemy 'ENEMY_RESPONSE_HIT_PRIORITY' 'enemy_hit_priority_event_final'
   Require $enemy 'noteOfflinePlayerAttacker' 'enemy_true_attacker_retaliation_final'
   Require $gameState 'TURRET_MANUAL_SHOT_QUEUED' 'manual_turret_attack_route_final'
