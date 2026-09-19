@@ -22,6 +22,14 @@ package game.gameElements
       {
          super(param1,param2,param3,param4,param5,param6);
          mHealth = mMaxHealth;
+         // The owning side can traverse these campaign defences. Enemy route-finding
+         // blocks living friendly defences explicitly in PathfindCriteria.
+         // GridCell.mWalkable must also be true: the movement UI checks this
+         // before its own-defence destination exception.
+         if(Config.OFFLINE_MODE && mItem && (mItem.mId == "Mines" || mItem.mId == "Barbwire" || mItem.mId == "Barricade"))
+         {
+            setWalkable(true);
+         }
       }
       
       override public function updateTooltip(param1:int, param2:TooltipHealth) : void
