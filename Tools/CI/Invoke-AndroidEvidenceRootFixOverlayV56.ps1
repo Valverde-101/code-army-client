@@ -435,13 +435,13 @@ try {
   # water plant to be placed in Home OR Desert without an unavailable friend gate.
   foreach($waterConfigPath in @($configBasePath,$configFullPath)){
     $waterConfig=Normalize-Lf ([IO.File]::ReadAllText($waterConfigPath))
-    $plantRegex=[regex]::new('(?s)"WaterPlant"\\s*:\\s*\\{.*?\\n\\s*\\}')
+    $plantRegex=[regex]::new('(?s)"WaterPlant"\s*:\s*\{.*?\n\s*\}')
     $plantMatches=$plantRegex.Matches($waterConfig)
     if($plantMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_record_matches=$($plantMatches.Count) path=$waterConfigPath"}
     $plant=$plantMatches[0].Value
-    if(([regex]::Matches($plant,'"AvailableInMaps"\\s*:\\s*"[^"]*"')).Count -ne 1 -or ([regex]::Matches($plant,'"RequiredFriends"\\s*:\\s*"[^"]*"')).Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_fields_missing path=$waterConfigPath"}
-    $plant=[regex]::Replace($plant,'("AvailableInMaps"\\s*:\\s*")[^"]*"','${1}Home,Desert"')
-    $plant=[regex]::Replace($plant,'("RequiredFriends"\\s*:\\s*")[^"]*"','${1}0"')
+    if(([regex]::Matches($plant,'"AvailableInMaps"\s*:\s*"[^"]*"')).Count -ne 1 -or ([regex]::Matches($plant,'"RequiredFriends"\s*:\s*"[^"]*"')).Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_fields_missing path=$waterConfigPath"}
+    $plant=[regex]::Replace($plant,'("AvailableInMaps"\s*:\s*")[^"]*"','${1}Home,Desert"')
+    $plant=[regex]::Replace($plant,'("RequiredFriends"\s*:\s*")[^"]*"','${1}0"')
     $waterConfig=$waterConfig.Substring(0,$plantMatches[0].Index)+$plant+$waterConfig.Substring($plantMatches[0].Index+$plantMatches[0].Length)
     Write-Utf8Bom $waterConfigPath $waterConfig
     Write-Host "WATER_PLANT_OFFLINE_ACCESS=PASS maps=Home,Desert friends=0 path=$waterConfigPath"
