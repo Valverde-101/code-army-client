@@ -159,7 +159,7 @@
 					this.mEffectController.startEffect(mScene, null, EffectController.EFFECT_TYPE_BIG_EXPLOSION, mX + _loc6_, mY + _loc7_);
 				}
 				this.checkProductionState();
-				if (_loc2_ > 0 && this.mHealth == 0 && Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && mScene) {
+				if (_loc2_ > 0 && this.mHealth == 0 && !(this is DecorationObject) && Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && mScene) {
 					mScene.captureDestroyedPlayerBuildingTerritory(this);
 				}
 			}
