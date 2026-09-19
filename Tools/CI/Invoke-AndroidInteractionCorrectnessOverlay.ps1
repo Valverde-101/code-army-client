@@ -195,7 +195,7 @@ case STATE_WRECKING:
   $versionReplacement='$patchVersion=''mobile-engine-v3.24-placement-wrecking-rootfix'''
   if($patcher.Contains($versionNeedle)){
     $patcher=Replace-LiteralOnce $patcher $versionNeedle $versionReplacement 'patch_version_v3_24'
-  }elseif($patcher.Contains("$"+'patchVersion='+ "'mobile-engine-v3.22-offline-daily-reward-360'")){
+  }elseif($patcher.Contains('$patchVersion=''mobile-engine-v3.22-offline-daily-reward-360''')){
     $patcher=Replace-LiteralOnce $patcher ('$patchVersion=''mobile-engine-v3.22-offline-daily-reward-360''') $versionReplacement 'patch_version_v3_24_from_v3_22'
   }elseif(-not $patcher.Contains($versionReplacement)){
     throw 'ANDROID_INTERACTION_CORRECTNESS_OVERLAY=FAIL patch=patch_version reason=unsupported_incoming_version'
