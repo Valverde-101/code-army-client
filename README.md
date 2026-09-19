@@ -19,6 +19,7 @@ Reglas fijas:
 - Si termina el movimiento sin objetivo a rango, termina su turno.
 - No hay activaciones enemigas autónomas entre acciones del jugador: la campaña offline avanza por las rondas provocadas por las acciones del jugador.
 - La ronda enemiga **no comienza al descontar energía**. Primero debe terminar por completo la acción del jugador; después se respeta una ventana de asentamiento visual de hasta 1.2 s para que disparo, impacto/explosión y animación de cierre terminen antes de activar a los enemigos.
+- **Barrera de turnos:** ninguna acción nueva del jugador que esté en la cola puede adelantarse a una respuesta enemiga pendiente. El despachador final (V46, después de V45) debe conservar la llamada de inicio de ronda y esperar a que finalice la respuesta de sus tres unidades principales antes de procesar la siguiente acción del jugador. El plazo de asentamiento del primer turno pendiente no se reinicia por pulsaciones posteriores. Nunca basta con registrar `PLAYER_TURN_ENEMY_RESPONSE_ARMED`: cada turno habilitado debe llegar a `ENEMY_RESPONSE_ROUND_BEGIN` y terminar en `ENEMY_RESPONSE_ROUND_END`, o registrar explícitamente la ausencia de enemigos elegibles.
 - Las 3 unidades principales se eligen de forma distinta dentro de la misma ronda.
 - Una unidad que ya participó como apoyo no puede volver a consumir uno de los 3 cupos principales de esa ronda.
 
@@ -42,6 +43,8 @@ Si una unidad principal ataca un objetivo y existen otros enemigos que también 
 
 Telemetría principal:
 
+- `PLAYER_TURN_ENEMY_RESPONSE_ARMED`
+- `PLAYER_TURN_VISUALS_COMPLETE`
 - `ENEMY_RESPONSE_ROUND_BEGIN`
 - `ENEMY_RESPONSE_PRIMARY`
 - `ENEMY_RESPONSE_TURN_BEGIN`
@@ -124,6 +127,9 @@ Reglas:
 
 - Una recompensa puede reclamarse una sola vez por día calendario.
 - La ventana debe intentar abrirse al entrar al juego siempre que la recompensa del día siga pendiente.
+- **Partida nueva:** la primera recompensa sólo se habilita cuando se completa el tutorial y transcurren **3 minutos adicionales** desde esa finalización; ni el inicio de la partida ni una ventana pendiente permiten adelantarla. Se persiste la hora de finalización del tutorial para conservar la espera al cerrar y volver a entrar al juego.
+- **Partida existente y días posteriores:** después de esa primera recompensa, las siguientes pueden abrirse al entrar al juego cuando corresponda un nuevo día, sin repetir ni el tutorial ni la espera de tres minutos. Las partidas antiguas con recompensa ya establecida mantienen su acceso inmediato.
+- Ambos caminos de apertura de la ventana y la reclamación deben aplicar la misma validación de desbloqueo; no basta con ocultar visualmente el popup.
 - Si otro recurso o popup está cargándose, la recompensa **no se pierde**: queda pendiente y **se reintenta hasta que la ventana se abra realmente**.
 - Cerrar o fallar al abrir la ventana no equivale a reclamar la recompensa.
 - Después de reclamarla, no vuelve a abrirse ese mismo día.
@@ -136,6 +142,8 @@ Reglas:
 Telemetría:
 
 - `DAILY_REWARD_STATE`
+- `DAILY_REWARD_FIRST_UNLOCK_ARMED`
+- `DAILY_REWARD_FIRST_UNLOCK_READY`
 - `DAILY_REWARD_GAMESTATE`
 - `DAILY_REWARD_OPEN_REQUEST`
 - `DAILY_REWARD_OPEN_DEFERRED`
