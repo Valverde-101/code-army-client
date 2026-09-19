@@ -440,10 +440,17 @@ try {
   if($plantMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_base_record_matches=$($plantMatches.Count)"}
   $plant=$plantMatches[0].Value
   if(([regex]::Matches($plant,'"AvailableInMaps"\s*:\s*"[^"]*"')).Count -ne 1 -or ([regex]::Matches($plant,'"RequiredFriends"\s*:\s*"[^"]*"')).Count -ne 1){throw 'ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_base_fields_missing'}
-  $plant=[regex]::Replace($plant,'("AvailableInMaps"\s*:\s*")[^"]*"','1Home,Desert"')
-  $plant=[regex]::Replace($plant,'("RequiredFriends"\s*:\s*")[^"]*"','10"')
-  $plant=[regex]::Replace($plant,'("RequiredMission"\s*:\s*")[^"]*"','1"')
+  $plant=[regex]::Replace($plant,'("AvailableInMaps"\s*:\s*")[^"]*"','${1}Home,Desert"')
+  $plant=[regex]::Replace($plant,'("RequiredFriends"\s*:\s*")[^"]*"','${1}0"')
+  $plant=[regex]::Replace($plant,'("RequiredMission"\s*:\s*")[^"]*"','${1}"')
   $waterBase=$waterBase.Substring(0,$plantMatches[0].Index)+$plant+$waterBase.Substring($plantMatches[0].Index+$plantMatches[0].Length)
+  foreach($field in @('AvailableInMaps','RequiredFriends','RequiredMission')){
+    $expected=if($field -eq 'AvailableInMaps'){'Home,Desert'}elseif($field -eq 'RequiredFriends'){'0'}else{''}
+    $actual=[regex]::Match($plant,'"' + $field + '"\s*:\s*"([^"]*)"')
+    if(-not $actual.Success -or $actual.Groups[1].Value -cne $expected){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_field_invalid field=$field actual=$($actual.Groups[1].Value) expected=$expected"}
+  }
+  # Validate before writing: the compositor must never corrupt its own input.
+  try{$null=$waterBase|ConvertFrom-Json -ErrorAction Stop}catch{throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_base_json_invalid cause=$($_.Exception.Message)"}
   Write-Utf8Bom $configBasePath $waterBase
   $baseCfg=Get-Content -LiteralPath $configBasePath -Raw|ConvertFrom-Json
   $baseResources=Get-JsonProperty $baseCfg 'ResourceBuilding'
