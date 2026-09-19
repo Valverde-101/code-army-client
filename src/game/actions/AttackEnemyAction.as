@@ -39,6 +39,9 @@
 
 		private var mEnableSupportsForEnemy: Boolean;
 
+		// Manual player-issued turret fire costs one player turn, unlike automatic fire.
+		public var mManualInstallationAttack:Boolean = false;
+
 		public function AttackEnemyAction(param1: Array, param2: PlayerInstallationObject, param3: IsometricCharacter, param4: Boolean = true) {
 			super("AttackEnemy");
 			mCharacterActors = param1;
@@ -196,7 +199,7 @@
 			if (mSkipped) {
 				return;
 			}
-			if (mTarget == null || !mTarget.isAlive() || Boolean((mTarget as EnemyUnit).mCurrentAction)) {
+			if (mTarget == null || !mTarget.isAlive() || (Boolean((mTarget as EnemyUnit).mCurrentAction) && !(Config.OFFLINE_MODE && GameState.mInstance.mState == GameState.STATE_PLAY && mActor is PlayerInstallationObject))) {
 				skip();
 				return;
 			}
@@ -370,9 +373,10 @@
 					_loc21_++;
 				}
 			}
-			if (mCharacterActors) {
+			if (mCharacterActors || (this.mManualInstallationAttack && Config.OFFLINE_MODE && _loc1_.mState == GameState.STATE_PLAY)) {
 				_loc1_.playerMoveMade();
 			}
+			if (this.mManualInstallationAttack) Utils.DiagEvent("TURRET_MANUAL_TURN_CONSUMED","map=" + _loc1_.mCurrentMapId + ";target=" + (_loc4_.mItem ? _loc4_.mItem.mId : ""));
 		}
 	}
 }
