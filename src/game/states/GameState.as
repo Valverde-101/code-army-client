@@ -1370,6 +1370,8 @@
 			var rank:int = 0;
 			var bestRank:int = 999999;
 			var bestDistance:int = 999999;
+			var bestVisible:Boolean = false;
+			var candidateVisible:Boolean = false;
 			var bestIndex:int = -1;
 			var j:int = 0;
 			while (offset < count) {
@@ -1390,9 +1392,14 @@
 					// Previously hit enemies first; then those able to fight immediately;
 					// then the nearest frontline. Remote patrols take only spare slots.
 					rank = enemy.wasRecentlyAttackedForOfflineResponse() ? 0 : (enemy.hasPriorityAttackTargetInRange() ? 1 : (proximity <= 12 ? 2 : 3));
-					if (rank < bestRank || (rank == bestRank && proximity < bestDistance)) {
+					// Keep recently-hit and in-range units in their tactical tiers.
+					// Within a tier, prefer enemies the player can actually see, so
+					// remote unseen units do not monopolize all three response slots.
+					candidateVisible = enemy.mVisible && this.mScene.isRenderableActuallyInViewport(enemy);
+					if (rank < bestRank || (rank == bestRank && (candidateVisible && !bestVisible || candidateVisible == bestVisible && proximity < bestDistance))) {
 						bestRank = rank;
 						bestDistance = proximity;
+						bestVisible = candidateVisible;
 						bestIndex = index;
 					}
 				}
@@ -1404,7 +1411,7 @@
 			}
 			this.mOfflineEnemyResponseCursor = (bestIndex + 1) % count;
 			enemy = enemies[bestIndex] as EnemyUnit;
-			Utils.DiagEvent("ENEMY_RESPONSE_PRIORITY","map=" + this.mCurrentMapId + ";enemy=" + enemy.mUnitId + ";rank=" + bestRank + ";nearest_player_tiles=" + bestDistance + ";recent_hit=" + enemy.wasRecentlyAttackedForOfflineResponse());
+			Utils.DiagEvent("ENEMY_RESPONSE_PRIORITY","map=" + this.mCurrentMapId + ";enemy=" + enemy.mUnitId + ";rank=" + bestRank + ";nearest_player_tiles=" + bestDistance + ";recent_hit=" + enemy.wasRecentlyAttackedForOfflineResponse() + ";in_viewport=" + bestVisible);
 			return enemy;
 		}
 
