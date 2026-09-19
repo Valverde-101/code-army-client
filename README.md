@@ -21,6 +21,8 @@ Reglas fijas:
 - La ronda enemiga **no comienza al descontar energía**. Primero debe terminar por completo la acción del jugador; después se respeta una ventana de asentamiento visual de hasta 1.2 s para que disparo, impacto/explosión y animación de cierre terminen antes de activar a los enemigos.
 - **Barrera de turnos:** ninguna acción nueva del jugador que esté en la cola puede adelantarse a una respuesta enemiga pendiente. El despachador final (V46, después de V45) debe conservar la llamada de inicio de ronda y esperar a que finalice la respuesta de sus tres unidades principales antes de procesar la siguiente acción del jugador. El plazo de asentamiento del primer turno pendiente no se reinicia por pulsaciones posteriores. Nunca basta con registrar `PLAYER_TURN_ENEMY_RESPONSE_ARMED`: cada turno habilitado debe llegar a `ENEMY_RESPONSE_ROUND_BEGIN` y terminar en `ENEMY_RESPONSE_ROUND_END`, o registrar explícitamente la ausencia de enemigos elegibles.
 - Las 3 unidades principales se eligen de forma distinta dentro de la misma ronda.
+- **Prioridad de respuesta:** primero los enemigos que recibieron daño del jugador y siguen vivos; después los que pueden atacar de inmediato; luego los cercanos al frente y, sólo si quedan cupos, los lejanos. Un enemigo herido responde prioritariamente a su atacante real cuando continúe en alcance.
+- Telemetría de selección: `ENEMY_RESPONSE_HIT_PRIORITY`, `ENEMY_RESPONSE_PRIORITY` (rango, distancia y daño reciente) y `ENEMY_RESPONSE_NO_CANDIDATE` si no hay candidatos.
 - Una unidad que ya participó como apoyo no puede volver a consumir uno de los 3 cupos principales de esa ronda.
 
 ### Ataques múltiples y ataques grupales
@@ -74,6 +76,20 @@ Telemetría:
 - `ENEMY_MOVE_WATCHDOG`
 - `ENEMY_MOVE_SYNC_SKIP`
 
+### Obstáculos, minas y transitabilidad
+
+- La transitabilidad depende del objeto, su bando y su estado; la defensa contraria intacta bloquea el paso aunque parezca atravesable.
+- Cada bando puede atravesar sus propias minas y barricadas. Una torreta defensiva intacta del rival bloquea el paso; hay que destruirla antes de cruzar.
+- Minas y barricadas enemigas destruidas se retiran de la cuadrícula al finalizar su animación; si falta la etiqueta `end`, un watchdog de 2,5 s (7,5 s para otras instalaciones) libera su ocupación. El terreno naturalmente impasable sigue impasable.
+- La destrucción de una mina propia o enemiga quita 1 punto de vida a cada unidad viva de cualquiera de los dos bandos en la casilla central o cualquiera de las ocho vecinas; cada unidad recibe daño sólo una vez por explosión. No se detona de nuevo al cargar una mina ya destruida.
+- Telemetría: `CAMPAIGN_MINE_DETONATED`, `INSTALLATION_WRECKING_CLEANUP`, `ENEMY_MOVE_ABORT`.
+
+### Torreta defensiva y fuego manual
+
+- Una torreta aliada viva dispara automáticamente al entrar un enemigo en su alcance, evaluado respecto a la casilla de llegada real. Una acción de movimiento enemiga no da inmunidad ante este disparo.
+- Para disparar manualmente, tocar una torreta y luego un enemigo dentro de su alcance. El tiro manual consume un turno del jugador al completarse y provoca su respuesta enemiga; el disparo automático no consume un turno del jugador.
+- Telemetría: `TURRET_AUTO_SHOT_QUEUED`, `TURRET_MANUAL_SELECT`, `TURRET_MANUAL_SHOT_QUEUED`, `TURRET_MANUAL_TURN_CONSUMED`.
+
 ### Conquista territorial de campaña
 
 Cuando un enemigo termina un movimiento sobre una casilla del jugador, **esa casilla debe convertirse en territorio enemigo inmediatamente en la misma llegada**.
@@ -85,6 +101,8 @@ Ruta canónica:
 `EnemyMovingAction -> IsometricScene.characterArrivedInCell(destino) -> changeCellOwner(destino)`
 
 No se debe escribir manualmente `arrivalCell.mOwner = TILE_OWNER_ENEMY` desde `EnemyMovingAction`; la ruta canónica mantiene sincronizados misiones, estado del mapa, topología y actualización visual.
+
+Si una ciudad o edificio propio cae a cero de salud en campaña, sus casillas amistosas pasan a ser terreno enemigo mediante la transición canónica. Se excluyen decoraciones como minas. Se conservan fronteras y titularidad en el guardado. Telemetría: `CITY_DESTROYED_TERRITORY`.
 
 Los saves antiguos pueden contener enemigos ya parados sobre casillas todavía aliadas. `turn_reconcile` se conserva sólo como reparación histórica; **las capturas nuevas deben aparecer como `reason=arrival`**.
 
@@ -152,6 +170,13 @@ Telemetría:
 - `DAILY_REWARD_CARRY_PENDING`
 - `DAILY_REWARD_CLAIMED`
 - `DAILY_REWARD_CLAIM_REJECTED`
+
+### Recurso agua del Desierto
+
+- El agua, a diferencia de la energía, no se regenera pasivamente por tiempo; se consume con las acciones que requieren el recurso del mapa.
+- En campaña offline se permite una planta `WaterPlant` en Home o Desert sin requerir amigos conectados, manteniendo el límite de una planta. Produce agua sin compras prémium y el agua pertenece al perfil compartido entre mapas.
+- Producciones originales: 30 unidades por 75 de dinero en 240 s; 45 por 140 en 480 s; 60 por 195 en 960 s. Hay que iniciar y recoger la producción.
+- La disponibilidad se ajusta en la configuración compuesta del build y necesita comprobación en el APK; la verificación estática `offline_desert_water_source` no equivale a una prueba física.
 
 ### Mapas de campaña
 
