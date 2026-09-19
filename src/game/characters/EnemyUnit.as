@@ -139,6 +139,8 @@
 		private var mOfflineResponseMoved:Boolean = false;
 		private var mOfflineResponseGroupLaunched:Boolean = false;
 		private var mOfflineResponseLockedTarget:Object = null;
+		private var mOfflineResponseRecentlyAttacked:Boolean = false;
+		private var mOfflineResponseLastAttacker:PlayerUnit = null;
 
 		public function EnemyUnit(param1: int, param2: IsometricScene, param3: MapItem) {
 			var _loc4_: EnemyUnitItem = null;
@@ -607,7 +609,12 @@
 			return this.mReactionState != REACT_STATE_ACTION && this.mReactionState != REACT_STATE_ACTION_COMPLETED;
 		}
 
+		public function wasRecentlyAttackedForOfflineResponse():Boolean {
+			return this.mOfflineResponseRecentlyAttacked && this.isAlive();
+		}
+
 		public function prepareOfflineResponseTurn(param1:int, param2:Boolean):void {
+			if (param2) this.mOfflineResponseRecentlyAttacked = false;
 			this.endOfflineAttackTurn();
 			this.mOfflineResponseTurnActive = true;
 			this.mOfflineResponseRoundId = param1;
@@ -662,6 +669,7 @@
 		}
 
 		private function selectOfflineResponseTarget():Object {
+			if (this.mOfflineResponseLastAttacker && this.canAttackOfflineTarget(this.mOfflineResponseLastAttacker)) return this.mOfflineResponseLastAttacker;
 			if (this.mOfflineResponseLockedTarget && this.canAttackOfflineTarget(this.mOfflineResponseLockedTarget)) return this.mOfflineResponseLockedTarget;
 			var unit:PlayerUnit = this.findPriorityPlayerTargetInRange();
 			if (unit) return unit;
@@ -1060,6 +1068,11 @@
 		}
 
 		override public function reduceHealth(param1: int, param2: int = 0): void {
+			if (Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && param1 > 0 && this.isAlive()) {
+				this.mOfflineResponseRecentlyAttacked = true;
+				this.mOfflineResponseLastAttacker = GameState.mInstance.findOfflinePlayerAttackerInRange(this);
+				Utils.DiagEvent("ENEMY_RESPONSE_HIT_PRIORITY","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";attacker_known=" + Boolean(this.mOfflineResponseLastAttacker));
+			}
 			super.reduceHealth(param1, param2);
 		}
 
