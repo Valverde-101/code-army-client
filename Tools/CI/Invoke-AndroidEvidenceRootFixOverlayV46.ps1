@@ -438,6 +438,25 @@ try {
 				return;
 			}
 			if (this.mCurrentAction == null) {
+				// The V45 visual-settle hook must survive V46's full updateActions replacement.
+				// Reserve the action lane for the pending campaign response before any
+				// already-queued player action can start a new turn and starve the enemy.
+				if (Config.OFFLINE_MODE && this.mState == STATE_PLAY) {
+					if (this.mOfflineEnemyPlayerRoundsPending > 0 && !this.mOfflineEnemyResponseActive) {
+						this.tryStartOfflineEnemyResponseAfterPlayerVisuals();
+						if (this.mOfflineEnemyPlayerRoundsPending > 0 && !this.mOfflineEnemyResponseActive) {
+							return;
+						}
+					}
+					// A primary may queue its action on the next scene tick. Keep
+					// player input behind that action until the entire response ends.
+					if (this.mOfflineEnemyResponseActive) {
+						var nextOfflineAction:Action = this.mMainActionQueue.mActions.length > 0 ? this.mMainActionQueue.mActions[0] as Action : null;
+						if (!nextOfflineAction || !nextOfflineAction.isEnemyAction()) {
+							return;
+						}
+					}
+				}
 				if (this.mMainActionQueue.mActions.length > 0) {
 					this.mCurrentAction = this.mMainActionQueue.mActions.shift();
 					if (Boolean(this.mCurrentAction.mTarget) && this.mCurrentAction.mTarget is Renderable) {
@@ -472,7 +491,10 @@ try {
     'attempts < OFFLINE_ENEMY_AUX_STARTS_PER_FRAME',
     'this.mConcurrentEnemyActionStartedAt.push(getTimer())',
     'main_timeout',
-    'aux_timeout'
+    'aux_timeout',
+    'this.tryStartOfflineEnemyResponseAfterPlayerVisuals();',
+    'this.mOfflineEnemyResponseActive',
+    'nextOfflineAction.isEnemyAction()'
   )){Require $game $required $required}
   Write-Utf8Bom $gameStatePath $game
 
