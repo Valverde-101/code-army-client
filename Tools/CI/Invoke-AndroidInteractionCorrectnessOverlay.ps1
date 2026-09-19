@@ -145,6 +145,14 @@ param1.stopImmediatePropagation();
   # configured explosion clock already used by character death handling.
   $enemyTarget=Get-TargetPath 'enemyInstallation'
   $enemy=Normalize-Lf ([IO.File]::ReadAllText($enemyTarget))
+  if($enemy.Contains('mCampaignWreckingElapsed')){
+    # A newer, more specific lifecycle already handles destroyed obstacles.
+    # Preserve that implementation rather than attempting the legacy literal rewrite.
+    foreach($required in @('this.mCampaignWreckingElapsed += Math.max(0,param1)','this.mCampaignWreckingElapsed >= wreckingMaxMs','this.mCampaignWreckingElapsed = 0','INSTALLATION_WRECKING_CLEANUP','this.mNewState = STATE_DESTROYED')){
+      if(-not $enemy.Contains($required)){throw "ANDROID_INTERACTION_CORRECTNESS_OVERLAY=FAIL patch=enemy_installation_wrecking_bounded_cleanup reason=newer_lifecycle_incomplete token=$required"}
+    }
+    Write-Host 'INTERACTION_CORRECTNESS_SEMANTIC_HOOK=PASS name=enemy_installation_wrecking_bounded_cleanup mode=preimplemented_campaign_lifecycle timer=existing animation_label=existing'
+  }else{
   $wreckFieldPattern='(?m)^([ \t]*)protected var mActionTimer:Number;\s*$'
   $wreckFieldReplacement=@'
 $1protected var mActionTimer:Number;
@@ -176,6 +184,7 @@ case STATE_WRECKING:
   $wreckResetReplacement='$1this.mWreckingSafetyTimer = 0;' + "`n               "
   $enemy=Replace-RegexOnce $enemy $wreckResetPattern $wreckResetReplacement 'enemy_installation_wrecking_timer_reset'
   if(-not $enemy.Contains('INSTALLATION_WRECKING_CLEANUP')){throw 'ANDROID_INTERACTION_CORRECTNESS_OVERLAY=FAIL verification=installation_cleanup_diagnostic_missing'}
+  }
   Write-Utf8Bom $enemyTarget $enemy
 
   # Ensure EnemyInstallationObject is actually replaced into the Android SWF and
@@ -184,13 +193,25 @@ case STATE_WRECKING:
   $patcher=Normalize-Lf ([IO.File]::ReadAllText($patcherTarget))
   $versionNeedle='$patchVersion=''mobile-engine-v3.23-visual-combat-rootfix'''
   $versionReplacement='$patchVersion=''mobile-engine-v3.24-placement-wrecking-rootfix'''
-  $patcher=Replace-LiteralOnce $patcher $versionNeedle $versionReplacement 'patch_version_v3_24'
+  if($patcher.Contains($versionNeedle)){
+    $patcher=Replace-LiteralOnce $patcher $versionNeedle $versionReplacement 'patch_version_v3_24'
+  }elseif($patcher.Contains("$"+'patchVersion='+ "'mobile-engine-v3.22-offline-daily-reward-360'")){
+    $patcher=Replace-LiteralOnce $patcher ('$patchVersion=''mobile-engine-v3.22-offline-daily-reward-360''') $versionReplacement 'patch_version_v3_24_from_v3_22'
+  }elseif(-not $patcher.Contains($versionReplacement)){
+    throw 'ANDROID_INTERACTION_CORRECTNESS_OVERLAY=FAIL patch=patch_version reason=unsupported_incoming_version'
+  }
   $specNeedle="  [ordered]@{Class='game.gameElements.PlayerBuildingObject';Source='src\game\gameElements\PlayerBuildingObject.as';Log='ffdec-performance-player-building.log'},"
-  $specReplacement=@"
+  if(([regex]::Matches($patcher,[regex]::Escape("Class='game.gameElements.EnemyInstallationObject'"))).Count -eq 0){
+    $specReplacement=@"
 $specNeedle
   [ordered]@{Class='game.gameElements.EnemyInstallationObject';Source='src\game\gameElements\EnemyInstallationObject.as';Log='ffdec-feature-enemy-installation-lifecycle.log'},
 "@
-  $patcher=Replace-LiteralOnce $patcher $specNeedle $specReplacement.TrimEnd() 'enemy_installation_patch_spec'
+    $patcher=Replace-LiteralOnce $patcher $specNeedle $specReplacement.TrimEnd() 'enemy_installation_patch_spec'
+  }elseif(([regex]::Matches($patcher,[regex]::Escape("Class='game.gameElements.EnemyInstallationObject'"))).Count -eq 1){
+    Write-Host 'INTERACTION_CORRECTNESS_SEMANTIC_HOOK=PASS name=enemy_installation_patch_spec mode=existing unique=true'
+  }else{
+    throw 'ANDROID_INTERACTION_CORRECTNESS_OVERLAY=FAIL patch=enemy_installation_patch_spec reason=duplicate_class'
+  }
   foreach($required in @('game.gameElements.EnemyInstallationObject','mobile-engine-v3.24-placement-wrecking-rootfix')){
     if(-not $patcher.Contains($required)){throw "ANDROID_INTERACTION_CORRECTNESS_OVERLAY=FAIL patch=patcher_verification missing=$required"}
   }
