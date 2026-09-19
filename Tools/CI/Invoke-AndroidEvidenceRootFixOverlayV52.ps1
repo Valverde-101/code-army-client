@@ -39,17 +39,22 @@ try {
 '@.TrimEnd()
   $text=Replace-ExactOne $text $oldManual $newManual 'manual_save_method_scoped'
 
-  $oldVisibility='visible = enemy.getContainer() && enemy.getContainer().visible;'
-  $newVisibility='visible = enemy.getCell() && this.mScene.isInsideVisibleArea(enemy.getCell());'
-  $oldVisibilityCount=([regex]::Matches($text,[regex]::Escape($oldVisibility))).Count
-  $newVisibilityCount=([regex]::Matches($text,[regex]::Escape($newVisibility))).Count
-  if($oldVisibilityCount -eq 1 -and $newVisibilityCount -eq 0){
-    $text=$text.Replace($oldVisibility,$newVisibility)
-    Write-Host 'EVIDENCE_ROOTFIX_V52_HOOK=PASS name=enemy_activity_camera_viewport matches=1 action=migrated'
-  }elseif($oldVisibilityCount -eq 0 -and $newVisibilityCount -eq 1){
-    Write-Host 'EVIDENCE_ROOTFIX_V52_HOOK=PASS name=enemy_activity_camera_viewport matches=1 action=already_applied'
+  $legacyVisibility='visible = enemy.getContainer() && enemy.getContainer().visible;'
+  $unlockedAreaVisibility='visible = enemy.getCell() && this.mScene.isInsideVisibleArea(enemy.getCell());'
+  $actualViewportVisibility='visible = this.mScene.isRenderableActuallyInViewport(enemy);'
+  $legacyVisibilityCount=([regex]::Matches($text,[regex]::Escape($legacyVisibility))).Count
+  $unlockedAreaVisibilityCount=([regex]::Matches($text,[regex]::Escape($unlockedAreaVisibility))).Count
+  $actualViewportVisibilityCount=([regex]::Matches($text,[regex]::Escape($actualViewportVisibility))).Count
+  if($legacyVisibilityCount -eq 1 -and $unlockedAreaVisibilityCount -eq 0 -and $actualViewportVisibilityCount -eq 0){
+    $text=$text.Replace($legacyVisibility,$actualViewportVisibility)
+    Write-Host 'EVIDENCE_ROOTFIX_V52_HOOK=PASS name=enemy_activity_camera_viewport matches=1 action=migrated_from_container_visible target=actual_render_viewport'
+  }elseif($legacyVisibilityCount -eq 0 -and $unlockedAreaVisibilityCount -eq 1 -and $actualViewportVisibilityCount -eq 0){
+    $text=$text.Replace($unlockedAreaVisibility,$actualViewportVisibility)
+    Write-Host 'EVIDENCE_ROOTFIX_V52_HOOK=PASS name=enemy_activity_camera_viewport matches=1 action=migrated_from_unlocked_area target=actual_render_viewport'
+  }elseif($legacyVisibilityCount -eq 0 -and $unlockedAreaVisibilityCount -eq 0 -and $actualViewportVisibilityCount -eq 1){
+    Write-Host 'EVIDENCE_ROOTFIX_V52_HOOK=PASS name=enemy_activity_camera_viewport matches=1 action=already_applied target=actual_render_viewport'
   }else{
-    throw "ANDROID_EVIDENCE_ROOTFIX_V52=FAIL patch=enemy_activity_camera_viewport old=$oldVisibilityCount new=$newVisibilityCount"
+    throw "ANDROID_EVIDENCE_ROOTFIX_V52=FAIL patch=enemy_activity_camera_viewport legacy=$legacyVisibilityCount unlocked_area=$unlockedAreaVisibilityCount actual_viewport=$actualViewportVisibilityCount"
   }
   $text=$text.Replace('visible_always_active=true','viewport_always_active=true')
 
@@ -88,7 +93,7 @@ try {
   if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V52=FAIL v48_exit=$LASTEXITCODE"}
   Write-Host 'REGRESSION_CHECK=PASS name=rootfix_single_compositor canonical=v48 legacy_layers=0 temporary_script=false'
   Write-Host 'REGRESSION_CHECK=PASS name=manual_save_semantic_scope method=buttonSavePressed'
-  Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_activity_visibility source=isInsideVisibleArea fog_of_war_independent=true viewport_always_active=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_activity_visibility source=isRenderableActuallyInViewport unlocked_area_predicate=false fog_of_war_independent=true viewport_always_active=true'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_spatial_census_not_self_filtered refresh=all_alive tuner=active_set_only feedback_loop=false'
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V52=PASS mode=$RequestedMode sha=$ExpectedSha architecture=single_compositor"
 }
