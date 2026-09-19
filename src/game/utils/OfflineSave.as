@@ -116,6 +116,9 @@
 		public static function isDailyRewardPopupUnlocked():Boolean {
 			if (!mFirstDailyRewardTutorialGateRequired || mDailyRewardLastClaimDate.length > 0) return true;
 			if (!mDailyRewardStateReady || !GameState.mInstance || !MissionManager.isTutorialCompleted()) return false;
+			// A stale tutorial cookie from an older campaign is not completion of THIS save.
+			var tutorialEndId:String = String(GameState.mConfig.PlayerStartValues.Default.TutorialEndMission.ID);
+			if (!MissionManager.isMissionCompleted(tutorialEndId)) return false;
 			var now:Number = new Date().time;
 			if (mFirstDailyRewardTutorialCompletedAt <= 0 || now < mFirstDailyRewardTutorialCompletedAt) {
 				mFirstDailyRewardTutorialCompletedAt = now;
