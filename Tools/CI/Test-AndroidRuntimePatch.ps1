@@ -516,7 +516,10 @@ Require-Contains $enemyUnit 'ENEMY_ATTACK_TURN' 'campaign_enemy_attack_turn_is_i
 Require-Contains $game 'OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS:int = 3' 'campaign_enemy_response_has_three_primary_slots'
 Require-Contains $game 'beginOfflineEnemyResponseRound' 'campaign_enemy_response_round_coordinator_exists'
 Require-NotContains $game 'param1:int = OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS' 'campaign_enemy_response_round_has_no_ffdec_default_constant'
-Require-NotContains $game 'this.isOfflineEnemySpatiallyActive(param1)' 'campaign_source_does_not_depend_on_overlay_only_spatial_method'
+# El compositor V48 instala simultáneamente el método y su llamada en el SWF final.
+# La fuente base se recompila por separado en el gate Windows; aquí se valida el producto compuesto.
+Require-Contains $game 'public function isOfflineEnemySpatiallyActive(param1:EnemyUnit):Boolean' 'campaign_composed_spatial_method_is_declared'
+Require-Contains $game 'this.isOfflineEnemySpatiallyActive(param1)' 'campaign_composed_primary_selection_uses_declared_spatial_method'
 Require-Contains $v48 'response_primary_spatial_budget' 'campaign_enemy_primary_spatial_binding_owned_by_v48'
 Require-Contains $v48 'this.isOfflineEnemySpatiallyActive(param1)' 'campaign_enemy_primary_selection_respects_spatial_working_set_after_v48'
 Require-Contains $game 'registerOfflineEnemyAssist' 'campaign_enemy_group_assist_registry_exists'
