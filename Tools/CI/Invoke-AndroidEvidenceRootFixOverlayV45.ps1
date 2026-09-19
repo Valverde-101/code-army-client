@@ -158,7 +158,7 @@ try {
 		private function tryStartOfflineEnemyResponseAfterPlayerVisuals():void {
 			if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY || !this.mScene) return;
 			if (this.mOfflineEnemyPlayerRoundsPending <= 0 || this.mOfflineEnemyResponseActive) return;
-			if (this.mCurrentAction != null || this.mConcurrentEnemyActions.length > 0 || this.mMainActionQueue.mActions.length > 0) return;
+			if (this.mCurrentAction != null || this.mConcurrentEnemyActions.length > 0) return;
 			if (getTimer() < this.mOfflineEnemyResponseReadyAt) return;
 			--this.mOfflineEnemyPlayerRoundsPending;
 			Utils.DiagEvent("PLAYER_TURN_VISUALS_COMPLETE","map=" + this.mCurrentMapId + ";pending_after=" + this.mOfflineEnemyPlayerRoundsPending + ";settle_ms=" + OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS);
@@ -250,6 +250,8 @@ try {
 				return;
 			}
 			if (this.mCurrentAction == null) {
+				// Give the completed player action its response before starting the next queued action.
+				this.tryStartOfflineEnemyResponseAfterPlayerVisuals();
 				if (this.mMainActionQueue.mActions.length > 0) {
 					this.mCurrentAction = this.mMainActionQueue.mActions.shift();
 					if (Boolean(this.mCurrentAction.mTarget) && this.mCurrentAction.mTarget is Renderable) {
@@ -258,7 +260,6 @@ try {
 					this.mCurrentAction.start();
 				} else if (this.mState == STATE_PLAY || this.mState == STATE_VISITING_NEIGHBOUR) {}
 			}
-			this.tryStartOfflineEnemyResponseAfterPlayerVisuals();
 			this.pumpConcurrentEnemyActions();
 		}
 
