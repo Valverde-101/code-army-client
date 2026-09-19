@@ -1,150 +1,183 @@
-
 # Army Attack: Surge of the Crimson Empire
 
-Revival of a 2011 Facebook game by Digital Chocolate. This project is based on the Android version of the game, which was heavily modified in order to make it run offline.
+Reactivación del juego de Facebook de 2011 de Digital Chocolate. Este proyecto parte de la versión Android del juego y la adapta para funcionar offline.
 
+## Contrato de comportamiento del juego
 
+Esta sección es el contrato funcional de Army Attack offline/móvil. Una modificación del código no debe cambiar estas reglas accidentalmente. Si una regla cambia intencionalmente, deben actualizarse en el mismo cambio el código, este README y las pruebas de regresión.
 
-## Gameplay behavior contract
+### IA enemiga y rondas por turnos
 
-This section is the functional contract for the current offline/mobile game. Changes to the systems below must preserve these invariants unless the contract is intentionally changed together with regression tests.
+Cada acción válida del jugador que consume su turno —por ejemplo mover una unidad o atacar— abre **una ronda enemiga de 3 unidades principales distintas**.
 
-### Enemy AI and attack turns
+Reglas fijas:
 
-Campaign enemies must react to nearby player combat targets without entering an unlimited attack loop.
+- Antes de moverse, cada unidad principal comprueba si tiene a rango una unidad, instalación o estructura atacable del jugador.
+- Si ya tiene un objetivo a rango, **ataca primero y no se mueve en ese turno**.
+- Si no tiene objetivo a rango, realiza **un movimiento**.
+- Si después de ese movimiento entra a rango de un objetivo, **el movimiento y el ataque posterior pertenecen al mismo turno enemigo**.
+- Si termina el movimiento sin objetivo a rango, termina su turno.
+- No hay activaciones enemigas autónomas entre acciones del jugador: la campaña offline avanza por las rondas provocadas por las acciones del jugador.
+- Las 3 unidades principales se eligen de forma distinta dentro de la misma ronda.
+- Una unidad que ya participó como apoyo no puede volver a consumir uno de los 3 cupos principales de esa ronda.
 
-For every enemy attack turn:
+### Ataques múltiples y ataques grupales
 
-- **55%: 1 attack**
-- **40%: 2 attacks**
-- **5%: 3 attacks**
+Cada enemigo que participa en un ataque tiene este presupuesto de disparos dentro de su mismo turno:
 
-An enemy therefore always performs at least one attack when a valid player target is already in its attack range, but it must stop when its current attack budget is exhausted and return to the normal reaction timer. A nearby target must not bypass the turn timer repeatedly.
+- **55%: 1 ataque**
+- **40%: 2 ataques**
+- **5%: 3 ataques**
 
-Valid priority targets include player units, player installations, and attackable player buildings. Enemy attacks are campaign logic and must not depend on the camera being pointed at the target.
+El segundo o tercer ataque probabilístico **no consume otro turno**.
 
-Primary implementation:
-- `src/game/characters/EnemyUnit.as`
-- `src/game/actions/EnemyAttackingAction.as`
-- `src/game/actions/RecapturePlayerBuildingAction.as`
+Si una unidad principal ataca un objetivo y existen otros enemigos que también tienen **ese mismo objetivo** dentro de su alcance, todos esos enemigos pueden sumarse como apoyo al ataque grupal.
 
-Relevant telemetry:
+- **Los ataques grupales no consumen un turno principal adicional.**
+- Una unidad que participó como apoyo queda marcada como participante de la ronda y no puede ser elegida después como una unidad principal de esa misma ronda.
+- Cada apoyo conserva su propio presupuesto 55/40/5.
+- Si el objetivo muere o sale de alcance, no se siguen generando ataques.
+- Nunca se debe reactivar un atacante indefinidamente por el simple hecho de tener un objetivo cerca.
+
+Telemetría principal:
+
+- `ENEMY_RESPONSE_ROUND_BEGIN`
+- `ENEMY_RESPONSE_PRIMARY`
+- `ENEMY_RESPONSE_TURN_BEGIN`
+- `ENEMY_RESPONSE_MOVE`
+- `ENEMY_RESPONSE_ATTACK`
+- `ENEMY_RESPONSE_ATTACK_REPEAT`
+- `ENEMY_GROUP_ATTACK`
+- `ENEMY_GROUP_ATTACK_ASSIST`
+- `ENEMY_RESPONSE_TURN_COMPLETE`
+- `ENEMY_RESPONSE_ROUND_END`
 - `ENEMY_ATTACK_TURN`
-- `ENEMY_ATTACK_PRIORITY`
 
-### Enemy movement and territorial pressure
+### Movimiento y presión territorial enemiga
 
-Campaign enemies should tend to make progress toward player-controlled units, buildings, installations, and player territory. A movement candidate must improve distance to a valid target instead of repeatedly choosing an immediate A -> B -> A oscillation when a better forward step exists.
+Los enemigos de campaña deben progresar hacia unidades, instalaciones, edificios y territorio controlado por el jugador.
 
-Movement uses a fallback path toward the player area when a direct target path cannot be found. Movement reservations must be released on success, abort, empty-path failure, and watchdog timeout so blocked destinations do not remain reserved forever.
+- Un destino debe mejorar el avance hacia un objetivo cuando exista una ruta útil.
+- Debe evitarse la oscilación inmediata A -> B -> A cuando exista un paso de progreso.
+- Si no existe una ruta directa, se usa el fallback hacia el área del jugador.
+- Las reservas de casillas se liberan en éxito, aborto, ruta vacía y watchdog.
+- Un fallo de pathfinding no debe dejar una casilla bloqueada permanentemente.
 
-Relevant telemetry includes:
+Telemetría:
+
 - `ENEMY_MOVE_ABORT`
 - `ENEMY_MOVE_PATH_FAIL`
 - `ENEMY_MOVE_WATCHDOG`
 - `ENEMY_MOVE_SYNC_SKIP`
 
-### Campaign territorial capture
+### Conquista territorial de campaña
 
-When a campaign enemy reaches a player-owned tile, ownership transfer is delegated to the native scene path:
+Cuando un enemigo termina un movimiento sobre una casilla del jugador, **esa casilla debe convertirse en territorio enemigo inmediatamente en la misma llegada**.
 
-`EnemyMovingAction -> IsometricScene.characterArrivedInCell() -> changeCellOwner()`
+La decisión se basa en la **casilla de destino recibida por `characterArrivedInCell()`**, no en la casilla anterior que todavía pudiera devolver `getCell()` durante el último frame del movimiento.
 
-The movement source must **not** force `arrivalCell.mOwner = TILE_OWNER_ENEMY` directly. This keeps mission counters, map dirty state, ownership topology, and visual overlays synchronized through the canonical ownership path.
+Ruta canónica:
 
-Old saves can contain an enemy standing on a tile that is still recorded as player-owned. Campaign enemies reconcile that stale state when their turn is processed.
+`EnemyMovingAction -> IsometricScene.characterArrivedInCell(destino) -> changeCellOwner(destino)`
 
-Telemetry:
+No se debe escribir manualmente `arrivalCell.mOwner = TILE_OWNER_ENEMY` desde `EnemyMovingAction`; la ruta canónica mantiene sincronizados misiones, estado del mapa, topología y actualización visual.
+
+Los saves antiguos pueden contener enemigos ya parados sobre casillas todavía aliadas. `turn_reconcile` se conserva sólo como reparación histórica; **las capturas nuevas deben aparecer como `reason=arrival`**.
+
+Telemetría:
+
+- `CAMPAIGN_ARRIVAL_OWNERSHIP`
 - `CAMPAIGN_TERRITORY_CAPTURE`
-- reason `arrival`
-- reason `turn_reconcile`
+- `reason=arrival`
+- `reason=turn_reconcile`
 
-### PvP territorial invariant
+### Invariante territorial de PvP
 
-**PvP territory is immutable during unit movement.**
+**PvP no permite conquista territorial durante el movimiento.**
 
-Campaign capture behavior must not leak into `PvPEnemyMovingAction`. PvP movement must not call the campaign ownership-transfer path and must not force a tile owner change. PvP combat, map selection, powerups, and debrief behavior are independent from campaign territorial capture.
+La lógica de captura de campaña no debe filtrarse a `PvPEnemyMovingAction`. En PvP mover una unidad no cambia el dueño de una casilla.
 
-### Player unit repair lives and permanent loss
+### Reparaciones y pérdida permanente de unidades
 
-Offline campaign player units use:
+La campaña offline usa:
 
 `MAX_OFFLINE_REPAIRS = 3`
 
-A destroyed unit can consume one repair life when it is revived. The counter is persisted as `repairs_used`. After all three repair lives have been consumed, a later destruction marks the unit for permanent removal instead of allowing unlimited revive cycles.
+Una unidad destruida puede consumir una vida de reparación al recuperarse. El contador se guarda como `repairs_used`. Después de consumir las tres reparaciones, una destrucción posterior provoca pérdida permanente en lugar de permitir ciclos infinitos de reparación.
 
-This rule applies to premium and non-premium campaign units. PvP is excluded.
+La regla se aplica a unidades normales y premium de campaña. PvP queda excluido.
 
-Telemetry:
-- `PLAYER_UNIT_REPAIR_LIFE`
-- `PLAYER_UNIT_REPAIR_BLOCKED`
-- `PLAYER_UNIT_PERMADEATH`
+### Compatibilidad de saves
 
-### Save compatibility
-
-Current portable/offline save schema:
+Esquema actual:
 
 `armyattack-offline-save/v10`
 
-Important persisted state includes:
-- campaign maps and ownership
-- player/enemy unit state
-- `repairs_used`
-- missions
-- inventory/profile state
-- daily reward state
+Se conservan mapas, ownership territorial, unidades, `repairs_used`, misiones, inventario, perfil y recompensa diaria. Los saves anteriores se migran hacia delante; si fueron creados antes de existir `repairs_used`, ese contador comienza en cero porque no existe historial fiable para reconstruir reparaciones anteriores.
 
-Older saves are migrated forward instead of being discarded. Saves created before repair lives existed initialize missing `repairs_used` to zero because previous repair history cannot be reconstructed safely.
+### Recompensa diaria
 
-### Daily rewards
+La campaña offline admite una racha de **360 días**.
 
-Offline daily rewards support a 360-day streak.
+Reglas:
 
-Rules:
-- one claim per calendar day
-- missing more than one day resets the streak
-- after day 360 the sequence wraps to day 1
-- claim state is persisted immediately
-- original five-day reward definitions remain usable as the fallback reward cycle when an explicit day entry does not exist
+- Una recompensa puede reclamarse una sola vez por día calendario.
+- La ventana debe intentar abrirse al entrar al juego siempre que la recompensa del día siga pendiente.
+- Si otro recurso o popup está cargándose, la recompensa **no se pierde**: queda pendiente y **se reintenta hasta que la ventana se abra realmente**.
+- Cerrar o fallar al abrir la ventana no equivale a reclamar la recompensa.
+- Después de reclamarla, no vuelve a abrirse ese mismo día.
+- Al siguiente día de entrada se presenta el día siguiente.
+- Si el jugador deja pasar un día completo sin entrar, la racha se reinicia.
+- Después del día 360, la secuencia vuelve al día 1.
+- Las definiciones originales de cinco días pueden reutilizarse cíclicamente cuando no exista una definición explícita para un día superior.
 
-### Campaign maps
+Telemetría:
 
-The authored campaign map set is:
+- `DAILY_REWARD_STATE`
+- `DAILY_REWARD_GAMESTATE`
+- `DAILY_REWARD_OPEN_REQUEST`
+- `DAILY_REWARD_OPEN_DEFERRED`
+- `DAILY_REWARD_OPENED`
+- `DAILY_REWARD_CLAIMED`
+- `DAILY_REWARD_CLAIM_REJECTED`
+
+### Mapas de campaña
+
+Los mapas de campaña autorados son:
+
 - `Home`
 - `Desert`
 - `Snow`
 
-Map changes wait for required resources and tilemaps before committing the scene transition. Snow is a real campaign map and must not silently fall back to Home.
+Un cambio de mapa espera sus recursos y tilemap antes de confirmar la transición. Snow no puede degradarse silenciosamente a Home.
 
-### PvP map contract
+### PvP
 
-The currently authenticated/native PvP terrain is `pvp_map_1_4valleys_11x11`. Synthetic PvP terrain generation remains disabled unless a real authored map is recovered and integrated.
+El terreno PvP nativo actualmente autenticado es `pvp_map_1_4valleys_11x11`. Los terrenos PvP sintéticos continúan deshabilitados hasta recuperar e integrar mapas autorados reales.
 
-### Performance and enemy spatial budget
+### Rendimiento y presupuesto espacial de IA
 
-The offline campaign AI uses a **target active set: 24 enemies** for normal spatial activity. Enemies actively threatening the player or otherwise required for combat can remain active outside that ordinary budget.
+La campaña offline usa un **conjunto activo objetivo: 24 enemigos** para actividad espacial normal. Los enemigos comprometidos en combate o necesarios por una amenaza inmediata pueden superar temporalmente ese número.
 
-Viewport activity is determined by the actual render viewport through `isRenderableActuallyInViewport()`; `isInsideVisibleArea()` represents unlocked-map area and must not be used as a camera-visibility predicate.
+La visibilidad de viewport se determina con `isRenderableActuallyInViewport()`. `isInsideVisibleArea()` representa área desbloqueada y no debe utilizarse como sustituto de “está en cámara”.
 
-This distinction exists to prevent cases where a nominal target of 24 turns into every enemy on the map being fully active.
+### Animaciones y efectos de combate
 
-### Rendering and combat-effect lifetime
+La finalización lógica de una acción no puede depender indefinidamente de una etiqueta de animación. Misiles, artillería, explosiones, impactos, wrecking y suministros usan cleanup/watchdogs acotados para evitar residuos visuales permanentes.
 
-Gameplay completion must not wait indefinitely for animation labels. Missiles, artillery, explosions, hit effects, wrecking effects, and supply-airdrop visuals use bounded cleanup/watchdog paths so visual effects cannot remain permanently on screen.
+La lógica del ataque y la limpieza visual son responsabilidades separadas.
 
-Logical attack completion and visual cleanup are separate concerns.
+### Colocación móvil
 
-### Mobile placement
+Comprar o colocar una unidad en móvil requiere confirmación explícita. Soltar un toque sobre el mapa no debe confirmar silenciosamente la compra antes del check.
 
-Buying/placing a unit on mobile requires explicit placement confirmation. Releasing a map touch must not silently commit the unit before the confirmation/check action.
+### Exportación e importación
 
-### Portable save sharing
+El juego puede generar y compartir un save/diagnóstico portable. Un save externo se valida antes de reemplazar el estado interno y se conserva respaldo del save anterior antes de modificarlo.
 
-The game can create a portable save/diagnostic payload and share it through the platform sharing flow. Imported external saves are validated before replacing internal state, and the previous internal save is backed up before mutation.
+### Niveles de validación
 
-### Validation levels
-
-Project status must distinguish:
+El proyecto diferencia:
 
 - `IMPLEMENTED`
 - `COMPILED`
@@ -154,18 +187,23 @@ Project status must distinguish:
 - `AUTOMATED_TESTED`
 - `PHYSICALLY_VALIDATED`
 
-`PHYSICALLY_VALIDATED` requires the exact APK for the exact TESTED_SHA to be installed and tested through ADB on a physical device with retained evidence. A green candidate build or a skipped physical workflow is not physical validation.
+`PHYSICALLY_VALIDATED` exige instalar mediante ADB físico el APK exacto correspondiente al `TESTED_SHA` y conservar evidencia. Un build verde o un workflow físico omitido no equivale a validación física.
 
+## Aspectos legales
 
-## Legal issues
-This repository is made for educational purposes only, and will not be monetized in any way. Contact me for any legal problems, and I'll take appropriate action.
+Este repositorio se mantiene con fines educativos y no pretende monetizarse. Para cualquier asunto legal, contactar con los responsables del proyecto.
 
-## How to play
-This page is mostly meant for developers. As a player, you probably want to download the latest version on [our website](https://armyattack.me).
+## Cómo jugar
 
-## How to build
-Use Adobe Animate and the AIR SDK from HARMAN. Feel free to ask for help in our [Discord server](https://discord.gg/fySy92ChyY).
-## License [![GPL v3](https://img.shields.io/badge/GPL%20v3-blue)](http://www.gnu.org/licenses/gpl-3.0)
+Esta página está orientada principalmente a desarrolladores. Para jugar, puede utilizarse la versión publicada por el proyecto.
+
+## Cómo compilar
+
+Se utiliza Adobe Animate y AIR SDK de HARMAN. El pipeline versionado del repositorio define las comprobaciones adicionales utilizadas para los candidatos Windows y Android.
+
+## Licencia
+
+GPL v3.
 
 ```
 Army Attack: Surge of the Crimson Empire.

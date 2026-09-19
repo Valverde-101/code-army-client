@@ -4701,8 +4701,17 @@
 		}
 
 		public function characterArrivedInCell(param1: IsometricCharacter, param2: GridCell, param3: Boolean = true): void {
-			if (param1.isInOpponentsTile()) {
-				this.changeCellOwner(param2);
+			var arrivalOwnerBefore:int = param2 ? param2.mOwner : MapData.TILE_OWNER_NEUTRAL;
+			var campaignArrival:Boolean = this.mGame && this.mGame.mState != GameState.STATE_PVP;
+			if (campaignArrival && param2) {
+				if (param1 is PlayerUnit && param2.mOwner == MapData.TILE_OWNER_ENEMY) {
+					this.changeCellOwner(param2);
+				} else if (param1 is EnemyUnit && param2.mOwner == MapData.TILE_OWNER_FRIENDLY) {
+					this.changeCellOwner(param2);
+				}
+			}
+			if (Config.OFFLINE_MODE && this.mGame && this.mGame.mState == GameState.STATE_PLAY && param1 is EnemyUnit && param2) {
+				Utils.DiagEvent("CAMPAIGN_ARRIVAL_OWNERSHIP","map=" + this.mGame.mCurrentMapId + ";enemy=" + (param1.mItem ? param1.mItem.mId : "") + ";x=" + param2.mPosI + ";y=" + param2.mPosJ + ";before=" + arrivalOwnerBefore + ";after=" + param2.mOwner + ";captured=" + (arrivalOwnerBefore == MapData.TILE_OWNER_FRIENDLY && param2.mOwner == MapData.TILE_OWNER_ENEMY));
 			}
 			if (param1 is PlayerUnit) {
 				this.mGame.updateWalkableCellsForActiveCharacter();

@@ -152,12 +152,11 @@ try {
 			if (!this.mScene) {
 				return;
 			}
-			var steps:int = Config.OFFLINE_MODE && this.mState == STATE_PLAY ? OFFLINE_ENEMY_ORDER_ADVANCE : 1;
-			var i:int = 0;
-			while (i < steps) {
-				this.mScene.reduceEnemyUnitQueueNumber();
-				i++;
+			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY) {
+				this.beginOfflineEnemyResponseRound(OFFLINE_ENEMY_ORDER_ADVANCE);
+				return;
 			}
+			this.mScene.reduceEnemyUnitQueueNumber();
 		}
 
 		private function getOfflineEnemyConcurrencyLimit():int {
@@ -293,7 +292,7 @@ try {
 
   Write-Utf8Bom $gameStatePath $game
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_reaction_cadence baseline_hours=60,125,245,305 offline_fast_minutes=1 offline_heavy_minutes=2 old_save_timer_stagger_seconds=4..36'
-  Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_combined_pressure queue_advance_per_player_action=3 concurrent_total_max=3 fifo_player_barrier=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_combined_pressure response_round_primary_units=3 group_assists_free=true move_then_attack_same_turn=true concurrent_total_max=3 fifo_player_barrier=true'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_lag_guard low_fps_threshold=20 concurrent_total_low_fps=2 retune_interval_ms=5000 no_per_frame_full_enemy_scan=true'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_cleanup map_switch_reset_clears_aux_actions=true pvp_unchanged=true visitor_unchanged=true'
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V45=PASS mode=apply predecessor=v44 sha=$ExpectedSha feature=bounded_aggressive_enemy_ai"
