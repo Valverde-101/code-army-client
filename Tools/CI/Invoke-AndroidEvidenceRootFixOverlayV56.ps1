@@ -603,6 +603,8 @@ try {
   Require $enemyInstall 'this.mCampaignWreckingElapsed' 'destroyed_obstacle_cleanup_timer_final'
   Require $enemyInstall 'mScene.detonateCampaignMine(this)' 'enemy_mine_detonates_final'
   Require $friendlyMine 'mScene.detonateCampaignMine(this)' 'friendly_mine_detonates_final'
+  Require $friendlyMine 'setWalkable(true);' 'friendly_owned_defence_grid_passability_final'
+  Require $pathfind 'friendlyMoverForDeco' 'enemy_cannot_cross_friendly_mines_final'
   Require $pathfind 'friendlyMoverForDeco' 'owner_specific_mine_and_barricade_passability_final'
   Require $pathfind 'ownEnemyMineOrBarricade' 'enemy_own_mine_barricade_passability_final'
   Require $gameState '_loc12_.mObject.mItem.mId == "Mines" || _loc12_.mObject.mItem.mId == "Barbwire"' 'player_own_mines_movement_destination_gate_final'
