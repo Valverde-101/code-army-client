@@ -364,6 +364,8 @@
 
 		private var mOfflineEnemyResponseReadyAt:int = 0;
 
+		private var mOfflineManualTurret:PlayerInstallationObject = null;
+
 		private var mEnemiesSpawned: int;
 
 		private var mKilledPlayerUnits: int;
@@ -2195,14 +2197,15 @@
 			return false;
 		}
 
-		public function setPlayerInstallationsToAttack(param1: EnemyUnit): void {
+		public function setPlayerInstallationsToAttack(param1: EnemyUnit, param2: GridCell = null): void {
 			var _loc4_: PlayerInstallationObject = null;
 			var _loc7_: int = 0;
 			var _loc8_: int = 0;
 			var _loc9_: int = 0;
 			var _loc10_: int = 0;
 			var _loc11_: int = 0;
-			var _loc2_: GridCell = param1.getCell();
+			var _loc2_: GridCell = param2 ? param2 : param1.getCell();
+			if (!_loc2_) return;
 			var _loc3_: Array = this.mScene.getPlayerInstallations();
 			var _loc5_: int = int(_loc3_.length);
 			var _loc6_: int = 0;
@@ -2218,6 +2221,7 @@
 							if (_loc2_.mPosJ >= _loc10_ - _loc7_) {
 								if (_loc2_.mPosJ < _loc10_ + _loc11_ + _loc7_) {
 									this.queueAction(new AttackEnemyAction(null, _loc4_, param1, false), true);
+									Utils.DiagEvent("TURRET_AUTO_SHOT_QUEUED","map=" + this.mCurrentMapId + ";target_x=" + _loc2_.mPosI + ";target_y=" + _loc2_.mPosJ + ";turret=" + (_loc4_.mItem ? _loc4_.mItem.mId : ""));
 								}
 							}
 						}
@@ -2228,6 +2232,12 @@
 		}
 
 		public function setAttacksToExtraAttackStyleEnemyInstallations(param1: IsometricCharacter): void {}
+
+		public function selectOfflineManualTurret(param1:PlayerInstallationObject):void {
+			if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY || !param1 || !param1.canAttack() || param1.mScene != this.mScene) return;
+			this.mOfflineManualTurret = param1;
+			Utils.DiagEvent("TURRET_MANUAL_SELECT","map=" + this.mCurrentMapId + ";x=" + param1.getCell().mPosI + ";y=" + param1.getCell().mPosJ + ";range=" + param1.mAttackRange);
+		}
 
 		public function attackEnemy(param1: Renderable): void {
 			var _loc3_: Action = null;
@@ -2242,6 +2252,27 @@
 			var _loc12_: int = 0;
 			var _loc13_: int = 0;
 			var _loc14_: Action = null;
+			// Tapping a friendly turret arms one explicit shot against the next enemy
+			// selected in its actual range. This shot costs one PLAYER TURN, not energy.
+			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY && param1 is EnemyUnit && this.mOfflineManualTurret) {
+				var manualTurret:PlayerInstallationObject = this.mOfflineManualTurret;
+				this.mOfflineManualTurret = null;
+				var turretCell:GridCell = manualTurret.getCell();
+				var enemyCell:GridCell = param1.getCell();
+				if (manualTurret.canAttack() && manualTurret.mScene == this.mScene && turretCell && enemyCell && (param1 as EnemyUnit).isAlive() &&
+					enemyCell.mPosI >= turretCell.mPosI - manualTurret.mAttackRange &&
+					enemyCell.mPosI < turretCell.mPosI + manualTurret.getTileSize().x + manualTurret.mAttackRange &&
+					enemyCell.mPosJ >= turretCell.mPosJ - manualTurret.mAttackRange &&
+					enemyCell.mPosJ < turretCell.mPosJ + manualTurret.getTileSize().y + manualTurret.mAttackRange) {
+					this.mCounterAttackAction = null;
+					var manualShot:AttackEnemyAction = new AttackEnemyAction(null,manualTurret,param1 as EnemyUnit,false);
+					manualShot.mManualInstallationAttack = true;
+					this.queueAction(manualShot);
+					Utils.DiagEvent("TURRET_MANUAL_SHOT_QUEUED","map=" + this.mCurrentMapId + ";x=" + enemyCell.mPosI + ";y=" + enemyCell.mPosJ);
+					return;
+				}
+				Utils.DiagEvent("TURRET_MANUAL_TARGET_OUT_OF_RANGE","map=" + this.mCurrentMapId);
+			}
 			var _loc2_: Array = this.searchAttackablePlayerUnits(param1);
 			this.mCounterAttackAction = null;
 			if (!_loc2_ || _loc2_.length == 0) {
