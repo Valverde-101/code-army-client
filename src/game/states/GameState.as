@@ -346,6 +346,8 @@
 
 		private static const OFFLINE_ENEMY_RESPONSE_PRIMARY_TURNS:int = 3;
 
+		private static const OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS:int = 1200;
+
 		private var mOfflineEnemyResponseRoundId:int = 0;
 
 		private var mOfflineEnemyResponsePrimaryRemaining:int = 0;
@@ -357,6 +359,10 @@
 		private var mOfflineEnemyPendingResponseRounds:int = 0;
 
 		private var mOfflineEnemyResponseCursor:int = 0;
+
+		private var mOfflineEnemyPlayerRoundsPending:int = 0;
+
+		private var mOfflineEnemyResponseReadyAt:int = 0;
 
 		private var mEnemiesSpawned: int;
 
@@ -1285,6 +1291,17 @@
 					this.mServer.serverCallServiceWithParameters(ServiceIDs.INCREMENT_TURN_COUNTERS, _loc5_, false);
 				}
 			}
+			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY && this.mCurrentAction &&
+				(this.mCurrentAction is WalkingAction || this.mCurrentAction is AttackEnemyAction || this.mCurrentAction is AttackEnemyInstallationAction)) {
+				this.requestOfflineEnemyResponseAfterPlayerAction(this.mCurrentAction.mName);
+			}
+		}
+
+		public function requestOfflineEnemyResponseAfterPlayerAction(param1:String):void {
+			if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY || !this.mScene) return;
+			++this.mOfflineEnemyPlayerRoundsPending;
+			this.mOfflineEnemyResponseReadyAt = getTimer() + OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS;
+			Utils.DiagEvent("PLAYER_TURN_ENEMY_RESPONSE_ARMED","map=" + this.mCurrentMapId + ";action=" + param1 + ";pending=" + this.mOfflineEnemyPlayerRoundsPending + ";settle_ms=" + OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS);
 		}
 
 		public function enemyMoveMade(): void {
@@ -4910,8 +4927,9 @@
 		}
 
 		public function setFogOfWarOn(param1: Boolean): void {
+			if (this.mFogOfWarOn == param1) return;
 			this.mFogOfWarOn = param1;
-			// Doin- a little challenge: most inefficient way to reload the game lmao
+			Utils.DiagEvent("SETTINGS_FOG_CHANGED","value=" + param1 + ";apply=next_scene_init;full_reload=false");
 		}
 
 		public function isFogOfWarOn(): Boolean {
@@ -4919,15 +4937,14 @@
 		}
 
 		public function setAnimations(param1: Boolean): void {
+			if (this.mAnimationsOn == param1) return;
 			this.mAnimationsOn = param1;
 			Cookie.saveCookieVariable(Config.COOKIE_SETTINGS_NAME, Config.COOKIE_SETTINGS_NAME_ANIMATION, param1);
-			// We're doing the same challenge as above xD
-			// Need to look for a better way
-			var savedata: * = this.mHUD.generateSaveJson();
-			(PopUpManager.getPopUp(PauseDialog) as PauseDialog).loadProgress(savedata);
-			(PopUpManager.getPopUp(SettingsDialogClass) as SettingsDialogClass).closeSettingsAuto();
-			(PopUpManager.getPopUp(PauseDialog) as PauseDialog).closePauseMenuAuto();
-			this.mScene.mCamera.moveTo(this.mScene.mCamera.getCameraX() + 1, this.mScene.mCamera.getCameraY() + 1);
+			if (this.mScene) {
+				if (param1) this.mScene.startCharacterAnimations();
+				else this.mScene.stopCharacterAnimations();
+			}
+			Utils.DiagEvent("SETTINGS_ANIMATIONS_CHANGED","value=" + param1 + ";full_reload=false;save_reload=false;camera_nudge=false");
 		}
 
 		public function isAnimationsOn(): Boolean {

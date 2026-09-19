@@ -62,20 +62,17 @@ try {
 
   $game=Normalize-Lf ([IO.File]::ReadAllText($gameStatePath))
 
-  # One player action used to advance only one enemy in the reaction queue. In
-  # offline campaign play that makes a map with 50-70 enemies feel inert. Keep
-  # the original call site but route it through a bounded three-slot advance.
-    # Patch only the player-energy turn-consumption call. A response-round helper
-  # also legitimately contains reduceEnemyUnitQueueNumber(), so a global literal
-  # replacement becomes ambiguous once the fixed turn coordinator is present.
+  # Offline enemy rounds must not start when energy is merely deducted.
+  # That happens before the player's visual turn is fully settled. Preserve the
+  # legacy queue tick outside offline campaign, but suppress it for STATE_PLAY.
   $reduceEnergyStart=$game.IndexOf("public function reduceEnergy(",[StringComparison]::Ordinal)
-  if($reduceEnergyStart -lt 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V45=FAIL patch=enemy_order_batch_advance reduce_energy_start_missing'}
+  if($reduceEnergyStart -lt 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V45=FAIL patch=enemy_order_early_tick_guard reduce_energy_start_missing'}
   $reduceEnergyEnd=$game.IndexOf("public function reduceMapResource",$reduceEnergyStart,[StringComparison]::Ordinal)
-  if($reduceEnergyEnd -lt 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V45=FAIL patch=enemy_order_batch_advance reduce_energy_end_missing'}
+  if($reduceEnergyEnd -lt 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V45=FAIL patch=enemy_order_early_tick_guard reduce_energy_end_missing'}
   $reduceEnergyBlock=$game.Substring($reduceEnergyStart,$reduceEnergyEnd-$reduceEnergyStart)
-  $reduceEnergyBlock=Replace-One $reduceEnergyBlock 'this.mScene.reduceEnemyUnitQueueNumber();' 'this.advanceEnemyOrderQueue();' 'enemy_order_batch_advance'
+  $reduceEnergyBlock=Replace-One $reduceEnergyBlock 'this.mScene.reduceEnemyUnitQueueNumber();' 'if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY) this.mScene.reduceEnemyUnitQueueNumber();' 'enemy_order_early_tick_guard'
   $game=$game.Substring(0,$reduceEnergyStart)+$reduceEnergyBlock+$game.Substring($reduceEnergyEnd)
-  Write-Host 'EVIDENCE_ROOTFIX_V45_HOOK=PASS name=enemy_order_batch_advance scope=reduceEnergy semantic=true'
+  Write-Host 'EVIDENCE_ROOTFIX_V45_HOOK=PASS name=enemy_order_early_tick_guard scope=reduceEnergy offline_campaign_suppressed=true'
 
   $fieldAnchor='\t\tpublic var mMainActionQueue: ActionQueue;'.Replace('\t',"`t")
   $fieldBlock=@'
@@ -158,15 +155,14 @@ try {
 			}
 		}
 
-		private function advanceEnemyOrderQueue():void {
-			if (!this.mScene) {
-				return;
-			}
-			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY) {
-				this.beginOfflineEnemyResponseRound(OFFLINE_ENEMY_ORDER_ADVANCE);
-				return;
-			}
-			this.mScene.reduceEnemyUnitQueueNumber();
+		private function tryStartOfflineEnemyResponseAfterPlayerVisuals():void {
+			if (!Config.OFFLINE_MODE || this.mState != STATE_PLAY || !this.mScene) return;
+			if (this.mOfflineEnemyPlayerRoundsPending <= 0 || this.mOfflineEnemyResponseActive) return;
+			if (this.mCurrentAction != null || this.mConcurrentEnemyActions.length > 0 || this.mMainActionQueue.mActions.length > 0) return;
+			if (getTimer() < this.mOfflineEnemyResponseReadyAt) return;
+			--this.mOfflineEnemyPlayerRoundsPending;
+			Utils.DiagEvent("PLAYER_TURN_VISUALS_COMPLETE","map=" + this.mCurrentMapId + ";pending_after=" + this.mOfflineEnemyPlayerRoundsPending + ";settle_ms=" + OFFLINE_PLAYER_TURN_VISUAL_SETTLE_MS);
+			this.beginOfflineEnemyResponseRound(OFFLINE_ENEMY_ORDER_ADVANCE);
 		}
 
 		private function getOfflineEnemyConcurrencyLimit():int {
@@ -262,6 +258,7 @@ try {
 					this.mCurrentAction.start();
 				} else if (this.mState == STATE_PLAY || this.mState == STATE_VISITING_NEIGHBOUR) {}
 			}
+			this.tryStartOfflineEnemyResponseAfterPlayerVisuals();
 			this.pumpConcurrentEnemyActions();
 		}
 
@@ -279,6 +276,8 @@ try {
 			this.mMainActionQueue.mActions.length = 0;
 			this.clearConcurrentEnemyActions();
 			this.mCurrentAction = null;
+			this.mOfflineEnemyPlayerRoundsPending = 0;
+			this.mOfflineEnemyResponseReadyAt = 0;
 		}
 
 		public function chooseCorrectGraphicFromArray
@@ -297,12 +296,12 @@ try {
     'this.ensureOfflineEnemyAiTuned(param1);',
     'this.pumpConcurrentEnemyActions();',
     'this.clearConcurrentEnemyActions();',
-    'this.advanceEnemyOrderQueue();'
+    'this.tryStartOfflineEnemyResponseAfterPlayerVisuals();'
   )){Require $game $required $required}
 
   Write-Utf8Bom $gameStatePath $game
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_reaction_cadence baseline_hours=60,125,245,305 offline_fast_minutes=1 offline_heavy_minutes=2 old_save_timer_stagger_seconds=4..36'
-  Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_combined_pressure response_round_primary_units=3 group_assists_free=true move_then_attack_same_turn=true concurrent_total_max=3 fifo_player_barrier=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_combined_pressure response_round_primary_units=3 group_assists_free=true move_then_attack_same_turn=true player_visuals_complete_before_enemy_round=true settle_ms=1200 concurrent_total_max=3 fifo_player_barrier=true'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_lag_guard low_fps_threshold=20 concurrent_total_low_fps=2 retune_interval_ms=5000 no_per_frame_full_enemy_scan=true'
   Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_cleanup map_switch_reset_clears_aux_actions=true pvp_unchanged=true visitor_unchanged=true'
   Write-Host "ANDROID_EVIDENCE_ROOTFIX_V45=PASS mode=apply predecessor=v44 sha=$ExpectedSha feature=bounded_aggressive_enemy_ai"

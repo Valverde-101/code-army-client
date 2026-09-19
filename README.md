@@ -18,6 +18,7 @@ Reglas fijas:
 - Si después de ese movimiento entra a rango de un objetivo, **el movimiento y el ataque posterior pertenecen al mismo turno enemigo**.
 - Si termina el movimiento sin objetivo a rango, termina su turno.
 - No hay activaciones enemigas autónomas entre acciones del jugador: la campaña offline avanza por las rondas provocadas por las acciones del jugador.
+- La ronda enemiga **no comienza al descontar energía**. Primero debe terminar por completo la acción del jugador; después se respeta una ventana de asentamiento visual de hasta 1.2 s para que disparo, impacto/explosión y animación de cierre terminen antes de activar a los enemigos.
 - Las 3 unidades principales se eligen de forma distinta dentro de la misma ronda.
 - Una unidad que ya participó como apoyo no puede volver a consumir uno de los 3 cupos principales de esa ronda.
 
@@ -169,6 +170,16 @@ La visibilidad de viewport se determina con `isRenderableActuallyInViewport()`. 
 La finalización lógica de una acción no puede depender indefinidamente de una etiqueta de animación. Misiles, artillería, explosiones, impactos, wrecking y suministros usan cleanup/watchdogs acotados para evitar residuos visuales permanentes.
 
 La lógica del ataque y la limpieza visual son responsabilidades separadas.
+
+
+### Ajustes Fog of War y Animations
+
+Los ajustes gráficos no pueden reconstruir la partida ni bloquear la interacción.
+
+- `Animations` sólo pausa o reanuda las animaciones de personajes y guarda la preferencia. **No** exporta/importa el save, no llama `loadProgress()`, no cierra/reabre el menú y no mueve la cámara artificialmente.
+- `Fog of War` no debe provocar una recarga completa del save ni reconstruir toda la escena desde Settings. El cambio queda registrado y se aplica en una inicialización segura de escena, evitando una nube masiva acompañada de bloqueo de input.
+- Cambiar cualquiera de estos ajustes no puede iniciar una ronda enemiga ni alterar ownership territorial.
+- Telemetría: `SETTINGS_ANIMATIONS_CHANGED` y `SETTINGS_FOG_CHANGED`.
 
 ### Colocación móvil
 
