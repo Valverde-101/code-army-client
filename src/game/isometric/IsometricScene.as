@@ -4786,6 +4786,23 @@
 			}
 		}
 
+		// A destroyed campaign building loses its occupied territory, not merely its sprite.
+		// Use the same ownership transition as enemy movement so border/topology and
+		// exported cell owners observe the identical canonical map state.
+		public function captureDestroyedPlayerBuildingTerritory(param1:PlayerBuildingObject):void {
+			if (!Config.OFFLINE_MODE || !this.mGame || this.mGame.mState != GameState.STATE_PLAY || !param1 || !this.mGame.mMapData) return;
+			var cells:Array = this.getTilesUnderObject(param1);
+			var cell:GridCell = null;
+			var captured:int = 0;
+			for each (cell in cells) {
+				if (cell && cell.mOwner == MapData.TILE_OWNER_FRIENDLY) {
+					this.changeCellOwner(cell);
+					++captured;
+				}
+			}
+			Utils.DiagEvent("CITY_DESTROYED_TERRITORY","map=" + this.mGame.mCurrentMapId + ";item=" + (param1.mItem ? param1.mItem.mId : "") + ";captured=" + captured + ";cells=" + cells.length);
+		}
+
 		private function changeCellOwner(param1: GridCell): void {
 			var _loc2_: Array = null;
 			if (param1.mOwner != MapData.TILE_OWNER_NEUTRAL) {
