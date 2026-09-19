@@ -609,6 +609,11 @@
 			return this.mReactionState != REACT_STATE_ACTION && this.mReactionState != REACT_STATE_ACTION_COMPLETED;
 		}
 
+		public function noteOfflinePlayerAttacker(param1:PlayerUnit):void {
+			if (!Config.OFFLINE_MODE || !param1 || !param1.isAlive()) return;
+			this.mOfflineResponseLastAttacker = param1;
+		}
+
 		public function wasRecentlyAttackedForOfflineResponse():Boolean {
 			return this.mOfflineResponseRecentlyAttacked && this.isAlive();
 		}
@@ -1070,7 +1075,7 @@
 		override public function reduceHealth(param1: int, param2: int = 0): void {
 			if (Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && param1 > 0 && this.isAlive()) {
 				this.mOfflineResponseRecentlyAttacked = true;
-				this.mOfflineResponseLastAttacker = GameState.mInstance.findOfflinePlayerAttackerInRange(this);
+				// The attack action supplies the exact attacking player unit, if any.
 				Utils.DiagEvent("ENEMY_RESPONSE_HIT_PRIORITY","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + this.mUnitId + ";attacker_known=" + Boolean(this.mOfflineResponseLastAttacker));
 			}
 			super.reduceHealth(param1, param2);
