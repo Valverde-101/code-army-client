@@ -605,6 +605,7 @@ try {
   Require $friendlyMine 'mScene.detonateCampaignMine(this)' 'friendly_mine_detonates_final'
   Require $pathfind 'friendlyMoverForDeco' 'owner_specific_mine_and_barricade_passability_final'
   Require $pathfind 'ownEnemyMineOrBarricade' 'enemy_own_mine_barricade_passability_final'
+  Require $gameState '_loc12_.mObject.mItem.mId == "Mines" || _loc12_.mObject.mItem.mId == "Barbwire"' 'player_own_mines_movement_destination_gate_final'
   Write-Host 'REGRESSION_CHECK=PASS name=campaign_combat_terrain_contract source_composition=true hit_priority=true arrival_turret=true manual_turret_turn=true destroyed_city_owner=true mine_damage_each=1 wreck_cleanup=true side_aware_pathfinding=true'
   Require $gameState 'setOfflineDailyRewardState' 'daily_reward_state_bridge_final'
   Require $gameHud 'requestImmediateSave' 'daily_reward_immediate_save_final'
