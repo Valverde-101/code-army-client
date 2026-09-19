@@ -31,6 +31,7 @@
 		public static var mMissions: * = {};
 
 		public static const DAILY_REWARD_MAX_STREAK: int = 360;
+		private static const FIRST_DAILY_REWARD_TUTORIAL_DELAY_MS:int = 3 * 60 * 1000;
 
 		private static var mDailyRewardStreakDay: int = 0;
 
@@ -41,6 +42,9 @@
 		private static var mDailyRewardPending: Boolean = false;
 
 		private static var mDailyRewardStateReady: Boolean = false;
+		private static var mFirstDailyRewardTutorialGateRequired:Boolean = false;
+		private static var mFirstDailyRewardTutorialCompletedAt:Number = 0;
+		private static var mFirstDailyRewardUnlockLogged:Boolean = false;
 
 		public var mSwitchingMap: Boolean = false;
 
@@ -68,6 +72,12 @@
 
 		public static function initializeDailyReward(param1: * = null): void {
 			var state: * = param1 != null ? param1["daily_reward"] : null;
+			// Only a genuinely new campaign starts behind the first-reward tutorial gate.
+			// Legacy saves without these fields keep their already-established daily flow.
+			mFirstDailyRewardTutorialGateRequired = param1 == null || (state != null && state["first_reward_tutorial_gate_required"] === true);
+			mFirstDailyRewardTutorialCompletedAt = state != null && state["first_reward_tutorial_completed_at"] != null ? Number(state["first_reward_tutorial_completed_at"]) : 0;
+			if (isNaN(mFirstDailyRewardTutorialCompletedAt) || mFirstDailyRewardTutorialCompletedAt < 0) mFirstDailyRewardTutorialCompletedAt = 0;
+			mFirstDailyRewardUnlockLogged = false;
 			mDailyRewardStreakDay = state != null && state["streak_day"] != null ? int(state["streak_day"]) : 0;
 			mDailyRewardLastLoginDate = state != null && state["last_login_date"] != null ? String(state["last_login_date"]) : "";
 			mDailyRewardLastClaimDate = state != null && state["last_claim_date"] != null ? String(state["last_claim_date"]) : "";
@@ -101,9 +111,30 @@
 			if (GameState.mInstance != null) GameState.mInstance.setOfflineDailyRewardState(mDailyRewardStreakDay, mDailyRewardPending);
 		}
 
+		// This gate is persisted in the save and consulted by every popup route and
+		// by the claim itself. Subsequent calendar days never repeat the tutorial delay.
+		public static function isDailyRewardPopupUnlocked():Boolean {
+			if (!mFirstDailyRewardTutorialGateRequired || mDailyRewardLastClaimDate.length > 0) return true;
+			if (!mDailyRewardStateReady || !GameState.mInstance || !MissionManager.isTutorialCompleted()) return false;
+			var now:Number = new Date().time;
+			if (mFirstDailyRewardTutorialCompletedAt <= 0 || now < mFirstDailyRewardTutorialCompletedAt) {
+				mFirstDailyRewardTutorialCompletedAt = now;
+				mFirstDailyRewardUnlockLogged = false;
+				Utils.DiagEvent("DAILY_REWARD_FIRST_UNLOCK_ARMED","delay_ms=" + FIRST_DAILY_REWARD_TUTORIAL_DELAY_MS + ";started_at=" + now);
+				if (GameState.mInstance.mHUD != null) GameState.mInstance.mHUD.requestImmediateSave();
+				return false;
+			}
+			if (now - mFirstDailyRewardTutorialCompletedAt < FIRST_DAILY_REWARD_TUTORIAL_DELAY_MS) return false;
+			if (!mFirstDailyRewardUnlockLogged) {
+				mFirstDailyRewardUnlockLogged = true;
+				Utils.DiagEvent("DAILY_REWARD_FIRST_UNLOCK_READY","delay_ms=" + FIRST_DAILY_REWARD_TUTORIAL_DELAY_MS + ";elapsed_ms=" + int(now - mFirstDailyRewardTutorialCompletedAt));
+			}
+			return true;
+		}
+
 		public static function claimDailyReward(param1: int, param2: Item, param3: int): Boolean {
 			var today: String = dailyRewardDateKey();
-			if (!mDailyRewardStateReady || !mDailyRewardPending || param1 != mDailyRewardStreakDay || mDailyRewardLastLoginDate != today || mDailyRewardLastClaimDate == today || param2 == null) {
+			if (!isDailyRewardPopupUnlocked() || !mDailyRewardStateReady || !mDailyRewardPending || param1 != mDailyRewardStreakDay || mDailyRewardLastLoginDate != today || mDailyRewardLastClaimDate == today || param2 == null) {
 				Utils.DiagEvent("DAILY_REWARD_CLAIM_REJECTED","requested_day=" + param1 + ";current_day=" + mDailyRewardStreakDay + ";pending=" + mDailyRewardPending + ";today=" + today + ";last_login=" + mDailyRewardLastLoginDate + ";last_claim=" + mDailyRewardLastClaimDate);
 				return false;
 			}
@@ -111,6 +142,8 @@
 			GameState.mInstance.mPlayerProfile.mInventory.addItems(param2, 1);
 			mDailyRewardLastClaimDate = today;
 			mDailyRewardPending = false;
+			mFirstDailyRewardTutorialGateRequired = false;
+			mFirstDailyRewardTutorialCompletedAt = 0;
 			Utils.DiagEvent("DAILY_REWARD_CLAIMED","day=" + mDailyRewardStreakDay + ";choice=" + param3 + ";item=" + param2.mId + ";date=" + today);
 			if (GameState.mInstance.mHUD != null) GameState.mInstance.mHUD.requestImmediateSave();
 			return true;
@@ -445,7 +478,9 @@
 			savedata["daily_reward"] = {
 				"streak_day": mDailyRewardStreakDay,
 				"last_login_date": mDailyRewardLastLoginDate,
-				"last_claim_date": mDailyRewardLastClaimDate
+				"last_claim_date": mDailyRewardLastClaimDate,
+				"first_reward_tutorial_gate_required": mFirstDailyRewardTutorialGateRequired,
+				"first_reward_tutorial_completed_at": mFirstDailyRewardTutorialCompletedAt
 			};
 			var now: Date = new Date();
 			savedata["time_of_last_save"] = now.valueOf();
