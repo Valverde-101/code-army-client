@@ -166,7 +166,13 @@ try {
 '@.TrimEnd()
   $move=Replace-One $move (Normalize-Lf $reserveOld) (Normalize-Lf $reserveNew) 'enemy_move_reservation_transaction'
 
-  $move=Replace-One $move '         mActor.getCell().mCharacterComingToThisTile = null;' '         this.releaseDestinationReservation();' 'enemy_move_success_releases_reservation'
+  $successReleasePattern='(?m)^(?<indent>[ \t]*)(?:mActor\.getCell\(\)|arrivalCell)\.mCharacterComingToThisTile\s*=\s*null;\s*$'
+  $successReleaseMatches=[regex]::Matches($move,$successReleasePattern)
+  if($successReleaseMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V46=FAIL patch=enemy_move_success_releases_reservation semantic_count=$($successReleaseMatches.Count)"}
+  $successReleaseMatch=$successReleaseMatches[0]
+  $successReleaseReplacement=$successReleaseMatch.Groups['indent'].Value+'this.releaseDestinationReservation();'
+  $move=$move.Substring(0,$successReleaseMatch.Index)+$successReleaseReplacement+$move.Substring($successReleaseMatch.Index+$successReleaseMatch.Length)
+  Write-Host 'EVIDENCE_ROOTFIX_V46_HOOK=PASS name=enemy_move_success_releases_reservation matches=1 semantic=true supports=legacy_current_cell,native_arrival_cell'
   $serverOld='         GameState.mInstance.mServer.serverCallServiceWithParameters(ServiceIDs.MOVE_ENEMY,_loc2_,false);'
   $serverNew=@'
          if(!Config.OFFLINE_MODE && GameState.mInstance.mServer)
