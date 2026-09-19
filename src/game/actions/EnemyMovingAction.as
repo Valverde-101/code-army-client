@@ -7,6 +7,7 @@ package game.actions
    import game.characters.PlayerUnit;
    import game.gameElements.ConstructionObject;
    import game.gameElements.DebrisObject;
+   import game.gameElements.EnemyInstallationObject;
    import game.gameElements.PlayerInstallationObject;
    import game.isometric.GridCell;
    import game.isometric.characters.IsometricCharacter;
@@ -70,7 +71,7 @@ package game.actions
                {
                   if(_loc10_ != _loc3_)
                   {
-                     if(_loc10_.mWalkable)
+                     if(_loc10_.mWalkable || Config.OFFLINE_MODE && _loc10_.mObject is EnemyInstallationObject && ((_loc10_.mObject as EnemyInstallationObject).mItem.mId == "Mines" || (_loc10_.mObject as EnemyInstallationObject).mItem.mId == "Barricade"))
                      {
                         if(_loc10_)
                         {
@@ -98,7 +99,11 @@ package game.actions
                            else if(_loc10_.mObject)
                            {
                               _loc7_ = false;
-                              if(_loc10_.mObject is DebrisObject)
+                              if(Config.OFFLINE_MODE && _loc10_.mObject is EnemyInstallationObject && ((_loc10_.mObject as EnemyInstallationObject).mItem.mId == "Mines" || (_loc10_.mObject as EnemyInstallationObject).mItem.mId == "Barricade"))
+                              {
+                                 _loc7_ = true;
+                              }
+                              else if(_loc10_.mObject is DebrisObject)
                               {
                                  _loc7_ = true;
                               }
