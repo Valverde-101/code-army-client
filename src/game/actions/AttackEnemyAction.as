@@ -2,6 +2,7 @@
 	import game.characters.AnimationController;
 	import game.characters.EnemyUnit;
 	import game.characters.PvPEnemyUnit;
+	import game.characters.PlayerUnit;
 	import game.gameElements.PlayerInstallationObject;
 	import game.gui.TextEffect;
 	import game.isometric.GridCell;
@@ -325,6 +326,9 @@
 			} else {
 				_loc15_ = true;
 				_loc14_ = 0;
+			}
+			if (Config.OFFLINE_MODE && _loc1_.mState == GameState.STATE_PLAY && mCharacterActors && mCharacterActors.length > 0 && mCharacterActors[0] is PlayerUnit) {
+				(_loc4_ as EnemyUnit).noteOfflinePlayerAttacker(mCharacterActors[0] as PlayerUnit);
 			}
 			_loc4_.reduceHealth(_loc13_);
 			(_loc4_ as EnemyUnit).changeReactionState(EnemyUnit.REACT_STATE_WAIT_FOR_TIMER);
