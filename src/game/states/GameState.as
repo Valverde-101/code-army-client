@@ -1355,27 +1355,55 @@
 			if (!this.mScene) return null;
 			var enemies:Array = this.mScene.getEnemyUnits();
 			if (!enemies || enemies.length == 0) return null;
+			var players:Array = this.mScene.getPlayerAliveUnits();
 			var count:int = int(enemies.length);
-			var pass:int = 0;
 			var offset:int = 0;
 			var index:int = 0;
 			var enemy:EnemyUnit = null;
-			while (pass < 2) {
-				offset = 0;
-				while (offset < count) {
-					index = (this.mOfflineEnemyResponseCursor + offset) % count;
-					enemy = enemies[index] as EnemyUnit;
-					if (this.isOfflineEnemyResponseCandidate(enemy)) {
-						if (pass == 1 || enemy.hasPriorityAttackTargetInRange()) {
-							this.mOfflineEnemyResponseCursor = (index + 1) % count;
-							return enemy;
+			var player:PlayerUnit = null;
+			var origin:GridCell = null;
+			var playerCell:GridCell = null;
+			var proximity:int = 999999;
+			var distance:int = 0;
+			var rank:int = 0;
+			var bestRank:int = 999999;
+			var bestDistance:int = 999999;
+			var bestIndex:int = -1;
+			var j:int = 0;
+			while (offset < count) {
+				index = (this.mOfflineEnemyResponseCursor + offset) % count;
+				enemy = enemies[index] as EnemyUnit;
+				if (this.isOfflineEnemyResponseCandidate(enemy) && (origin = enemy.getCell()) != null) {
+					proximity = 999999;
+					j = 0;
+					while (players && j < players.length) {
+						player = players[j] as PlayerUnit;
+						playerCell = player && player.isAlive() ? player.getCell() : null;
+						if (playerCell) {
+							distance = Math.abs(origin.mPosI - playerCell.mPosI) + Math.abs(origin.mPosJ - playerCell.mPosJ);
+							if (distance < proximity) proximity = distance;
 						}
+						++j;
 					}
-					++offset;
+					// Previously hit enemies first; then those able to fight immediately;
+					// then the nearest frontline. Remote patrols take only spare slots.
+					rank = enemy.wasRecentlyAttackedForOfflineResponse() ? 0 : (enemy.hasPriorityAttackTargetInRange() ? 1 : (proximity <= 12 ? 2 : 3));
+					if (rank < bestRank || (rank == bestRank && proximity < bestDistance)) {
+						bestRank = rank;
+						bestDistance = proximity;
+						bestIndex = index;
+					}
 				}
-				++pass;
+				++offset;
 			}
-			return null;
+			if (bestIndex < 0) {
+				Utils.DiagEvent("ENEMY_RESPONSE_NO_CANDIDATE","map=" + this.mCurrentMapId + ";enemies=" + count + ";players=" + (players ? players.length : 0));
+				return null;
+			}
+			this.mOfflineEnemyResponseCursor = (bestIndex + 1) % count;
+			enemy = enemies[bestIndex] as EnemyUnit;
+			Utils.DiagEvent("ENEMY_RESPONSE_PRIORITY","map=" + this.mCurrentMapId + ";enemy=" + enemy.mUnitId + ";rank=" + bestRank + ";nearest_player_tiles=" + bestDistance + ";recent_hit=" + enemy.wasRecentlyAttackedForOfflineResponse());
+			return enemy;
 		}
 
 		private function dispatchNextOfflineEnemyPrimary():void {
