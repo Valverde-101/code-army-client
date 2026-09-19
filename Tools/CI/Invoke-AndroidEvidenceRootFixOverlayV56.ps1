@@ -430,22 +430,63 @@ try {
   Sync-PvpMapSetupText $configBasePath $configFullPath
   Assert-PvpMapSetupTextContract $configFullPath
 
-  # Offline desert water must be obtainable without premium-pack purchases.
-  # Keep the original paid-with-money refinery recipes; permit the one existing
-  # water plant to be placed in Home OR Desert without an unavailable friend gate.
-  foreach($waterConfigPath in @($configBasePath,$configFullPath)){
-    $waterConfig=Normalize-Lf ([IO.File]::ReadAllText($waterConfigPath))
-    $plantRegex=[regex]::new('(?s)"WaterPlant"\s*:\s*\{.*?\n\s*\}')
-    $plantMatches=$plantRegex.Matches($waterConfig)
-    if($plantMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_record_matches=$($plantMatches.Count) path=$waterConfigPath"}
-    $plant=$plantMatches[0].Value
-    if(([regex]::Matches($plant,'"AvailableInMaps"\s*:\s*"[^"]*"')).Count -ne 1 -or ([regex]::Matches($plant,'"RequiredFriends"\s*:\s*"[^"]*"')).Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_fields_missing path=$waterConfigPath"}
-    $plant=[regex]::Replace($plant,'("AvailableInMaps"\s*:\s*")[^"]*"','${1}Home,Desert"')
-    $plant=[regex]::Replace($plant,'("RequiredFriends"\s*:\s*")[^"]*"','${1}0"')
-    $waterConfig=$waterConfig.Substring(0,$plantMatches[0].Index)+$plant+$waterConfig.Substring($plantMatches[0].Index+$plantMatches[0].Length)
-    Write-Utf8Bom $waterConfigPath $waterConfig
-    Write-Host "WATER_PLANT_OFFLINE_ACCESS=PASS maps=Home,Desert friends=0 path=$waterConfigPath"
+  # The legacy full config has empty ResourceBuilding/BuildingDrives tables.
+  # Synchronize the refinery and its free-in-premium-currency recipes from the
+  # canonical base without PowerShell-deserializing the full config: it has
+  # case-distinct keys that PowerShell 5.1 cannot safely round-trip.
+  $waterBase=Normalize-Lf ([IO.File]::ReadAllText($configBasePath))
+  $plantRegex=[regex]::new('(?s)"WaterPlant"\s*:\s*\{.*?\n\s*\}')
+  $plantMatches=$plantRegex.Matches($waterBase)
+  if($plantMatches.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_base_record_matches=$($plantMatches.Count)"}
+  $plant=$plantMatches[0].Value
+  if(([regex]::Matches($plant,'"AvailableInMaps"\s*:\s*"[^"]*"')).Count -ne 1 -or ([regex]::Matches($plant,'"RequiredFriends"\s*:\s*"[^"]*"')).Count -ne 1){throw 'ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_base_fields_missing'}
+  $plant=[regex]::Replace($plant,'("AvailableInMaps"\s*:\s*")[^"]*"','1Home,Desert"')
+  $plant=[regex]::Replace($plant,'("RequiredFriends"\s*:\s*")[^"]*"','10"')
+  $plant=[regex]::Replace($plant,'("RequiredMission"\s*:\s*")[^"]*"','1"')
+  $waterBase=$waterBase.Substring(0,$plantMatches[0].Index)+$plant+$waterBase.Substring($plantMatches[0].Index+$plantMatches[0].Length)
+  Write-Utf8Bom $configBasePath $waterBase
+  $baseCfg=Get-Content -LiteralPath $configBasePath -Raw|ConvertFrom-Json
+  $baseResources=Get-JsonProperty $baseCfg 'ResourceBuilding'
+  $baseDrives=Get-JsonProperty $baseCfg 'BuildingDrives'
+  if(-not $baseResources -or -not $baseDrives){throw 'ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_base_tables_missing'}
+  $plantEntry=Get-JsonProperty $baseResources.Value 'WaterPlant'
+  if(-not $plantEntry){throw 'ANDROID_EVIDENCE_ROOTFIX_V56=FAIL waterplant_base_entry_missing'}
+
+  function Ensure-WaterEntry([string]$Text,[string]$Section,[string]$Id,$Entry) {
+    $span=Get-JsonObjectSpan $Text $Section
+    $body=$Text.Substring($span.Open+1,$span.Close-$span.Open-1)
+    if([regex]::IsMatch($body,'(?m)^\s*"'+[regex]::Escape($Id)+'"\s*:')){return $Text}
+    $separator=if($body.Trim().Length -gt 0){','}else{''}
+    $entryText='    "'+$Id+'": '+($Entry|ConvertTo-Json -Depth 30 -Compress)
+    $addition=$separator+[char]10+$entryText+[char]10
+    Write-Host "WATER_CONFIG_ENTRY_SYNC=PASS section=$Section id=$Id source=base_config action=insert"
+    return $Text.Substring(0,$span.Close)+$addition+$Text.Substring($span.Close)
   }
+
+  $waterFull=Normalize-Lf ([IO.File]::ReadAllText($configFullPath))
+  $waterFull=Ensure-WaterEntry $waterFull 'ResourceBuilding' 'WaterPlant' $plantEntry.Value
+  foreach($waterId in @('Water1','Water2','Water3')){
+    $recipe=Get-JsonProperty $baseDrives.Value $waterId
+    if(-not $recipe -or $null -eq $recipe.Value){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL water_recipe_missing=$waterId"}
+    $waterFull=Ensure-WaterEntry $waterFull 'BuildingDrives' $waterId $recipe.Value
+  }
+  $shopSpan=Get-JsonObjectSpan $waterFull 'ShopBuilding'
+  $shopBody=$waterFull.Substring($shopSpan.Open+1,$shopSpan.Close-$shopSpan.Open-1)
+  if(-not $shopBody.Contains('#ResourceBuilding.WaterPlant')){
+    $shopIds=[regex]::Matches($shopBody,'(?m)^\s*"(\d+)"\s*:')
+    $nextShopId=0
+    foreach($shopId in $shopIds){$nextShopId=[Math]::Max($nextShopId,[int]$shopId.Groups[1].Value+1)}
+    $shopEntry=[pscustomobject]@{ID=[string]$nextShopId;Item='#ResourceBuilding.WaterPlant'}
+    $waterFull=Ensure-WaterEntry $waterFull 'ShopBuilding' ([string]$nextShopId) $shopEntry
+  }
+  foreach($section in @('ResourceBuilding','BuildingDrives','ShopBuilding')){
+    $span=Get-JsonObjectSpan $waterFull $section
+    $body=$waterFull.Substring($span.Open+1,$span.Close-$span.Open-1)
+    $ids=if($section -eq 'ResourceBuilding'){@('WaterPlant')}elseif($section -eq 'BuildingDrives'){@('Water1','Water2','Water3')}else{@('#ResourceBuilding.WaterPlant')}
+    foreach($id in $ids){if(-not $body.Contains($id)){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL water_full_config_missing section=$section id=$id"}}
+  }
+  Write-Utf8NoBom $configFullPath $waterFull
+  Write-Host 'WATER_PLANT_OFFLINE_ACCESS=PASS maps=Home,Desert friends=0 mission=none runtime_tables=ResourceBuilding,BuildingDrives,ShopBuilding recipes=Water1,Water2,Water3 source=base_config full_config_case_preserved=true'
   Write-Host "PVP_AUTHENTIC_CATALOG=PASS active=1 native=pvp_map_1_4valleys_11x11 synthetic_disabled=$($disabledSyntheticPvpMapIds.Count)"
 
   $allPvpIds=@($pvpMaps|ForEach-Object{[string]$_.Id})
