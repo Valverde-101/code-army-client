@@ -118,7 +118,14 @@ var objectKey:String = String(gameobj["coord_x"]) + ":" + String(gameobj["coord_
 savedata["saveversion"] = CURRENT_SAVE_VERSION;
 			savedata["save_manifest"] = buildSaveManifest(savedata);
 '@
-  $offline=Replace-LiteralOne $offline $saveVersionNeedle $saveVersionReplacement.TrimEnd() 'save_version_manifest'
+  $fixOldSaveMarker='public static function fixOldSave'
+  $fixOldSaveIndex=$offline.IndexOf($fixOldSaveMarker,[StringComparison]::Ordinal)
+  if($fixOldSaveIndex -lt 0){throw 'ANDROID_EVIDENCE_ROOTFIX_V21=FAIL patch=save_version_manifest fixOldSave_marker_missing'}
+  $saveWriterPrefix=$offline.Substring(0,$fixOldSaveIndex)
+  $saveWriterSuffix=$offline.Substring($fixOldSaveIndex)
+  $saveWriterPrefix=Replace-LiteralOne $saveWriterPrefix $saveVersionNeedle $saveVersionReplacement.TrimEnd() 'save_version_manifest'
+  $offline=$saveWriterPrefix+$saveWriterSuffix
+  Write-Host 'EVIDENCE_ROOTFIX_V21_HOOK=PASS name=save_version_manifest scope=save_writer_before_fixOldSave semantic=true'
 
   $helpers=@'
 		private static function buildSaveManifest(savedata:*):* {

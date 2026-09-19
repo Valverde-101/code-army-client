@@ -3274,6 +3274,10 @@
 				screenY <= this.mGame.getStageHeight() + VIEWPORT_CULL_MARGIN;
 		}
 
+		public function isRenderableActuallyInViewport(param1: Renderable): Boolean {
+			return param1 != null && this.isRenderableInViewport(param1);
+		}
+
 		private function sortAll(param1: Boolean = true, param2: Boolean = true): void {
 			var perfStart:int = getTimer();
 			var changed:Boolean = false;

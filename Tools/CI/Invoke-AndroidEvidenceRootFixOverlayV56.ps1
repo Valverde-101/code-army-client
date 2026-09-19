@@ -467,6 +467,7 @@ try {
   $mapData=Get-Content -LiteralPath $mapDataPath -Raw
   $offline=Get-Content -LiteralPath $offlinePath -Raw
   $gameState=Get-Content -LiteralPath $gameStatePath -Raw
+  $scene=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\isometric\IsometricScene.as') -Raw
   $gameHud=Get-Content -LiteralPath $gameHudPath -Raw
   $dailyReward=Get-Content -LiteralPath $dailyRewardPath -Raw
   $configSource=Get-Content -LiteralPath $configSourcePath -Raw
@@ -489,7 +490,8 @@ try {
   Require $enemy 'ENEMY_ATTACK_TURN' 'campaign_enemy_turn_budget_telemetry_final'
   Require $enemy 'hasPriorityAttackTargetInRange' 'campaign_enemy_units_and_structures_priority_final'
   Reject $enemy 'ENEMY_ATTACK_PRIORITY_WAKE' 'campaign_enemy_no_timer_bypass_loop_final'
-  Require $gameState 'this.mScene.isInsideVisibleArea(enemy.getCell())' 'enemy_spatial_visibility_is_viewport_final'
+  Require $gameState 'this.mScene.isRenderableActuallyInViewport(enemy)' 'enemy_spatial_visibility_is_actual_viewport_final'
+  Require $scene 'public function isRenderableActuallyInViewport(param1: Renderable): Boolean' 'scene_actual_viewport_probe_final'
   Require $gameState 'enemy.hasPriorityAttackTargetInRange()' 'enemy_spatial_priority_targets_always_active_final'
   Require $enemyAttack 'if(mActor && mActor.getCell())' 'campaign_enemy_attack_camera_independent_final'
   Reject $enemyAttack 'if(GameState.mInstance.mScene.isInsideVisibleArea(mActor.getCell()))' 'campaign_enemy_attack_old_camera_gate_absent'
@@ -525,7 +527,7 @@ try {
 
   Write-Host 'REGRESSION_CHECK=PASS name=daily_reward_360_offline streak=360 missed_day_reset=true one_claim_per_day=true saveversion=10 representation=CURRENT_SAVE_VERSION popup_window=5day_page'
   Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_attack_turn targets=units+structures attacks_min=1 attacks_two_pct=40 attacks_three_pct=5 timer_bypass=false camera_independent=true pvp_untouched=true'
-  Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_budget target=24 viewport_visibility=true in_range_targets_always_active=true container_visible_not_used=true'
+  Write-Host 'REGRESSION_CHECK=PASS name=enemy_ai_spatial_budget target=24 viewport_visibility=actual_render_viewport in_range_targets_always_active=true container_visible_not_used=true'
   Write-Host 'REGRESSION_CHECK=PASS name=pvp_tile_ownership_is_immutable_during_unit_movement capture_call=false owner_write=false v43_invariant=true'
   Write-Host 'REGRESSION_CHECK=PASS name=campaign_enemy_capture_uses_native_owner_transfer visual_commit=immediate forced_owner=false'
   Write-Host 'REGRESSION_CHECK=PASS name=snow_elite_droid_sound_supported transition_abort_on_elitedroid=false'
