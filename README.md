@@ -175,6 +175,7 @@ Telemetría:
 
 - El agua, a diferencia de la energía, no se regenera pasivamente por tiempo; se consume con las acciones que requieren el recurso del mapa.
 - En campaña offline se permite una planta `WaterPlant` en Home o Desert sin requerir amigos conectados, manteniendo el límite de una planta. Produce agua sin compras prémium y el agua pertenece al perfil compartido entre mapas.
+- La configuración Android compuesta debe contener la planta en `ResourceBuilding`, sus tres recetas en `BuildingDrives` y su entrada en `ShopBuilding` tanto en la base como en el JSON final; la misión exclusiva de Home no puede bloquear su construcción en Desert.
 - Producciones originales: 30 unidades por 75 de dinero en 240 s; 45 por 140 en 480 s; 60 por 195 en 960 s. Hay que iniciar y recoger la producción.
 - La disponibilidad se ajusta en la configuración compuesta del build y necesita comprobación en el APK; la verificación estática `offline_desert_water_source` no equivale a una prueba física.
 
