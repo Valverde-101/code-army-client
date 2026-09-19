@@ -102,6 +102,14 @@
                }
             }
          }
+         // Friendly mines and barbed-wire are visually walkable in source assets:
+         // block them explicitly for enemy pathing without blocking their owner.
+         if(Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && param1.mObject is DecorationObject)
+         {
+            var ownedDefence:DecorationObject = param1.mObject as DecorationObject;
+            var friendlyMoverForDeco:Boolean = (param2 & IsometricCharacter.MOVER_TYPE_FRIENDLY_FLAG) > 0;
+            if(!friendlyMoverForDeco && ownedDefence.isAlive() && (ownedDefence.mItem.mId == "Mines" || ownedDefence.mItem.mId == "Barbwire" || ownedDefence.mItem.mId == "Barricade")) return false;
+         }
          if(Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && param1.mObject && !param1.mObject.isWalkable())
          {
             var friendlyMover:Boolean = (param2 & IsometricCharacter.MOVER_TYPE_FRIENDLY_FLAG) > 0;
