@@ -645,6 +645,7 @@ try {
   Require $enemy 'this.finishOfflineResponseTurn("actor_died_during_response");' 'mine_killed_enemy_finishes_response_turn_final'
   Require $enemy 'ENEMY_RESPONSE_ACTOR_DIED' 'mine_killed_enemy_telemetry_final'
   Require $gameState 'ENEMY_DEAD_ACTOR_ACTION_SKIPPED' 'dead_enemy_global_action_lane_released_final'
+  Require $gameState 'ENEMY_DEAD_AUX_ACTION_SKIPPED' 'dead_enemy_auxiliary_action_lane_released_final'
   Require $gameState 'this.mCurrentAction.skip();' 'dead_enemy_action_skip_final'
   Require $enemy 'noteOfflinePlayerAttacker' 'enemy_true_attacker_retaliation_final'
   Require $gameState 'TURRET_MANUAL_SHOT_QUEUED' 'manual_turret_attack_route_final'
