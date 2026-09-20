@@ -427,6 +427,20 @@ package game.actions
             this.mTargetY = (mActor as WorldObject).mScene.getCenterPointYOfCell((mActor as IsometricCharacter).mDestinationCell);
             this.mOriginCell = mActor.getCell();
             (mActor as IsometricCharacter).moveTo(this.mTargetX,this.mTargetY);
+            if(Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY && (mActor as IsometricCharacter).isStill())
+            {
+               // A path may disappear between the preflight and actual movement.
+               // Never leave a reserved tile or commit an arrival with no walking path.
+               var lostRouteCell:GridCell = (mActor as IsometricCharacter).mDestinationCell;
+               if(lostRouteCell && lostRouteCell.mCharacterComingToThisTile == mActor)
+               {
+                  lostRouteCell.mCharacterComingToThisTile = null;
+               }
+               (mActor as IsometricCharacter).mDestinationCell = null;
+               Utils.DiagEvent("CAMPAIGN_ENEMY_ROUTE_REJECTED","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + ((mActor as EnemyUnit).mUnitId) + ";reason=route_disappeared_after_preflight");
+               skip();
+               return;
+            }
             (mActor as IsometricCharacter).playCollectionSound((mActor as IsometricCharacter).mMoveSounds);
          }
          else
