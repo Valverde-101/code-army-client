@@ -4710,6 +4710,21 @@
 			this.mGame = null;
 		}
 
+		// Called only when a campaign enemy physically finishes its walking path.
+		// Commit the tile now rather than waiting for the queued turn-action cleanup.
+		// The later characterArrivedInCell call is idempotent because it only flips a
+		// FRIENDLY tile; do not trigger turrets, pickups, or enemy turn accounting here.
+		public function commitCampaignEnemyArrivalOwnership(param1: EnemyUnit, param2: GridCell): void {
+			if (!Config.OFFLINE_MODE || !this.mGame || this.mGame.mState != GameState.STATE_PLAY ||
+				!param1 || !param1.isAlive() || !param2 || param2.mOwner != MapData.TILE_OWNER_FRIENDLY) {
+				return;
+			}
+			this.changeCellOwner(param2);
+			Utils.DiagEvent("CAMPAIGN_TERRITORY_IMMEDIATE_ARRIVAL","map=" + this.mGame.mCurrentMapId +
+				";enemy=" + (param1.mItem ? param1.mItem.mId : "") + ";x=" + param2.mPosI +
+				";y=" + param2.mPosJ + ";owner=" + param2.mOwner + ";phase=visual_path_end");
+		}
+
 		public function characterArrivedInCell(param1: IsometricCharacter, param2: GridCell, param3: Boolean = true): void {
 			var arrivalOwnerBefore:int = param2 ? param2.mOwner : MapData.TILE_OWNER_NEUTRAL;
 			var campaignArrival:Boolean = this.mGame && this.mGame.mState != GameState.STATE_PVP;
