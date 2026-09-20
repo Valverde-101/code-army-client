@@ -363,6 +363,24 @@ package game.actions
          }
          if((mActor as IsometricCharacter).mDestinationCell)
          {
+            // A campaign move may not jump past the unit's authored movement range,
+            // even when an explicit destination comes from a scripted action.
+            var moveOrigin:GridCell = mActor.getCell();
+            var moveDest:GridCell = (mActor as IsometricCharacter).mDestinationCell;
+            var moveRange:int = Math.max(1,(mActor as EnemyUnit).mMovementRange);
+            var moveDx:int = moveOrigin ? Math.abs(moveDest.mPosI - moveOrigin.mPosI) : -1;
+            var moveDy:int = moveOrigin ? Math.abs(moveDest.mPosJ - moveOrigin.mPosJ) : -1;
+            if(Config.OFFLINE_MODE && GameState.mInstance.mState == GameState.STATE_PLAY)
+            {
+               Utils.DiagEvent("CAMPAIGN_ENEMY_MOVE_RANGE","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + ((mActor as EnemyUnit).mUnitId) + ";from=" + (moveOrigin ? moveOrigin.mPosI + "," + moveOrigin.mPosJ : "null") + ";to=" + moveDest.mPosI + "," + moveDest.mPosJ + ";dx=" + moveDx + ";dy=" + moveDy + ";range=" + moveRange);
+               if(!moveOrigin || Math.max(moveDx,moveDy) > moveRange)
+               {
+                  Utils.DiagEvent("CAMPAIGN_ENEMY_MOVE_RANGE_REJECTED","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + ((mActor as EnemyUnit).mUnitId) + ";dx=" + moveDx + ";dy=" + moveDy + ";range=" + moveRange);
+                  (mActor as IsometricCharacter).mDestinationCell = null;
+                  skip();
+                  return;
+               }
+            }
             (mActor as IsometricCharacter).mDestinationCell.mCharacterComingToThisTile = mActor as IsometricCharacter;
             this.mTargetX = (mActor as WorldObject).mScene.getCenterPointXOfCell((mActor as IsometricCharacter).mDestinationCell);
             this.mTargetY = (mActor as WorldObject).mScene.getCenterPointYOfCell((mActor as IsometricCharacter).mDestinationCell);
