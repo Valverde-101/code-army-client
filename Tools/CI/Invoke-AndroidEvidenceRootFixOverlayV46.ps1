@@ -140,13 +140,14 @@ try {
 '@
   $move=Replace-One $move $isOverAnchor ((Normalize-Lf $moveHelpers)+$isOverAnchor) 'enemy_move_watchdog_and_abort'
 
+  # The canonical campaign source already rejects a route disappearing AFTER
+  # the preflight. Patch only the reservation preamble; never replace/erase the
+  # authored moveTo -> lost-route guard -> playCollectionSound transaction.
   $reserveOld=@'
             (mActor as IsometricCharacter).mDestinationCell.mCharacterComingToThisTile = mActor as IsometricCharacter;
             this.mTargetX = (mActor as WorldObject).mScene.getCenterPointXOfCell((mActor as IsometricCharacter).mDestinationCell);
             this.mTargetY = (mActor as WorldObject).mScene.getCenterPointYOfCell((mActor as IsometricCharacter).mDestinationCell);
             this.mOriginCell = mActor.getCell();
-            (mActor as IsometricCharacter).moveTo(this.mTargetX,this.mTargetY);
-            (mActor as IsometricCharacter).playCollectionSound((mActor as IsometricCharacter).mMoveSounds);
 '@.TrimEnd()
   $reserveNew=@'
             this.mReservedDestinationCell = (mActor as IsometricCharacter).mDestinationCell;
@@ -155,16 +156,18 @@ try {
             this.mTargetY = (mActor as WorldObject).mScene.getCenterPointYOfCell(this.mReservedDestinationCell);
             this.mOriginCell = mActor.getCell();
             this.mOfflineMoveStartedAt = getTimer();
-            (mActor as IsometricCharacter).moveTo(this.mTargetX,this.mTargetY);
-            if((mActor as IsometricCharacter).isStill() && mActor.getCell() != this.mReservedDestinationCell)
-            {
-               Utils.DiagEvent("ENEMY_MOVE_PATH_FAIL","map=" + GameState.mInstance.mCurrentMapId + ";reason=empty_path;reservation_released=true");
-               this.skip();
-               return;
-            }
-            (mActor as IsometricCharacter).playCollectionSound((mActor as IsometricCharacter).mMoveSounds);
 '@.TrimEnd()
   $move=Replace-One $move (Normalize-Lf $reserveOld) (Normalize-Lf $reserveNew) 'enemy_move_reservation_transaction'
+  # Keep the source's stricter post-preflight cancellation and attach the
+  # watchdog's failure telemetry to that same branch, not a second competing
+  # movement cancellation branch.
+  $routeFailure='               Utils.DiagEvent("CAMPAIGN_ENEMY_ROUTE_REJECTED","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + ((mActor as EnemyUnit).mUnitId) + ";reason=route_disappeared_after_preflight");'
+  $routeFailureWithWatchdog='               Utils.DiagEvent("ENEMY_MOVE_PATH_FAIL","map=" + GameState.mInstance.mCurrentMapId + ";reason=route_disappeared_after_preflight;reservation_released=true");' + "`n" + $routeFailure
+  $move=Replace-One $move $routeFailure $routeFailureWithWatchdog 'enemy_move_existing_route_guard_preserved'
+  foreach($required in @('var lostRouteCell:GridCell','lostRouteCell.mCharacterComingToThisTile = null;','reason=route_disappeared_after_preflight','this.mOfflineMoveStartedAt = getTimer();','ENEMY_MOVE_PATH_FAIL')){
+    Require $move $required ('enemy_move_route_guard_contract_'+$required)
+  }
+  Write-Host 'REGRESSION_CHECK=PASS name=enemy_move_reservation_composes_with_existing_preflight route_guard=preserved reservation=owned watchdog=armed abort=single_path'
 
   $successReleasePattern='(?m)^(?<indent>[ \t]*)(?:mActor\.getCell\(\)|arrivalCell)\.mCharacterComingToThisTile\s*=\s*null;\s*$'
   $successReleaseMatches=[regex]::Matches($move,$successReleasePattern)
