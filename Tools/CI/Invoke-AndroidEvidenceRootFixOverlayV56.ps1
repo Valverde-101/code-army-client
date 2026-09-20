@@ -603,6 +603,14 @@ try {
   Require $campaignMove 'characterArrivedInCell(mActor as IsometricCharacter,arrivalCell)' 'campaign_enemy_capture_native_arrival_final'
   Require $campaignMove 'CAMPAIGN_ENEMY_MOVE_RANGE' 'campaign_enemy_move_origin_destination_logged_final'
   Require $campaignMove 'CAMPAIGN_ENEMY_MOVE_RANGE_REJECTED' 'campaign_enemy_move_range_guard_final'
+  Require $campaignMove 'campaignRouteSteps > moveRange' 'campaign_enemy_actual_route_budget_final'
+  Require $campaignMove 'CAMPAIGN_ENEMY_ROUTE_TRUNCATED' 'campaign_enemy_long_detour_bounded_final'
+  Require $campaignMove 'reason=route_disappeared_after_preflight' 'campaign_enemy_no_stale_destination_final'
+  Require $campaignMove 'lostRouteCell.mCharacterComingToThisTile = null;' 'campaign_enemy_reservation_released_if_path_lost_final'
+  Require $scene 'PLAYER_MOVE_SELECTION_RETAINED' 'player_failed_move_keeps_unit_selected_final'
+  $selectionGuardCount=([regex]::Matches($scene,'(?m)^[ \t]*if \(_loc15_\) \{\s*this\.mGame\.moveCameraToSeeCell\(_loc6_\);\s*this\.mGame\.unActivatePlayerUnit\(\);')).Count
+  if($selectionGuardCount -ne 2){throw "ANDROID_EVIDENCE_ROOTFIX_V56=FAIL player_move_selection_guard_count=$selectionGuardCount expected=2"}
+  Write-Host 'REGRESSION_CHECK=PASS name=campaign_bounded_enemy_path_and_busy_player_input source_composition=true actual_route_steps=true reservation_cleanup=true failed_move_keeps_selection=true'
   Reject $campaignMove 'arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_enemy_capture_no_forced_owner_final'
   Reject $campaignMove 'mTilemapGraphic.commitOwnershipVisualNow' 'campaign_enemy_source_compile_independent_final'
   Require $scene 'commitOwnershipVisualNow();' 'campaign_enemy_visual_commit_delegated_to_scene_final'
