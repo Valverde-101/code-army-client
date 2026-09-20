@@ -10,6 +10,7 @@ package game.gameElements
    import game.isometric.ObjectLoader;
    import game.items.DecorationItem;
    import game.items.MapItem;
+   import game.sound.ArmySoundManager;
    import game.states.GameState;
    
    public class DecorationObject extends PlayerBuildingObject
@@ -22,6 +23,10 @@ package game.gameElements
       {
          super(param1,param2,param3,param4,param5,param6);
          mHealth = mMaxHealth;
+         if(Config.OFFLINE_MODE && mItem && mItem.mId == "Mines")
+         {
+            ArmySoundManager.SC_ENM_BUILDING_EXPLOSION.load();
+         }
          // The owning side can traverse these campaign defences. Enemy route-finding
          // blocks living friendly defences explicitly in PathfindCriteria.
          // GridCell.mWalkable must also be true: the movement UI checks this
@@ -53,6 +58,9 @@ package game.gameElements
          {
             this.mCampaignMineBlastApplied = true;
             mScene.detonateCampaignMine(this);
+            // Both sides use the exact same explosion sound on the first lethal hit.
+            playCollectionSound(ArmySoundManager.SC_ENM_BUILDING_EXPLOSION);
+            Utils.DiagEvent("CAMPAIGN_FRIENDLY_MINE_EXPLOSION_SOUND","map=" + GameState.mInstance.mCurrentMapId + ";x=" + getCell().mPosI + ";y=" + getCell().mPosJ);
          }
          super.setHealth(param1);
          if(DecorationItem(mItem).mLeaveRuins)
