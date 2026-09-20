@@ -555,6 +555,7 @@ try {
   $playerInstall=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\PlayerInstallationObject.as') -Raw
   $friendlyMine=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\DecorationObject.as') -Raw
   $tileMap=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\battlefield\TileMapGraphic.as') -Raw
+  $characterMovement=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\isometric\characters\IsometricCharacter.as') -Raw
   $pathfind=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\isometric\pathfinding\PathfindCriteria.as') -Raw
   $playerBuilding=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\PlayerBuildingObject.as') -Raw
   $playerUnit=Get-Content -LiteralPath $playerUnitPath -Raw
@@ -675,6 +676,9 @@ try {
   Require $attack 'TURRET_MANUAL_TURN_CONSUMED' 'manual_turret_turn_telemetry_final'
   Require $tileMap 'Math.ceil(_loc2_.width * _loc5_)' 'zoom_cache_bitmap_scaled_width_final'
   Require $tileMap 'Math.ceil(_loc2_.height * _loc5_)' 'zoom_cache_bitmap_scaled_height_final'
+  Require $scene 'commitCampaignEnemyArrivalOwnership' 'enemy_arrival_frame_owner_commit_final'
+  Require $scene 'CAMPAIGN_TERRITORY_IMMEDIATE_ARRIVAL' 'enemy_arrival_frame_owner_telemetry_final'
+  Require $characterMovement 'commitCampaignEnemyArrivalOwnership(this as EnemyUnit,this.mDestinationCell)' 'enemy_visual_arrival_triggers_owner_commit_final'
   Require $scene 'captureDestroyedPlayerBuildingTerritory' 'destroyed_city_owner_final'
   Require $playerBuilding 'mScene.captureDestroyedPlayerBuildingTerritory(this)' 'city_destroy_triggers_owner_final'
   Require $scene 'detonateCampaignMine' 'symmetric_mine_blast_final'
