@@ -381,6 +381,47 @@ package game.actions
                   return;
                }
             }
+            // A nearby destination can still require a 20+ tile A* detour.
+            // Validate the ACTUAL path before reserving the tile so one enemy
+            // turn cannot hold the global action lane for ten seconds.
+            if(Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY)
+            {
+               var campaignRoute:Array = new Array();
+               var routeOptimizationBefore:Boolean = AStarPathfinder.mOptimizeStraightPaths;
+               var campaignRouteFound:Boolean = false;
+               try
+               {
+                  AStarPathfinder.mOptimizeStraightPaths = false;
+                  campaignRouteFound = AStarPathfinder.findPathAStar(campaignRoute,(mActor as WorldObject).mScene,new Point(mActor.mX,mActor.mY),new Point((mActor as WorldObject).mScene.getCenterPointXOfCell(moveDest),(mActor as WorldObject).mScene.getCenterPointYOfCell(moveDest)),(mActor as EnemyUnit).mMovementFlags);
+               }
+               finally
+               {
+                  AStarPathfinder.mOptimizeStraightPaths = routeOptimizationBefore;
+               }
+               if(!campaignRouteFound || campaignRoute.length < 2)
+               {
+                  Utils.DiagEvent("CAMPAIGN_ENEMY_ROUTE_REJECTED","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + ((mActor as EnemyUnit).mUnitId) + ";reason=no_path;range=" + moveRange);
+                  (mActor as IsometricCharacter).mDestinationCell = null;
+                  skip();
+                  return;
+               }
+               var campaignRouteSteps:int = int(campaignRoute.length / 2);
+               if(campaignRouteSteps > moveRange)
+               {
+                  var routeOffset:int = campaignRoute.length - 2 * moveRange;
+                  var cappedCell:GridCell = (mActor as WorldObject).mScene.getCellAtLocation(Number(campaignRoute[routeOffset]),Number(campaignRoute[routeOffset + 1]));
+                  if(!cappedCell || cappedCell == moveOrigin || cappedCell.mCharacter || cappedCell.mCharacterComingToThisTile)
+                  {
+                     Utils.DiagEvent("CAMPAIGN_ENEMY_ROUTE_REJECTED","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + ((mActor as EnemyUnit).mUnitId) + ";reason=bounded_cell_unavailable;path_steps=" + campaignRouteSteps + ";range=" + moveRange);
+                     (mActor as IsometricCharacter).mDestinationCell = null;
+                     skip();
+                     return;
+                  }
+                  Utils.DiagEvent("CAMPAIGN_ENEMY_ROUTE_TRUNCATED","map=" + GameState.mInstance.mCurrentMapId + ";enemy=" + ((mActor as EnemyUnit).mUnitId) + ";path_steps=" + campaignRouteSteps + ";range=" + moveRange + ";old_to=" + moveDest.mPosI + "," + moveDest.mPosJ + ";new_to=" + cappedCell.mPosI + "," + cappedCell.mPosJ);
+                  moveDest = cappedCell;
+                  (mActor as IsometricCharacter).mDestinationCell = cappedCell;
+               }
+            }
             (mActor as IsometricCharacter).mDestinationCell.mCharacterComingToThisTile = mActor as IsometricCharacter;
             this.mTargetX = (mActor as WorldObject).mScene.getCenterPointXOfCell((mActor as IsometricCharacter).mDestinationCell);
             this.mTargetY = (mActor as WorldObject).mScene.getCenterPointYOfCell((mActor as IsometricCharacter).mDestinationCell);
