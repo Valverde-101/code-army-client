@@ -1551,7 +1551,16 @@
 
 		public function updateActions(param1: int): void {
 			if (this.mCurrentAction != null) {
-				this.mCurrentAction.update(param1);
+				// The current enemy can be killed by its own mine blast. Never
+				// advance a dead actor's combat animation: that can overwrite its
+				// dying animation and leave the global action lane occupied.
+				if (Config.OFFLINE_MODE && this.mState == STATE_PLAY &&
+					this.mCurrentAction.mActor is EnemyUnit && !this.mCurrentAction.mActor.isAlive()) {
+					Utils.DiagEvent("ENEMY_DEAD_ACTOR_ACTION_SKIPPED","map=" + this.mCurrentMapId + ";action=" + this.mCurrentAction.mName + ";enemy=" + EnemyUnit(this.mCurrentAction.mActor).mUnitId);
+					this.mCurrentAction.skip();
+				} else {
+					this.mCurrentAction.update(param1);
+				}
 				if (this.mCurrentAction.isOver()) {
 					if (this.mActionWaitingConfirmation) {
 						if (this.mActionWaitingConfirmation == this.mCurrentAction) {
