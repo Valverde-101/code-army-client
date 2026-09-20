@@ -554,6 +554,7 @@ try {
   $enemyInstall=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\EnemyInstallationObject.as') -Raw
   $playerInstall=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\PlayerInstallationObject.as') -Raw
   $friendlyMine=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\DecorationObject.as') -Raw
+  $tileMap=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\battlefield\TileMapGraphic.as') -Raw
   $pathfind=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\isometric\pathfinding\PathfindCriteria.as') -Raw
   $playerBuilding=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gameElements\PlayerBuildingObject.as') -Raw
   $playerUnit=Get-Content -LiteralPath $playerUnitPath -Raw
@@ -599,6 +600,8 @@ try {
   Reject $pvp 'PVP_TERRITORY_CAPTURE' 'pvp_capture_absent_final'
   Require $campaignMove 'CAMPAIGN_TERRITORY_CAPTURE' 'campaign_enemy_capture_visible_final'
   Require $campaignMove 'characterArrivedInCell(mActor as IsometricCharacter,arrivalCell)' 'campaign_enemy_capture_native_arrival_final'
+  Require $campaignMove 'CAMPAIGN_ENEMY_MOVE_RANGE' 'campaign_enemy_move_origin_destination_logged_final'
+  Require $campaignMove 'CAMPAIGN_ENEMY_MOVE_RANGE_REJECTED' 'campaign_enemy_move_range_guard_final'
   Reject $campaignMove 'arrivalCell.mOwner = MapData.TILE_OWNER_ENEMY' 'campaign_enemy_capture_no_forced_owner_final'
   Reject $campaignMove 'mTilemapGraphic.commitOwnershipVisualNow' 'campaign_enemy_source_compile_independent_final'
   Require $scene 'commitOwnershipVisualNow();' 'campaign_enemy_visual_commit_delegated_to_scene_final'
@@ -670,12 +673,16 @@ try {
   Require $attack 'this.mManualInstallationAttack' 'manual_turret_player_turn_final'
   Require $attack '_loc1_.playerMoveMade();' 'manual_turret_turn_consumption_call_final'
   Require $attack 'TURRET_MANUAL_TURN_CONSUMED' 'manual_turret_turn_telemetry_final'
+  Require $tileMap 'Math.ceil(_loc2_.width * _loc5_)' 'zoom_cache_bitmap_scaled_width_final'
+  Require $tileMap 'Math.ceil(_loc2_.height * _loc5_)' 'zoom_cache_bitmap_scaled_height_final'
   Require $scene 'captureDestroyedPlayerBuildingTerritory' 'destroyed_city_owner_final'
   Require $playerBuilding 'mScene.captureDestroyedPlayerBuildingTerritory(this)' 'city_destroy_triggers_owner_final'
   Require $scene 'detonateCampaignMine' 'symmetric_mine_blast_final'
   Require $enemyInstall 'this.mCampaignWreckingElapsed' 'destroyed_obstacle_cleanup_timer_final'
   Require $enemyInstall 'mScene.detonateCampaignMine(this)' 'enemy_mine_detonates_final'
   Require $friendlyMine 'mScene.detonateCampaignMine(this)' 'friendly_mine_detonates_final'
+  Require $friendlyMine 'playCollectionSound(ArmySoundManager.SC_ENM_BUILDING_EXPLOSION)' 'friendly_mine_same_explosion_sound_final'
+  Require $friendlyMine 'CAMPAIGN_FRIENDLY_MINE_EXPLOSION_SOUND' 'friendly_mine_sound_telemetry_final'
   Require $friendlyMine 'setWalkable(true);' 'friendly_owned_defence_grid_passability_final'
   Require $pathfind 'friendlyMoverForDeco' 'enemy_cannot_cross_friendly_mines_final'
   Require $pathfind 'friendlyMoverForDeco' 'owner_specific_mine_and_barricade_passability_final'
