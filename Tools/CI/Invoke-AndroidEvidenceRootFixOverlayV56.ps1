@@ -645,7 +645,11 @@ try {
   Require $gameState 'TURRET_AUTO_SHOT_QUEUED' 'automatic_turret_attack_route_final'
   Require $gameState 'param2 ? param2 : param1.getCell()' 'turret_actual_arrival_cell_final'
   Require $playerInstall 'selectOfflineManualTurret(this)' 'turret_tap_arms_manual_attack_final'
-  Require $enemyAttack 'this.mManualInstallationAttack' 'manual_turret_player_turn_final'
+  # AttackEnemyAction is the player/turret attack class; EnemyAttackingAction
+  # is the opposing actor's attack class and cannot implement a manual turret turn.
+  Require $attack 'this.mManualInstallationAttack' 'manual_turret_player_turn_final'
+  Require $attack '_loc1_.playerMoveMade();' 'manual_turret_turn_consumption_call_final'
+  Require $attack 'TURRET_MANUAL_TURN_CONSUMED' 'manual_turret_turn_telemetry_final'
   Require $scene 'captureDestroyedPlayerBuildingTerritory' 'destroyed_city_owner_final'
   Require $playerBuilding 'mScene.captureDestroyedPlayerBuildingTerritory(this)' 'city_destroy_triggers_owner_final'
   Require $scene 'detonateCampaignMine' 'symmetric_mine_blast_final'
