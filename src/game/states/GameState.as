@@ -2389,8 +2389,19 @@
 				Utils.DiagEvent("SPAWN_WAVE_CLOCK_CLAMP","map=" + this.mCurrentMapId + ";delta_ms=" + param1);
 			}
 			this.mSpawnEnemyTimer += Config.OFFLINE_MODE ? Math.max(0,Math.min(param1,5000)) : param1;
-			var _loc2_: Object = mConfig.SpawnLevels[this.mPlayerProfile.mSpawnEnemyLevel] as Object;
-			while (this.mSpawnEnemyTimer >= _loc2_.ActivationTime * 60 * 1000) {
+			var _loc2_: Object = mConfig && mConfig.SpawnLevels ? mConfig.SpawnLevels[this.mPlayerProfile.mSpawnEnemyLevel] as Object : null;
+			var spawnIntervalMs:Number = _loc2_ ? Number(_loc2_.ActivationTime) * 60000 : 0;
+			if (!(spawnIntervalMs >= 1000) || isNaN(spawnIntervalMs) || !isFinite(spawnIntervalMs)) {
+				if (this.mSpawnEnemyTimer >= 5000) Utils.DiagEvent("SPAWN_WAVE_INTERVAL_INVALID","map=" + this.mCurrentMapId + ";level=" + this.mPlayerProfile.mSpawnEnemyLevel);
+				this.mSpawnEnemyTimer = 0;
+				return;
+			}
+			// Offline catch-up must never execute multiple expensive waves in one frame.
+			if (Config.OFFLINE_MODE && this.mSpawnEnemyTimer > spawnIntervalMs) {
+				Utils.DiagEvent("SPAWN_WAVE_BACKLOG_DROPPED","map=" + this.mCurrentMapId + ";timer_ms=" + this.mSpawnEnemyTimer);
+				this.mSpawnEnemyTimer = spawnIntervalMs;
+			}
+			while (this.mSpawnEnemyTimer >= spawnIntervalMs) {
 				_loc3_ = this.mPlayerProfile.mInventory.getAreas(true).length / 2 * _loc2_.SpawnAmountPerArea;
 				var offlineWaveCap:int = Config.OFFLINE_MODE ? Math.min(_loc3_,64) : _loc3_;
 				_loc4_ = int(this.mScene.getEnemyUnits().length);
@@ -2404,13 +2415,16 @@
 						_loc5_.push(_loc6_.ID);
 						_loc8_++;
 					}
-					this.spawnNewEnemies(_loc5_, Math.min(int(_loc2_.EnemyAmount),offlineWaveCap-_loc4_), _loc2_.EnemyUnitsP);
+					var waveSize:int = Math.min(int(_loc2_.EnemyAmount),offlineWaveCap-_loc4_);
+					if (Config.OFFLINE_MODE) waveSize = Math.min(waveSize,4);
+					if (waveSize > 0 && _loc5_.length > 0) this.spawnNewEnemies(_loc5_,waveSize,_loc2_.EnemyUnitsP);
 				}
-				this.mSpawnEnemyTimer -= _loc2_.ActivationTime * 60 * 1000;
+				this.mSpawnEnemyTimer -= spawnIntervalMs;
 			}
 		}
 
 		public function spawnNewEnemies(param1: Array, param2: int, param3: Array = null): void {
+			if (!param1 || param1.length == 0 || param2 <= 0 || !this.mScene || !this.mMapData) return;
 			trace("spawning new enemies");
 			var _loc7_: int = 0;
 			var _loc11_: int = 0;
@@ -2422,14 +2436,16 @@
 			var _loc17_: int = 0;
 			var _loc4_: Array = this.mMapData.mGrid;
 			var _loc5_: Array = new Array();
+			var seenSpawnCells:Dictionary = new Dictionary(true);
 			var _loc6_: int = 0;
 			var _loc8_: int = 0;
 			while (_loc8_ < this.mMapData.mGridHeight) {
 				_loc11_ = 0;
 				while (_loc11_ < this.mMapData.mGridWidth) {
 					_loc6_ = _loc8_ * this.mMapData.mGridWidth + _loc11_;
-					if (this.isTileSuitableForEnemySpawning(_loc4_[_loc6_], true)) {
+					if (this.isTileSuitableForEnemySpawning(_loc4_[_loc6_], true) && !seenSpawnCells[_loc4_[_loc6_]]) {
 						_loc5_.push(_loc4_[_loc6_]);
+						seenSpawnCells[_loc4_[_loc6_]] = true;
 						_loc7_ = _loc6_ - this.mMapData.mGridWidth;
 						_loc12_ = _loc4_[_loc7_];
 						if (_loc7_ > 0) {
@@ -2444,8 +2460,9 @@
 								}
 							}
 							*/
-							if (this.isTileSuitableForEnemySpawning(_loc4_[_loc7_], true)) {
+							if (this.isTileSuitableForEnemySpawning(_loc4_[_loc7_], true) && !seenSpawnCells[_loc4_[_loc7_]]) {
 								_loc5_.push(_loc4_[_loc7_]);
+								seenSpawnCells[_loc4_[_loc7_]] = true;
 							}
 						}
 					}
@@ -2462,7 +2479,7 @@
 			var _loc9_: int = Math.random() * _loc5_.length;
 			var _loc10_: int = 0;
 			while (_loc10_ < param2) {
-				_loc13_ = _loc10_;
+				_loc13_ = _loc10_ % param1.length;
 				if (param3) {
 					_loc15_ = 0;
 					_loc16_ = Math.random() * 100;
@@ -2477,12 +2494,18 @@
 					}
 				}
 				_loc14_ = ItemManager.getItem(param1[_loc13_], "EnemyUnit") as MapItem;
-				this.spawnEnemy(_loc14_, _loc5_[_loc9_]);
-				_loc10_++;
-				_loc9_++;
-				if (_loc9_ >= _loc5_.length) {
-					_loc9_ = 0;
+				var spawnCell:GridCell = _loc5_.splice(_loc9_,1)[0] as GridCell;
+				if (_loc14_ && this.isTileSuitableForEnemySpawning(spawnCell,true)) {
+					var newEnemy:EnemyUnit = this.spawnEnemy(_loc14_,spawnCell);
+					if (newEnemy && Config.OFFLINE_MODE && this.mState == STATE_PLAY) {
+						newEnemy.startAirDrop();
+						Utils.DiagEvent("SPAWN_WAVE_PARACHUTE","map=" + this.mCurrentMapId + ";enemy=" + newEnemy.mUnitId + ";x=" + spawnCell.mPosI + ";y=" + spawnCell.mPosJ);
+					}
+				} else {
+					Utils.DiagEvent("SPAWN_WAVE_CELL_REJECTED","map=" + this.mCurrentMapId + ";unit_id=" + param1[_loc13_]);
 				}
+				_loc10_++;
+				if (_loc5_.length > 0) _loc9_ = Math.random() * _loc5_.length;
 			}
 		}
 

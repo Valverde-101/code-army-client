@@ -8,6 +8,7 @@
 	import flash.text.TextFieldAutoSize;
 	import flash.text.TextFormat;
 	import flash.text.TextFormatAlign;
+	import flash.utils.getTimer;
 	import game.actions.AcceptHelpSuppressEnemyUnitAction;
 	import game.actions.Action;
 	import game.actions.ActionQueue;
@@ -124,6 +125,7 @@
 		private var mActivationIconVisible: int = -1;
 
 		private var mWaitingForAirplane: Boolean = false;
+		private var mAirDropStartedAt:int = 0;
 
 		private static const OFFLINE_ATTACK_TWO_CHANCE: Number = 40;
 
@@ -500,13 +502,16 @@
 				}
 			} else if (mState == STATE_AIR_DROP) {
 				mAnimationController.getCurrentAnimationFrameLabel();
-				if (!mScene.mParatrooperAnimation && this.mWaitingForAirplane) {
+				var airDropTimedOut:Boolean = Config.OFFLINE_MODE && this.mAirDropStartedAt > 0 && getTimer() - this.mAirDropStartedAt >= 7000;
+				if (airDropTimedOut) Utils.DiagEvent("AIRDROP_LANDING_TIMEOUT","map=" + (GameState.mInstance ? GameState.mInstance.mCurrentMapId : "") + ";enemy=" + this.mUnitId);
+				if (!airDropTimedOut && !mScene.mParatrooperAnimation && this.mWaitingForAirplane) {
 					mAnimationController.playCurrentAnimation();
 					this.mWaitingForAirplane = false;
-				} else if (mAnimationController.getCurrentAnimationFrameLabel() == "end") {
+				} else if (airDropTimedOut || mAnimationController.getCurrentAnimationFrameLabel() == "end") {
 					setAnimationAction(AnimationController.CHARACTER_ANIMATION_IDLE, false, true);
 					mState = STATE_WALKING;
-					mScene.characterArrivedInCell(this, this.getCell(), false);
+					this.mAirDropStartedAt = 0;
+					if (mScene && this.getCell()) mScene.characterArrivedInCell(this, this.getCell(), Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY);
 				}
 			} else if (GameState.mInstance.mState != GameState.STATE_VISITING_NEIGHBOUR) {
 				this.updateReactionState(param1);
@@ -1243,6 +1248,7 @@
 		}
 
 		public function startAirDrop(): void {
+			this.mAirDropStartedAt = getTimer();
 			mState = STATE_AIR_DROP;
 			setAnimationAction(AnimationController.CHARACTER_ANIMATION_AIRDROP);
 			stopAnimation();

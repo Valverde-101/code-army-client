@@ -335,7 +335,12 @@
 				(_loc4_ as EnemyUnit).noteOfflinePlayerAttacker(mCharacterActors[0] as PlayerUnit);
 			}
 			var targetCellForStack:GridCell = mTarget.getCell();
-			var stackedDefence:EnemyInstallationObject = targetCellForStack ? targetCellForStack.mObject as EnemyInstallationObject : null;
+			if (!targetCellForStack) {
+				Utils.DiagEvent("ATTACK_TARGET_CELL_MISSING","map=" + _loc1_.mCurrentMapId + ";action=" + mName);
+				this.mNewState = STATE_OVER;
+				return;
+			}
+			var stackedDefence:EnemyInstallationObject = targetCellForStack.mObject as EnemyInstallationObject;
 			_loc4_.reduceHealth(_loc13_);
 			// A unit standing on its own live installation no longer shields it.
 			// Resolve one hit per target; a destroyed mine applies its own neutral
@@ -346,7 +351,7 @@
 			}
 			(_loc4_ as EnemyUnit).changeReactionState(EnemyUnit.REACT_STATE_WAIT_FOR_TIMER);
 			this.mNewState = STATE_OVER;
-			var _loc16_: GridCell = mTarget.getCell();
+			var _loc16_: GridCell = targetCellForStack;
 			var _loc17_: Object = {
 				"coord_x": _loc16_.mPosI,
 				"coord_y": _loc16_.mPosJ,
