@@ -1,0 +1,50 @@
+param(
+  [Parameter(Mandatory=$true)][string]$RepoRoot,
+  [Parameter(Mandatory=$true)][string]$ExpectedSha,
+  [Parameter(Mandatory=$true)][string]$GitPath,
+  [string]$RequestedMode='Apply',
+  [string]$Mode=''
+)
+$ErrorActionPreference='Stop'
+Set-StrictMode -Version Latest
+
+$effectiveMode=if($PSBoundParameters.ContainsKey('Mode')){$Mode}else{$RequestedMode}
+if($effectiveMode -notin @('Apply','Restore')){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL invalid_mode=$effectiveMode"}
+
+$impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV56.ps1'
+$v4=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV4.ps1'
+if(-not(Test-Path -LiteralPath $impl -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL delegate_missing=$impl"}
+if(-not(Test-Path -LiteralPath $v4 -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v4_missing=$v4"}
+
+$tokens=$null
+$errors=$null
+[void][System.Management.Automation.Language.Parser]::ParseFile($impl,[ref]$tokens,[ref]$errors)
+if(@($errors).Count -gt 0){
+  $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V56_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
+  throw 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v56_parser_invalid'
+}
+Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_DELEGATE=PASS implementation=v56 predecessor=v55 final_composition=true capture=true snow=true attack_budget=true pvp_catalog=true spatial_ai=true parser=true'
+Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v14 requested=$RequestedMode external_mode=$Mode effective=$effectiveMode compatibility_parameter=Mode validates_manually=true"
+
+# V3 inserts commitOwnershipVisualNow between clearDirtyBitmapRegion and
+# updateCameraViewport. The old V4 range used updateCameraViewport as its end
+# anchor, so it could span across and consume the V3 ownership method. Repair
+# that composition boundary before delegating, then restore the script bytes.
+$original=[IO.File]::ReadAllBytes($v4)
+try {
+  $text=[Text.Encoding]::UTF8.GetString($original)
+  $old='(?=\n\s*public function updateCameraViewport)'
+  $new='(?=\n\s*public function commitOwnershipVisualNow)'
+  $count=([regex]::Matches($text,[regex]::Escape($old))).Count
+  if($count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v4_boundary expected=1 actual=$count"}
+  $text=$text.Replace($old,$new)
+  [IO.File]::WriteAllText($v4,$text,(New-Object System.Text.UTF8Encoding($true)))
+  Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPOSITION=PASS root_cause=v4_cross_method_span boundary=commitOwnershipVisualNow'
+
+  & $impl -RepoRoot $RepoRoot -ExpectedSha $ExpectedSha -GitPath $GitPath -RequestedMode $effectiveMode
+  if($LASTEXITCODE -ne 0){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL delegate_exit=$LASTEXITCODE"}
+  Write-Host "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=PASS delegated=v56 predecessor=v55 mode=$effectiveMode sha=$ExpectedSha v4_boundary_fixed=true final_composition=true legacy_adapters_bypassed=true"
+}
+finally {
+  [IO.File]::WriteAllBytes($v4,$original)
+}

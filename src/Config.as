@@ -54,7 +54,7 @@
       
       public static var DISABLE_SORT:Boolean = false;
       
-      public static const ENABLE_DAILY_REWARDS:Boolean = false;
+      public static const ENABLE_DAILY_REWARDS:Boolean = true;
       
       public static const DEBUG_VIEWERS:Boolean = false;
       

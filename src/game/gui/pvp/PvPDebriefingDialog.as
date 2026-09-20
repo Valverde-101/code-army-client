@@ -18,35 +18,28 @@
    
    public class PvPDebriefingDialog extends PopUpWindow
    {
-       
-      
       private var mButtonCancel:ArmyButton;
-      
       private var mButtonBrag:ResizingButton;
-      
       private var mButtonMatchupScreen:ResizingButtonSelected;
-      
       private var mPlayerCard:MovieClip;
-      
       private var mOpponentCard:MovieClip;
-      
       private var mStatus:MovieClip;
-      
       private var mLoot:MovieClip;
-      
       private var mPlayer:PvPOpponent;
-      
       private var mOpponent:PvPOpponent;
-      
       private var mMatchUpCallback:Function;
-      
       private var mHeader:StylizedHeaderClip;
+      private var mCloseStarted:Boolean = false;
       
       public function PvPDebriefingDialog()
       {
          var _loc2_:TextField = null;
          var _loc1_:Class = DCResourceManager.getInstance().getSWFClass("swf/popups_pvp","popup_pvp_loot");
          super(new _loc1_(),true);
+         // Debrief dismissal must never depend on an optional transition asset.
+         // An empty close animation is intentionally falsy in GameHUD.closeDialog,
+         // avoiding the legacy String(null) -> "null" transition lookup.
+         this.mCloseTransitionName = "";
          this.mPlayerCard = mClip.getChildByName("Player_Card") as MovieClip;
          this.mOpponentCard = mClip.getChildByName("Opponent_Card") as MovieClip;
          this.mStatus = mClip.getChildByName("PvP_Battle_Status") as MovieClip;
@@ -68,6 +61,7 @@
       
       public function Activate(param1:Function, param2:Function) : void
       {
+         this.mCloseStarted = false;
          this.mButtonBrag.setEnabled(true);
          mDoneCallback = param1;
          this.mMatchUpCallback = param2;
@@ -166,7 +160,13 @@
       
       private function closeClicked(param1:MouseEvent) : void
       {
-         Utils.DiagEvent("PVP_DEBRIEF_CLOSE","win=" + GameState.mInstance.mPvPMatch.mWin + ";map=" + GameState.mInstance.mCurrentMapId);
+         if(this.mCloseStarted)
+         {
+            Utils.DiagEvent("PVP_DEBRIEF_CLOSE_DUP","map=" + GameState.mInstance.mCurrentMapId);
+            return;
+         }
+         this.mCloseStarted = true;
+         Utils.DiagEvent("PVP_DEBRIEF_CLOSE","win=" + GameState.mInstance.mPvPMatch.mWin + ";map=" + GameState.mInstance.mCurrentMapId + ";transition=disabled");
          this.closeDialog();
          GameState.mInstance.endPvP();
       }
@@ -191,7 +191,7 @@
       
       protected function closeDialog(param1:Boolean = true) : void
       {
-         if(param1)
+         if(param1 && mDoneCallback != null)
          {
             mDoneCallback((this as Object).constructor);
          }
@@ -199,7 +199,13 @@
       
       private function newMach(param1:MouseEvent) : void
       {
-         Utils.DiagEvent("PVP_DEBRIEF_PLAY_AGAIN","win=" + GameState.mInstance.mPvPMatch.mWin + ";map=" + GameState.mInstance.mCurrentMapId);
+         if(this.mCloseStarted)
+         {
+            Utils.DiagEvent("PVP_DEBRIEF_PLAY_AGAIN_DUP","map=" + GameState.mInstance.mCurrentMapId);
+            return;
+         }
+         this.mCloseStarted = true;
+         Utils.DiagEvent("PVP_DEBRIEF_PLAY_AGAIN","win=" + GameState.mInstance.mPvPMatch.mWin + ";map=" + GameState.mInstance.mCurrentMapId + ";transition=disabled");
          this.closeDialog();
          GameState.mInstance.endPvP(GameState.mInstance.openPvPMatchUpDialog);
       }

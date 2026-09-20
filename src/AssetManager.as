@@ -37,7 +37,10 @@
       
       public static const JSON_FILES_TO_LOAD:Array = ["army_config_base"];
       
-      public static const CVS_FILES_TO_LOAD:Array = ["tile_map","map_2", "tile_map_desert", "pvp_map_1_4valleys_11x11"];
+      // Only resources that physically exist in the bootstrap config package belong here.
+      // Snow uses tile_map_snow.csv and is loaded by the map-transition resource gate; the
+      // legacy map_2 entry had no file in v23.2 and could strand Android at the 90% boundary.
+      public static const CVS_FILES_TO_LOAD:Array = ["tile_map","tile_map_desert","pvp_map_1_4valleys_11x11"];
       
       private static var instance:AssetManager;
        

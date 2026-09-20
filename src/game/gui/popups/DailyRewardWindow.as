@@ -16,11 +16,14 @@ package game.gui.popups
    import game.net.GameFeedPublisher;
    import game.net.ServiceIDs;
    import game.states.GameState;
+   import game.utils.OfflineSave;
    
    public class DailyRewardWindow extends PopUpWindow
    {
       
       private static const DAY_COUNT:int = 5;
+      
+      private static const MAX_STREAK_DAY:int = 360;
       
       private static const DAILY_ITEM_CHOICE_COUNT:int = 3;
        
@@ -64,7 +67,7 @@ package game.gui.popups
          var _loc7_:MovieClip = null;
          this.mCurrentRewards = new Array();
          mDoneCallback = param1;
-         this.mCurrentDay = param2;
+         this.mCurrentDay = int(Math.max(1,Math.min(MAX_STREAK_DAY,param2)));
          _loc4_ = new StylizedHeaderClip(mClip.getChildByName("Header") as MovieClip,GameState.getText("DAILY_REWARD_HEADER"));
          this.activateCurrentDay();
          this.mProgressBar = mClip.getChildByName("Daily_Reward_Progress_Bar") as MovieClip;
@@ -89,10 +92,13 @@ package game.gui.popups
          var _loc3_:TextField = null;
          var _loc1_:MovieClip = mClip.getChildByName("Daily_Reward_Tabs") as MovieClip;
          var _loc4_:int = 1;
+         var _loc5_:int = int((this.mCurrentDay - 1) / DAY_COUNT) * DAY_COUNT + 1;
+         var _loc6_:int = 0;
          while(_loc4_ <= DAY_COUNT)
          {
+            _loc6_ = _loc5_ + _loc4_ - 1;
             _loc2_ = _loc1_.getChildByName("Daily_Reward_Tab_Active_0" + _loc4_) as MovieClip;
-            if(_loc4_ == this.mCurrentDay)
+            if(_loc6_ == this.mCurrentDay)
             {
                _loc2_.visible = true;
             }
@@ -103,7 +109,7 @@ package game.gui.popups
             }
             _loc3_ = _loc2_.getChildByName("Text_Day") as TextField;
             _loc3_.defaultTextFormat = _loc3_.getTextFormat();
-            _loc3_.text = GameState.getText("DAILY_REWARD_DAY") + " " + _loc4_;
+            _loc3_.text = GameState.getText("DAILY_REWARD_DAY") + " " + _loc6_;
             _loc3_.mouseEnabled = false;
             _loc4_++;
          }
@@ -151,9 +157,10 @@ package game.gui.popups
          var _loc3_:Item = null;
          var _loc4_:MovieClip = null;
          var _loc2_:int = 1;
+         var _loc5_:int = this.mCurrentDay >= MAX_STREAK_DAY ? 1 : this.mCurrentDay + 1;
          while(_loc2_ <= DAILY_ITEM_CHOICE_COUNT)
          {
-            _loc3_ = this.getRewardItem(this.mCurrentDay + 1,_loc2_ - 1);
+            _loc3_ = this.getRewardItem(_loc5_,_loc2_ - 1);
             _loc4_ = this.mProgressBar.getChildByName("Item_0" + _loc2_) as MovieClip;
             IconLoader.addIcon(_loc4_,_loc3_,this.iconLoaded);
             _loc2_++;
@@ -185,6 +192,20 @@ package game.gui.popups
          else
          {
             _loc2_ = 3;
+         }
+         var selectedReward:Item = this.mCurrentRewards[_loc2_ - 1] as Item;
+         if(Config.OFFLINE_MODE)
+         {
+            if(!OfflineSave.claimDailyReward(this.mCurrentDay,selectedReward,_loc2_))
+            {
+               return;
+            }
+         }
+         else
+         {
+            var rewardRequest:Object = {"reward_item":_loc2_};
+            GameState.mInstance.mServer.serverCallServiceWithParameters(ServiceIDs.CLAIM_DAILY_REWARD,rewardRequest,false);
+            GameState.mInstance.mPlayerProfile.mInventory.addItems(selectedReward,1);
          }
          var _loc3_:int = 1;
          while(_loc3_ <= DAILY_ITEM_CHOICE_COUNT)
@@ -224,9 +245,6 @@ package game.gui.popups
             }
             _loc3_++;
          }
-         var _loc4_:Object = {"reward_item":_loc2_};
-         GameState.mInstance.mServer.serverCallServiceWithParameters(ServiceIDs.CLAIM_DAILY_REWARD,_loc4_,false);
-         GameState.mInstance.mPlayerProfile.mInventory.addItems(this.mCurrentRewards[_loc2_ - 1],1);
          if(Config.DEBUG_MODE)
          {
          }
@@ -234,11 +252,20 @@ package game.gui.popups
       
       private function getRewardItem(param1:int, param2:int) : Item
       {
-         if(param1 > DAY_COUNT)
+         if(param1 < 1)
          {
             param1 = 1;
          }
+         if(param1 > MAX_STREAK_DAY)
+         {
+            param1 = (param1 - 1) % MAX_STREAK_DAY + 1;
+         }
          var _loc3_:Object = GameState.mConfig.DailyReward["Day" + param1];
+         if(_loc3_ == null)
+         {
+            var cycleDay:int = (param1 - 1) % DAY_COUNT + 1;
+            _loc3_ = GameState.mConfig.DailyReward["Day" + cycleDay];
+         }
          if(param2 == 0)
          {
             return ItemManager.getItem(_loc3_.Item1.Item.ID,_loc3_.Item1.Item.Type);
@@ -323,16 +350,15 @@ package game.gui.popups
       {
          var _loc6_:MovieClip = null;
          var _loc2_:MovieClip = param1.target as MovieClip;
-         var _loc3_:int = _loc2_.totalFrames * (this.mCurrentDay - 1) / DAY_COUNT;
-         var _loc4_:int = _loc2_.totalFrames * this.mCurrentDay / DAY_COUNT;
-         var _loc5_:int = _loc2_.currentFrame / _loc2_.totalFrames * 100;
+         var _loc3_:int = int(Math.max(1,Math.round(_loc2_.totalFrames * (this.mCurrentDay - 1) / MAX_STREAK_DAY)));
+         var _loc4_:int = int(Math.max(1,Math.round(_loc2_.totalFrames * this.mCurrentDay / MAX_STREAK_DAY)));
          if(_loc2_.currentFrame < _loc3_)
          {
             _loc2_.gotoAndPlay(_loc3_);
          }
          else if(_loc2_.currentFrame >= _loc4_)
          {
-            if(this.mCurrentDay == DAY_COUNT)
+            if(this.mCurrentDay == MAX_STREAK_DAY)
             {
                _loc2_.gotoAndStop(_loc2_.totalFrames);
             }
@@ -341,7 +367,7 @@ package game.gui.popups
                _loc2_.stop();
             }
             _loc2_.removeEventListener(Event.ENTER_FRAME,this.fillTheBarGraphic);
-            if((_loc5_ = this.mCurrentDay * 100 / DAY_COUNT) == 100)
+            if(this.mCurrentDay == MAX_STREAK_DAY)
             {
                (_loc6_ = this.mProgressBar.getChildByName("Completed") as MovieClip).visible = true;
                _loc6_.addEventListener(Event.ENTER_FRAME,this.fadeIn);
@@ -349,7 +375,7 @@ package game.gui.popups
                (this.mProgressBar.getChildByName("Text_Amount") as TextField).visible = false;
             }
          }
-         (this.mProgressBar.getChildByName("Text_Amount") as TextField).text = _loc5_ + "%";
+         (this.mProgressBar.getChildByName("Text_Amount") as TextField).text = this.mCurrentDay + " / " + MAX_STREAK_DAY;
       }
       
       private function updateCompletedText(param1:Event) : void

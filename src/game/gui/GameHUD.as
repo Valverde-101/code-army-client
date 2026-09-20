@@ -135,6 +135,8 @@
 		private static const MOBILE_PULL_OUT_TOP_SAFE:Number = 72;
 		private static const MOBILE_PULL_OUT_BOTTOM_SAFE:Number = 8;
 
+		private var mDailyRewardOpenRequestPending:Boolean = false;
+
 		public static var isPauseButtonClicked: Boolean = false;
 
 		private static const TOOLBOX_INDEX_SELL: int = 0;
@@ -415,7 +417,7 @@
 				this.mGame.mServer.serverCallServiceWithParameters(ServiceIDs.GET_GOLD_AND_CASH, {
 					"ver": 1
 				}, false);
-				if (Config.ENABLE_DAILY_REWARDS) {
+				if (Config.ENABLE_DAILY_REWARDS && !Config.OFFLINE_MODE) {
 					this.mGame.mServer.serverCallService(ServiceIDs.GET_DAILY_REWARD, false);
 				}
 				this.mFirstUpdate = false;
@@ -1463,6 +1465,12 @@
 			}
 		}
 
+		public function requestImmediateSave(): void {
+			CONFIG::BUILD_FOR_MOBILE_AIR {
+				this.autoSaveGame(null);
+			}
+		}
+
 		CONFIG::BUILD_FOR_AIR {
 			public function onPermission(e: PermissionEvent): void {
 				var file: File = e.target as File;
@@ -1951,9 +1959,21 @@
 
 		public function openSpawningBeaconWindow(): void {}
 
-		public function openDailyRewardTextBox(param1: int, param2: Boolean): void {
-			this.openDialogIfResourceLoaded(Config.SWF_POPUPS_START_NAME, DailyRewardWindow, [this.closeDialog, param1, param2]);
+		public function isDailyRewardOpenRequestPending():Boolean {
+			return this.mDailyRewardOpenRequestPending;
+		}
+
+		public function openDailyRewardTextBox(param1: int, param2: Boolean): Boolean {
+			if (this.mDailyRewardOpenRequestPending || PopUpManager.isPopUpCreated(DailyRewardWindow)) return true;
+			this.mDailyRewardOpenRequestPending = true;
+			var accepted:Boolean = this.openDialogIfResourceLoaded(Config.SWF_POPUPS_START_NAME, DailyRewardWindow, [this.closeDialog, param1, param2]);
+			if (!accepted) {
+				this.mDailyRewardOpenRequestPending = false;
+				return false;
+			}
 			this.mGame.cancelAllPlayerActions();
+			Utils.DiagEvent("DAILY_REWARD_OPEN_REQUEST","day=" + param1 + ";accepted=true");
+			return true;
 		}
 
 		public function openCollectionTradedTextBox(param1: ItemCollectionItem): void {
@@ -1968,12 +1988,12 @@
 			this.openDialogIfResourceLoaded(Config.SWF_POPUPS_WARNINGS_NAME, RateAppWindow, [this.closeDialog]);
 		}
 
-		private function openDialogIfResourceLoaded(param1: String, param2: Class, param3: Array, param4: * = null, param5: Boolean = true): void {
+		private function openDialogIfResourceLoaded(param1: String, param2: Class, param3: Array, param4: * = null, param5: Boolean = true): Boolean {
 			var _loc6_: DCResourceManager = null;
 			var _loc7_: String = null;
 			if (this.mFileBeingLoaded != null) {
 				Utils.LogError("Trying to open window while waiting for another one to load");
-				return;
+				return false;
 			}
 			this.mPlaceButton.setVisible(false);
 			this.mPlaceCancelButton.setVisible(false);
@@ -1981,9 +2001,7 @@
 				this.mGame.getMainClip().mouseChildren = false;
 				_loc7_ = param1 + DCResourceManager.EVENT_COMPLETE_SINGLE_FILE;
 				_loc6_.addEventListener(_loc7_, this.LoadingFinished);
-				if (!_loc6_.isAddedToLoadingList(param1)) {
-					_loc6_.load(Config.DIR_DATA + param1 + ".swf", param1, null, false);
-				}
+				if (!_loc6_.isAddedToLoadingList(param1)) _loc6_.load(Config.DIR_DATA + param1 + ".swf", param1, null, false);
 				this.mFileBeingLoaded = param1;
 				this.mDialogClass = param2;
 				this.mDialogParameters = param3;
@@ -1992,6 +2010,7 @@
 			} else {
 				this.openDialog(param2, param3, param4, param5);
 			}
+			return true;
 		}
 
 		protected function LoadingFinished(param1: Event): void {
@@ -2013,6 +2032,10 @@
 			(_loc5_ = PopUpManager.getPopUp(param1, param3) as DCWindow).open(this.mGame.getMainClip(), param4);
 			(_loc6_ = _loc5_["Activate"]).apply(_loc5_, param2);
 			_loc6_ = null;
+			if (param1 == DailyRewardWindow) {
+				this.mDailyRewardOpenRequestPending = false;
+				this.mGame.acknowledgeOfflineDailyRewardOpened();
+			}
 			return _loc5_;
 		}
 

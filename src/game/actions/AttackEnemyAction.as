@@ -2,6 +2,8 @@
 	import game.characters.AnimationController;
 	import game.characters.EnemyUnit;
 	import game.characters.PvPEnemyUnit;
+	import game.characters.PlayerUnit;
+	import game.gameElements.EnemyInstallationObject;
 	import game.gameElements.PlayerInstallationObject;
 	import game.gui.TextEffect;
 	import game.isometric.GridCell;
@@ -37,6 +39,12 @@
 		protected var mNewState: int;
 
 		private var mEnableSupportsForEnemy: Boolean;
+
+		// Manual player-issued turret fire costs one player turn, unlike automatic fire.
+		public var mManualInstallationAttack:Boolean = false;
+		// Complete all shots in the same manually initiated volley before opening
+		// the three-enemy response; supports never consume a player turn.
+		public var mSameTurnTurretSupport:Boolean = false;
 
 		public function AttackEnemyAction(param1: Array, param2: PlayerInstallationObject, param3: IsometricCharacter, param4: Boolean = true) {
 			super("AttackEnemy");
@@ -195,7 +203,7 @@
 			if (mSkipped) {
 				return;
 			}
-			if (mTarget == null || !mTarget.isAlive() || Boolean((mTarget as EnemyUnit).mCurrentAction)) {
+			if (mTarget == null || !mTarget.isAlive() || (Boolean((mTarget as EnemyUnit).mCurrentAction) && !(Config.OFFLINE_MODE && GameState.mInstance.mState == GameState.STATE_PLAY && mActor is PlayerInstallationObject))) {
 				skip();
 				return;
 			}
@@ -326,10 +334,27 @@
 				_loc15_ = true;
 				_loc14_ = 0;
 			}
+			if (Config.OFFLINE_MODE && _loc1_.mState == GameState.STATE_PLAY && mCharacterActors && mCharacterActors.length > 0 && mCharacterActors[0] is PlayerUnit) {
+				(_loc4_ as EnemyUnit).noteOfflinePlayerAttacker(mCharacterActors[0] as PlayerUnit);
+			}
+			var targetCellForStack:GridCell = mTarget.getCell();
+			if (!targetCellForStack) {
+				Utils.DiagEvent("ATTACK_TARGET_CELL_MISSING","map=" + _loc1_.mCurrentMapId + ";action=" + mName);
+				this.mNewState = STATE_OVER;
+				return;
+			}
+			var stackedDefence:EnemyInstallationObject = targetCellForStack.mObject as EnemyInstallationObject;
 			_loc4_.reduceHealth(_loc13_);
+			// A unit standing on its own live installation no longer shields it.
+			// Resolve one hit per target; a destroyed mine applies its own neutral
+			// 1-HP blast through detonateCampaignMine (no duplicated splash here).
+			if (Config.OFFLINE_MODE && _loc1_.mState == GameState.STATE_PLAY && stackedDefence && stackedDefence.isAlive() && stackedDefence.getHealth() > 0) {
+				stackedDefence.reduceHealth(_loc13_);
+				Utils.DiagEvent("CAMPAIGN_STACKED_DEFENCE_HIT","map=" + _loc1_.mCurrentMapId + ";defence=" + (stackedDefence.mItem ? stackedDefence.mItem.mId : "") + ";damage=" + _loc13_ + ";x=" + targetCellForStack.mPosI + ";y=" + targetCellForStack.mPosJ);
+			}
 			(_loc4_ as EnemyUnit).changeReactionState(EnemyUnit.REACT_STATE_WAIT_FOR_TIMER);
 			this.mNewState = STATE_OVER;
-			var _loc16_: GridCell = mTarget.getCell();
+			var _loc16_: GridCell = targetCellForStack;
 			var _loc17_: Object = {
 				"coord_x": _loc16_.mPosI,
 				"coord_y": _loc16_.mPosJ,
@@ -366,9 +391,10 @@
 					_loc21_++;
 				}
 			}
-			if (mCharacterActors) {
+			if (mCharacterActors || (this.mManualInstallationAttack && Config.OFFLINE_MODE && _loc1_.mState == GameState.STATE_PLAY)) {
 				_loc1_.playerMoveMade();
 			}
+			if (this.mManualInstallationAttack) Utils.DiagEvent("TURRET_MANUAL_TURN_CONSUMED","map=" + _loc1_.mCurrentMapId + ";target=" + (_loc4_.mItem ? _loc4_.mItem.mId : ""));
 		}
 	}
 }

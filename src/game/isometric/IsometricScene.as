@@ -3274,6 +3274,10 @@
 				screenY <= this.mGame.getStageHeight() + VIEWPORT_CULL_MARGIN;
 		}
 
+		public function isRenderableActuallyInViewport(param1: Renderable): Boolean {
+			return param1 != null && this.isRenderableInViewport(param1);
+		}
+
 		private function sortAll(param1: Boolean = true, param2: Boolean = true): void {
 			var perfStart:int = getTimer();
 			var changed:Boolean = false;
@@ -3975,7 +3979,26 @@
 						}
 						_loc10_++;
 					}
-					if (_loc6_.mObject && !_loc6_.mCharacter && !(_loc6_.mObject is DebrisObject && _loc6_.mOwner == MapData.TILE_OWNER_ENEMY) && !(_loc7_ && _loc6_.mObject is DebrisObject) && !(Boolean(_loc7_) && _loc6_.mObject is ConstructionObject && ConstructionObject(_loc6_.mObject).getState() == PlayerBuildingObject.STATE_RUINS) && !(Boolean(_loc7_) && _loc6_.mObject is ResourceBuildingObject && ResourceBuildingObject(_loc6_.mObject).getState() == PlayerBuildingObject.STATE_RUINS)) {
+					// A friendly mine/barbed wire is an occupied cell but is still a legal
+					// walking destination for its owner. Resolve movement BEFORE
+					// the generic object-click branch deactivates the active unit.
+					if (_loc7_ && Config.OFFLINE_MODE && this.mGame.mState == GameState.STATE_PLAY && _loc6_.mObject is DecorationObject &&
+						(_loc6_.mObject.mItem.mId == "Mines" || _loc6_.mObject.mItem.mId == "Barbwire" || _loc6_.mObject.mItem.mId == "Barricade") &&
+						this.mGame.isInWalkingDistance(_loc6_) && !_loc6_.mCharacter) {
+						_loc15_ = this.mGame.doPlayerWalkAction(this.getCenterPointXOfCell(_loc6_), this.getCenterPointYOfCell(_loc6_));
+						if (_loc15_) {
+							this.mGame.moveCameraToSeeCell(_loc6_);
+							this.mGame.unActivatePlayerUnit();
+						} else {
+							// A live enemy action can temporarily own the global action lane.
+							// Do not silently consume this input or clear the selected player unit.
+							ArmySoundManager.getInstance().playSound(ArmySoundManager.SFX_UI_ERROR);
+							if (Config.OFFLINE_MODE && this.mGame.mState == GameState.STATE_PLAY) {
+								Utils.DiagEvent("PLAYER_MOVE_SELECTION_RETAINED","map=" + this.mGame.mCurrentMapId + ";x=" + _loc6_.mPosI + ";y=" + _loc6_.mPosJ + ";busy_action=" + (this.mGame.mCurrentAction ? this.mGame.mCurrentAction.mName : "none") + ";reason=move_not_queued");
+							}
+						}
+						Utils.DiagEvent("CAMPAIGN_OWN_DEFENCE_WALK","map=" + this.mGame.mCurrentMapId + ";item=" + _loc6_.mObject.mItem.mId + ";x=" + _loc6_.mPosI + ";y=" + _loc6_.mPosJ + ";queued=" + _loc15_);
+					} else if (_loc6_.mObject && !_loc6_.mCharacter && !(_loc6_.mObject is DebrisObject && _loc6_.mOwner == MapData.TILE_OWNER_ENEMY) && !(_loc7_ && _loc6_.mObject is DebrisObject) && !(Boolean(_loc7_) && _loc6_.mObject is ConstructionObject && ConstructionObject(_loc6_.mObject).getState() == PlayerBuildingObject.STATE_RUINS) && !(Boolean(_loc7_) && _loc6_.mObject is ResourceBuildingObject && ResourceBuildingObject(_loc6_.mObject).getState() == PlayerBuildingObject.STATE_RUINS)) {
 						if (!(this.mGame.mCurrentAction is WalkingAction) || _loc6_.mObject is PlayerBuildingObject) {
 							_loc6_.mObject.MousePressed(null);
 							this.mGame.unActivatePlayerUnit();
@@ -3987,8 +4010,17 @@
 							return;
 						}
 						_loc15_ = this.mGame.doPlayerWalkAction(this.getCenterPointXOfCell(_loc6_), this.getCenterPointYOfCell(_loc6_));
-						this.mGame.moveCameraToSeeCell(_loc6_);
-						this.mGame.unActivatePlayerUnit();
+						if (_loc15_) {
+							this.mGame.moveCameraToSeeCell(_loc6_);
+							this.mGame.unActivatePlayerUnit();
+						} else {
+							// A live enemy action can temporarily own the global action lane.
+							// Do not silently consume this input or clear the selected player unit.
+							ArmySoundManager.getInstance().playSound(ArmySoundManager.SFX_UI_ERROR);
+							if (Config.OFFLINE_MODE && this.mGame.mState == GameState.STATE_PLAY) {
+								Utils.DiagEvent("PLAYER_MOVE_SELECTION_RETAINED","map=" + this.mGame.mCurrentMapId + ";x=" + _loc6_.mPosI + ";y=" + _loc6_.mPosJ + ";busy_action=" + (this.mGame.mCurrentAction ? this.mGame.mCurrentAction.mName : "none") + ";reason=move_not_queued");
+							}
+						}
 					}
 					break;
 				case GameState.STATE_PLACE_ITEM:
@@ -4696,9 +4728,33 @@
 			this.mGame = null;
 		}
 
+		// Called only when a campaign enemy physically finishes its walking path.
+		// Commit the tile now rather than waiting for the queued turn-action cleanup.
+		// The later characterArrivedInCell call is idempotent because it only flips a
+		// FRIENDLY tile; do not trigger turrets, pickups, or enemy turn accounting here.
+		public function commitCampaignEnemyArrivalOwnership(param1: EnemyUnit, param2: GridCell): void {
+			if (!Config.OFFLINE_MODE || !this.mGame || this.mGame.mState != GameState.STATE_PLAY ||
+				!param1 || !param1.isAlive() || !param2 || param2.mOwner != MapData.TILE_OWNER_FRIENDLY) {
+				return;
+			}
+			this.changeCellOwner(param2);
+			Utils.DiagEvent("CAMPAIGN_TERRITORY_IMMEDIATE_ARRIVAL","map=" + this.mGame.mCurrentMapId +
+				";enemy=" + (param1.mItem ? param1.mItem.mId : "") + ";x=" + param2.mPosI +
+				";y=" + param2.mPosJ + ";owner=" + param2.mOwner + ";phase=visual_path_end");
+		}
+
 		public function characterArrivedInCell(param1: IsometricCharacter, param2: GridCell, param3: Boolean = true): void {
-			if (param1.isInOpponentsTile()) {
-				this.changeCellOwner(param2);
+			var arrivalOwnerBefore:int = param2 ? param2.mOwner : MapData.TILE_OWNER_NEUTRAL;
+			var campaignArrival:Boolean = this.mGame && this.mGame.mState != GameState.STATE_PVP;
+			if (campaignArrival && param2) {
+				if (param1 is PlayerUnit && param2.mOwner == MapData.TILE_OWNER_ENEMY) {
+					this.changeCellOwner(param2);
+				} else if (param1 is EnemyUnit && param2.mOwner == MapData.TILE_OWNER_FRIENDLY) {
+					this.changeCellOwner(param2);
+				}
+			}
+			if (Config.OFFLINE_MODE && this.mGame && this.mGame.mState == GameState.STATE_PLAY && param1 is EnemyUnit && param2) {
+				Utils.DiagEvent("CAMPAIGN_ARRIVAL_OWNERSHIP","map=" + this.mGame.mCurrentMapId + ";enemy=" + (param1.mItem ? param1.mItem.mId : "") + ";x=" + param2.mPosI + ";y=" + param2.mPosJ + ";before=" + arrivalOwnerBefore + ";after=" + param2.mOwner + ";captured=" + (arrivalOwnerBefore == MapData.TILE_OWNER_FRIENDLY && param2.mOwner == MapData.TILE_OWNER_ENEMY));
 			}
 			if (param1 is PlayerUnit) {
 				this.mGame.updateWalkableCellsForActiveCharacter();
@@ -4707,9 +4763,28 @@
 				}
 			} else if (param1 is EnemyUnit) {
 				if (param3) {
-					this.mGame.setPlayerInstallationsToAttack(param1 as EnemyUnit);
+					this.mGame.setPlayerInstallationsToAttack(param1 as EnemyUnit,param2);
 				}
 			}
+			// Friendly-to-the-enemy mines/barricades are passable for EnemyUnit.
+			// Force the arriving unit's display container above the defence at the
+			// same cell; game logic and map occupancy remain unchanged.
+			if (Config.OFFLINE_MODE && this.mGame && this.mGame.mState == GameState.STATE_PLAY &&
+				param1 is EnemyUnit && param2 && param2.mObject is EnemyInstallationObject) {
+				var overlappingDefence:EnemyInstallationObject = param2.mObject as EnemyInstallationObject;
+				if (overlappingDefence.isAlive() && overlappingDefence.getContainer() &&
+					param1.getContainer() && overlappingDefence.getContainer().parent == this.mContainer &&
+					param1.getContainer().parent == this.mContainer) {
+					var defenceLayer:int = this.mContainer.getChildIndex(overlappingDefence.getContainer());
+					var unitLayer:int = this.mContainer.getChildIndex(param1.getContainer());
+					if (unitLayer <= defenceLayer) {
+						this.mContainer.setChildIndex(param1.getContainer(),Math.min(this.mContainer.numChildren - 1,defenceLayer + 1));
+						this.mSortDirty = true;
+					}
+					Utils.DiagEvent("OWN_DEFENCE_UNIT_DRAW_PRIORITY","map=" + this.mGame.mCurrentMapId + ";x=" + param2.mPosI + ";y=" + param2.mPosJ + ";defence=" + overlappingDefence.mItem.mId);
+				}
+			}
+
 			if (param2.mPowerUp) {
 				Utils.DiagEvent("PVP_POWERUP_PICKUP_CELL","id=" + (param2.mPowerUp.mItem ? param2.mPowerUp.mItem.mId : "") + ";unit=" + (param1.mItem ? param1.mItem.mId : "") + ";i=" + param2.mPosI + ";j=" + param2.mPosJ);
 				param2.mPowerUp.execute(param1);
@@ -4771,6 +4846,52 @@
 				}
 				_loc6_++;
 			}
+		}
+
+		// A destroyed campaign building loses its occupied territory, not merely its sprite.
+		// Use the same ownership transition as enemy movement so border/topology and
+		// exported cell owners observe the identical canonical map state.
+		// One-point, side-neutral blast on the mine's own tile and its eight neighbours.
+		// Damage is based on current occupied cells, independent of the attacker's side.
+		public function detonateCampaignMine(param1:Renderable):void {
+			if (!Config.OFFLINE_MODE || !this.mGame || this.mGame.mState != GameState.STATE_PLAY || !param1 || !param1.mItem || param1.mItem.mId != "Mines") return;
+			var tiles:Array = this.getTilesUnderObject(param1);
+			var origin:GridCell = null;
+			var adjacent:GridCell = null;
+			var victim:IsometricCharacter = null;
+			var damaged:Dictionary = new Dictionary(true);
+			var damagedCount:int = 0;
+			var dx:int = 0;
+			var dy:int = 0;
+			for each (origin in tiles) {
+				if (!origin) continue;
+				for (dx = -1; dx <= 1; ++dx) {
+					for (dy = -1; dy <= 1; ++dy) {
+						adjacent = this.getCellAt(origin.mPosI + dx,origin.mPosJ + dy);
+						victim = adjacent && adjacent.mCharacter is IsometricCharacter ? adjacent.mCharacter as IsometricCharacter : null;
+						if (victim && victim.isAlive() && (victim is PlayerUnit || victim is EnemyUnit) && damaged[victim] !== true) {
+							damaged[victim] = true;
+							victim.reduceHealth(1);
+							++damagedCount;
+						}
+					}
+				}
+			}
+			Utils.DiagEvent("CAMPAIGN_MINE_DETONATED","map=" + this.mGame.mCurrentMapId + ";x=" + (tiles.length ? GridCell(tiles[0]).mPosI : -1) + ";y=" + (tiles.length ? GridCell(tiles[0]).mPosJ : -1) + ";victims=" + damagedCount + ";damage_each=1");
+		}
+
+		public function captureDestroyedPlayerBuildingTerritory(param1:PlayerBuildingObject):void {
+			if (!Config.OFFLINE_MODE || !this.mGame || this.mGame.mState != GameState.STATE_PLAY || !param1 || !this.mGame.mMapData) return;
+			var cells:Array = this.getTilesUnderObject(param1);
+			var cell:GridCell = null;
+			var captured:int = 0;
+			for each (cell in cells) {
+				if (cell && cell.mOwner == MapData.TILE_OWNER_FRIENDLY) {
+					this.changeCellOwner(cell);
+					++captured;
+				}
+			}
+			Utils.DiagEvent("CITY_DESTROYED_TERRITORY","map=" + this.mGame.mCurrentMapId + ";item=" + (param1.mItem ? param1.mItem.mId : "") + ";captured=" + captured + ";cells=" + cells.length);
 		}
 
 		private function changeCellOwner(param1: GridCell): void {

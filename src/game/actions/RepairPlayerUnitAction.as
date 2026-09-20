@@ -118,7 +118,7 @@ package game.actions
       
       private function isLegal() : Boolean
       {
-         return Boolean(mTarget) && !(mTarget as PlayerUnit).isFullHealth();
+         return Boolean(mTarget) && !(mTarget as PlayerUnit).isFullHealth() && (mTarget as PlayerUnit).canRepairOffline();
       }
       
       private function execute() : void
@@ -139,8 +139,14 @@ package game.actions
          var _loc2_:IsometricScene = _loc1_.mScene;
          var _loc3_:GamePlayerProfile = _loc1_.mPlayerProfile;
          var _loc5_:PlayerUnitItem;
-         var _loc4_:PlayerUnit;
-         var _loc6_:int = (_loc5_ = (_loc4_ = mTarget as PlayerUnit).mItem as PlayerUnitItem).mHealRewardXP;
+         var _loc4_:PlayerUnit = mTarget as PlayerUnit;
+         if(_loc4_.getHealth() <= 0 && !_loc4_.registerOfflineRepair())
+         {
+            Utils.DiagEvent("PLAYER_UNIT_REPAIR_BLOCKED","unit=" + (_loc4_.mItem ? _loc4_.mItem.mId : "unknown") + ";reason=repair_lives_exhausted");
+            this.mNewState = STATE_OVER;
+            return;
+         }
+         var _loc6_:int = (_loc5_ = _loc4_.mItem as PlayerUnitItem).mHealRewardXP;
          var _loc7_:int = _loc5_.mHealRewardMoney;
          var _loc8_:int = _loc5_.mHealRewardEnergy;
          _loc3_.increaseEnergyRewardCounter(_loc8_);

@@ -1,0 +1,14 @@
+﻿{
+    "repository":  "Valverde-101/code-army-client",
+    "tested_sha":  "4b9f3ca46db8a99d6e1dfc0803d1fd98ad62816b",
+    "run_id":  "34729703112",
+    "runner":  "PC-WILLTHOM-AUTO-REPO-2",
+    "apk_outcome":  "success",
+    "device_outcome":  "success",
+    "diagnostics_outcome":  "success",
+    "physical_result":  "FAIL",
+    "classification":  "SKIPPED_WITH_REASON",
+    "reason":  "physical_test_skipped_no_authorized_device",
+    "generated_utc":  "2026-09-13T01:08:00.5329257Z"
+}
+
