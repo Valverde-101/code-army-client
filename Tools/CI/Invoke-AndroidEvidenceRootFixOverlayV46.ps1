@@ -498,6 +498,19 @@ try {
   $game=$updateRegex.Replace($game,(Normalize-Lf $updateReplacement),1)
   Write-Host 'EVIDENCE_ROOTFIX_V46_HOOK=PASS name=enemy_main_watchdog_exception_containment matches=1'
 
+  # Source-level map cleanup resets the campaign turn/primary queue. V46 also
+  # owns auxiliary enemy actions, so clear those BEFORE the old scene is
+  # destroyed and BEFORE the source-level response reset can invalidate them.
+  $switchReset='				this.resetOfflineCampaignTurnLaneForMapSwitch(_loc2_,_loc1_);'
+  $switchWithAux='				this.clearConcurrentEnemyActions();'+"\`n"+$switchReset
+  if($game.Contains($switchReset)){
+    $game=Replace-One $game $switchReset $switchWithAux 'map_switch_aux_enemy_action_cleanup'
+  }else{
+    throw 'ANDROID_EVIDENCE_ROOTFIX_V46=FAIL patch=map_switch_campaign_turn_reset_missing'
+  }
+  Require $game 'MAP_SWITCH_COMBAT_RESET' 'map_switch_campaign_combat_source_present'
+
+
   foreach($required in @(
     'OFFLINE_ENEMY_ACTION_WATCHDOG_MS:int = 12000',
     'OFFLINE_ENEMY_AUX_STARTS_PER_FRAME:int = 1',
