@@ -638,7 +638,12 @@
                         mDrawMatrix.ty = -_loc4_[1] * _loc5_;
                         if(!this.mBitmaps[_loc9_])
                         {
-                           this.mBitmaps[_loc9_] = new BitmapData(_loc2_.width,_loc2_.height,true,0);
+                           // Cache the FULL transformed asset. At mobile zoom > 100%, using
+                           // the unscaled intrinsic width/height clips its right/bottom
+                           // edge, leaving seams when consecutive tiles are composited.
+                           var assetWidth:int = Math.max(1,int(Math.ceil(_loc2_.width * _loc5_)) + 2);
+                           var assetHeight:int = Math.max(1,int(Math.ceil(_loc2_.height * _loc5_)) + 2);
+                           this.mBitmaps[_loc9_] = new BitmapData(assetWidth,assetHeight,true,0);
                         }
                         (this.mBitmaps[_loc9_] as BitmapData).draw(_loc2_,mDrawMatrix);
                         _loc2_.scaleX = _loc5_;
