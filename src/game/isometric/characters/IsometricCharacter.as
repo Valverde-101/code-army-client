@@ -273,6 +273,13 @@
 					setPos(this.mWalkingPath[0], this.mWalkingPath[1], mZ);
 				}
 				this.mWalkingPath.length -= 2;
+				// The visual end of movement is the ownership commit point. The
+				// turn action will still settle normally later, without a second flip.
+				if (this.mWalkingPath.length == 0 && this is EnemyUnit &&
+					this.mDestinationCell && mScene.getCellAtLocation(mX, mY) == this.mDestinationCell &&
+					Config.OFFLINE_MODE && GameState.mInstance && GameState.mInstance.mState == GameState.STATE_PLAY) {
+					mScene.commitCampaignEnemyArrivalOwnership(this as EnemyUnit,this.mDestinationCell);
+				}
 			}
 			if (this is EnemyUnit) {
 				_loc10_ = mScene.getCellAtLocation(mX, mY);
