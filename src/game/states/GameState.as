@@ -3659,6 +3659,32 @@
 			this.mVisitingFriend = param2;
 		}
 
+		// One map owns one global action lane and one enemy-response round.
+		// Discard callbacks and queued orders before the old scene is destroyed.
+		private function resetOfflineCampaignTurnLaneForMapSwitch(param1:String,param2:String):void {
+			if(!Config.OFFLINE_MODE) return;
+			var abandonedAction:String = this.mCurrentAction ? this.mCurrentAction.mName : "none";
+			var abandonedQueued:int = this.mMainActionQueue && this.mMainActionQueue.mActions ? this.mMainActionQueue.mActions.length : 0;
+			var oldRound:int = this.mOfflineEnemyResponseRoundId;
+			// Never call skip() on scene-bound actions during teardown: it may enqueue
+			// counterattacks or touch destroyed objects.
+			this.resetActions();
+			this.mActionWaitingConfirmation = null;
+			this.mCounterAttackAction = null;
+			this.mActivatedPlayerUnit = null;
+			this.mActivatedEnemyUnit = null;
+			this.mOfflineManualTurret = null;
+			this.mOfflineEnemyResponseRoundId++;
+			this.mOfflineEnemyResponseActive = false;
+			this.mOfflineEnemyResponsePrimaryRemaining = 0;
+			this.mOfflineEnemyPendingResponseRounds = 0;
+			this.mOfflineEnemyPlayerRoundsPending = 0;
+			this.mOfflineEnemyResponseReadyAt = 0;
+			this.mOfflineEnemyResponseCursor = 0;
+			this.mOfflineEnemyResponseParticipants = new Dictionary(true);
+			Utils.DiagEvent("MAP_SWITCH_COMBAT_RESET","from=" + param1 + ";to=" + param2 + ";abandoned_action=" + abandonedAction + ";abandoned_queued=" + abandonedQueued + ";previous_round=" + oldRound + ";new_round=" + this.mOfflineEnemyResponseRoundId);
+		}
+
 		private function completeOfflineMapSwitch(): void {
 			var _loc1_: String = this.mPendingOfflineSwitchMapId;
 			var _loc2_: String = this.mPendingOfflineOriginMapId;
@@ -3674,6 +3700,7 @@
 				return;
 			}
 			try {
+				this.resetOfflineCampaignTurnLaneForMapSwitch(_loc2_,_loc1_);
 				this.mCurrentMapId = _loc1_;
 				this.mCurrentMapGraphicsId = Math.max(GRAPHICS_MAP_ID_LIST.indexOf(_loc1_), 0);
 				this.mVisitingFriend = null;
