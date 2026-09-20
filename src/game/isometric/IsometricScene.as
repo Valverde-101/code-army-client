@@ -4733,6 +4733,26 @@
 					this.mGame.setPlayerInstallationsToAttack(param1 as EnemyUnit,param2);
 				}
 			}
+			// Friendly-to-the-enemy mines/barricades are passable for EnemyUnit.
+			// Force the arriving unit's display container above the defence at the
+			// same cell; game logic and map occupancy remain unchanged.
+			if (Config.OFFLINE_MODE && this.mGame && this.mGame.mState == GameState.STATE_PLAY &&
+				param1 is EnemyUnit && param2 && param2.mObject is EnemyInstallationObject &&
+				(param2.mObject.mItem.mId == "Mines" || param2.mObject.mItem.mId == "Barricade")) {
+				var overlappingDefence:EnemyInstallationObject = param2.mObject as EnemyInstallationObject;
+				if (overlappingDefence.isAlive() && overlappingDefence.getContainer() &&
+					param1.getContainer() && overlappingDefence.getContainer().parent == this.mContainer &&
+					param1.getContainer().parent == this.mContainer) {
+					var defenceLayer:int = this.mContainer.getChildIndex(overlappingDefence.getContainer());
+					var unitLayer:int = this.mContainer.getChildIndex(param1.getContainer());
+					if (unitLayer <= defenceLayer) {
+						this.mContainer.setChildIndex(param1.getContainer(),Math.min(this.mContainer.numChildren - 1,defenceLayer + 1));
+						this.mSortDirty = true;
+					}
+					Utils.DiagEvent("OWN_DEFENCE_UNIT_DRAW_PRIORITY","map=" + this.mGame.mCurrentMapId + ";x=" + param2.mPosI + ";y=" + param2.mPosJ + ";defence=" + overlappingDefence.mItem.mId);
+				}
+			}
+
 			if (param2.mPowerUp) {
 				Utils.DiagEvent("PVP_POWERUP_PICKUP_CELL","id=" + (param2.mPowerUp.mItem ? param2.mPowerUp.mItem.mId : "") + ";unit=" + (param1.mItem ? param1.mItem.mId : "") + ";i=" + param2.mPosI + ";j=" + param2.mPosJ);
 				param2.mPowerUp.execute(param1);

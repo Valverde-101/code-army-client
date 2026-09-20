@@ -2283,7 +2283,32 @@
 					this.mCounterAttackAction = null;
 					var manualShot:AttackEnemyAction = new AttackEnemyAction(null,manualTurret,param1 as EnemyUnit,false);
 					manualShot.mManualInstallationAttack = true;
+					// Other friendly turrets in range support this explicit volley.
+					// Supports are normal turret attacks: only the selected turret
+					// consumes the player turn, and duplicate queued shots are ignored.
+					var supportTurretCount:int = 0;
+					var nearbyTurrets:Array = this.mScene.getPlayerInstallations();
+					for each (var supportTurret:PlayerInstallationObject in nearbyTurrets) {
+						if (!supportTurret || supportTurret == manualTurret || !supportTurret.canAttack() ||
+							supportTurret.mScene != this.mScene || supportTurret.hasAttackActionInQueue()) continue;
+						var supportCell:GridCell = supportTurret.getCell();
+						if (!supportCell || enemyCell.mPosI < supportCell.mPosI - supportTurret.mAttackRange ||
+							enemyCell.mPosI >= supportCell.mPosI + supportTurret.getTileSize().x + supportTurret.mAttackRange ||
+							enemyCell.mPosJ < supportCell.mPosJ - supportTurret.mAttackRange ||
+							enemyCell.mPosJ >= supportCell.mPosJ + supportTurret.getTileSize().y + supportTurret.mAttackRange) continue;
+						var turretShotPending:Boolean = this.mCurrentAction is AttackEnemyAction &&
+							this.mCurrentAction.mActor == supportTurret && this.mCurrentAction.mTarget == param1;
+						for each (var pendingTurretAction:Action in this.mMainActionQueue.mActions) {
+							if (pendingTurretAction is AttackEnemyAction && pendingTurretAction.mActor == supportTurret &&
+								pendingTurretAction.mTarget == param1) { turretShotPending = true; break; }
+						}
+						if (!turretShotPending) {
+							manualShot.addSupportAction(new AttackEnemyAction(null,supportTurret,param1 as EnemyUnit,false));
+							++supportTurretCount;
+						}
+					}
 					this.queueAction(manualShot);
+					Utils.DiagEvent("TURRET_MANUAL_GROUP_VOLLEY","map=" + this.mCurrentMapId + ";supports=" + supportTurretCount + ";turns=1");
 					Utils.DiagEvent("TURRET_MANUAL_SHOT_QUEUED","map=" + this.mCurrentMapId + ";x=" + enemyCell.mPosI + ";y=" + enemyCell.mPosJ);
 					return;
 				}
@@ -2358,11 +2383,19 @@
 			if (this.mSpawnEnemyTimer < 0) {
 				this.mSpawnEnemyTimer = 0;
 			}
-			this.mSpawnEnemyTimer += param1;
+			// Ignore long resume/lag deltas in offline campaign: no catch-up
+			// burst may materialize several waves in a single frame.
+			if (Config.OFFLINE_MODE && param1 > 5000) {
+				Utils.DiagEvent("SPAWN_WAVE_CLOCK_CLAMP","map=" + this.mCurrentMapId + ";delta_ms=" + param1);
+			}
+			this.mSpawnEnemyTimer += Config.OFFLINE_MODE ? Math.max(0,Math.min(param1,5000)) : param1;
 			var _loc2_: Object = mConfig.SpawnLevels[this.mPlayerProfile.mSpawnEnemyLevel] as Object;
 			while (this.mSpawnEnemyTimer >= _loc2_.ActivationTime * 60 * 1000) {
 				_loc3_ = this.mPlayerProfile.mInventory.getAreas(true).length / 2 * _loc2_.SpawnAmountPerArea;
-				if ((_loc4_ = int(this.mScene.getEnemyUnits().length)) < _loc3_) {
+				var offlineWaveCap:int = Config.OFFLINE_MODE ? Math.min(_loc3_,64) : _loc3_;
+				_loc4_ = int(this.mScene.getEnemyUnits().length);
+				Utils.DiagEvent("SPAWN_WAVE_CHECK","map=" + this.mCurrentMapId + ";alive=" + _loc4_ + ";target=" + offlineWaveCap + ";interval_min=" + _loc2_.ActivationTime);
+				if (_loc4_ < offlineWaveCap) {
 					_loc5_ = new Array();
 					_loc7_ = int(_loc2_.EnemyUnits.length);
 					_loc8_ = 0;
@@ -2371,7 +2404,7 @@
 						_loc5_.push(_loc6_.ID);
 						_loc8_++;
 					}
-					this.spawnNewEnemies(_loc5_, _loc2_.EnemyAmount, _loc2_.EnemyUnitsP);
+					this.spawnNewEnemies(_loc5_, Math.min(int(_loc2_.EnemyAmount),offlineWaveCap-_loc4_), _loc2_.EnemyUnitsP);
 				}
 				this.mSpawnEnemyTimer -= _loc2_.ActivationTime * 60 * 1000;
 			}

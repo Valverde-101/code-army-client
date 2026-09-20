@@ -258,3 +258,10 @@ Army Attack: Surge of the Crimson Empire.
 Copyright (C) 2024 | Army Attack Development Team
 See the GNU General Public License <https://www.gnu.org/licenses/>.
 ```
+
+
+## Reglas de campaña offline: turnos, defensas y oleadas
+- Cada acción válida del jugador abre una respuesta enemiga de tres unidades principales. La orden de movimiento válida que llegue mientras se ejecuta `EnemyMove` queda en cola una sola vez y se ejecuta tras terminar la respuesta enemiga; no se pierde por la ocupación temporal de la cola global.
+- Una torreta seleccionada por el jugador dispara a un enemigo a su alcance y consume un solo turno del jugador. Las demás torretas aliadas vivas que también tengan ese objetivo a su alcance se incorporan como ataques de apoyo **sin consumir turnos adicionales**. El disparo automático por entrada en alcance se mantiene independiente.
+- Una unidad enemiga que se sitúe sobre una mina o barricada propia debe dibujarse visualmente **por delante** de esa defensa. Si el jugador ataca la unidad sobre una instalación enemiga viva, el mismo impacto daña también esa instalación. Si la mina queda destruida, su detonación de 1 HP afecta una sola vez a cada unidad adyacente de cualquier bando.
+- El temporizador de reposición de enemigos no acumula oleadas descontroladas tras una pausa larga. La población offline queda limitada a 64 enemigos vivos por mapa para impedir que una oleada empeore el rendimiento. La animación de paracaídas para las oleadas de reposición requiere validación funcional propia; no se considera implementada solo por disponer de recursos SWF.

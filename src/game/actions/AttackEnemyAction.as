@@ -3,6 +3,7 @@
 	import game.characters.EnemyUnit;
 	import game.characters.PvPEnemyUnit;
 	import game.characters.PlayerUnit;
+	import game.gameElements.EnemyInstallationObject;
 	import game.gameElements.PlayerInstallationObject;
 	import game.gui.TextEffect;
 	import game.isometric.GridCell;
@@ -333,7 +334,16 @@
 			if (Config.OFFLINE_MODE && _loc1_.mState == GameState.STATE_PLAY && mCharacterActors && mCharacterActors.length > 0 && mCharacterActors[0] is PlayerUnit) {
 				(_loc4_ as EnemyUnit).noteOfflinePlayerAttacker(mCharacterActors[0] as PlayerUnit);
 			}
+			var targetCellForStack:GridCell = mTarget.getCell();
+			var stackedDefence:EnemyInstallationObject = targetCellForStack ? targetCellForStack.mObject as EnemyInstallationObject : null;
 			_loc4_.reduceHealth(_loc13_);
+			// A unit standing on its own live installation no longer shields it.
+			// Resolve one hit per target; a destroyed mine applies its own neutral
+			// 1-HP blast through detonateCampaignMine (no duplicated splash here).
+			if (Config.OFFLINE_MODE && _loc1_.mState == GameState.STATE_PLAY && stackedDefence && stackedDefence.isAlive() && stackedDefence.getHealth() > 0) {
+				stackedDefence.reduceHealth(_loc13_);
+				Utils.DiagEvent("CAMPAIGN_STACKED_DEFENCE_HIT","map=" + _loc1_.mCurrentMapId + ";defence=" + (stackedDefence.mItem ? stackedDefence.mItem.mId : "") + ";damage=" + _loc13_ + ";x=" + targetCellForStack.mPosI + ";y=" + targetCellForStack.mPosJ);
+			}
 			(_loc4_ as EnemyUnit).changeReactionState(EnemyUnit.REACT_STATE_WAIT_FOR_TIMER);
 			this.mNewState = STATE_OVER;
 			var _loc16_: GridCell = mTarget.getCell();

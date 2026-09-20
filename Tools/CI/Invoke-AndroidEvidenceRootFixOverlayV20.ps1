@@ -202,6 +202,23 @@ if (!_loc4_.mCharacter && _loc4_.mWalkable && this.isInWalkingDistance(_loc4_) &
 				Utils.DiagEvent("MOVE_COMMAND_QUEUED", "map=" + this.mCurrentMapId + ";state=" + this.mState + ";pvp=" + (this.mState == STATE_PVP) + ";x=" + int(param1) + ";y=" + int(param2));
 				return true;
 			}
+			// During a campaign enemy move, the clicked player destination is valid.
+			// Preserve one player command behind the enemy round rather than silently
+			// dropping it (and unselecting the unit) while the shared lane is busy.
+			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY &&
+				this.mCurrentAction && this.mCurrentAction.mName == "EnemyMove" &&
+				!_loc4_.mCharacter && _loc4_.mWalkable && this.isInWalkingDistance(_loc4_)) {
+				var alreadyPendingWalk:Boolean = false;
+				for each (var queuedWalkAction:Action in this.mMainActionQueue.mActions) {
+					if (queuedWalkAction is WalkingAction) { alreadyPendingWalk = true; break; }
+				}
+				if (!alreadyPendingWalk) {
+					this.queueAction(new WalkingAction(_loc3_,param1,param2));
+					Utils.DiagEvent("MOVE_COMMAND_DEFERRED_ENEMY_MOVE","map=" + this.mCurrentMapId + ";x=" + int(param1) + ";y=" + int(param2) + ";current_action=" + this.mCurrentAction.mName);
+					return true;
+				}
+				Utils.DiagEvent("MOVE_COMMAND_ALREADY_PENDING","map=" + this.mCurrentMapId + ";x=" + int(param1) + ";y=" + int(param2));
+			}
 			Utils.DiagEvent("MOVE_COMMAND_REJECTED", "reason=cell_gate;occupied=" + Boolean(_loc4_.mCharacter) + ";walkable=" + _loc4_.mWalkable + ";in_range=" + this.isInWalkingDistance(_loc4_) + ";current_action=" + (this.mCurrentAction ? this.mCurrentAction.mName : "none") + ";state=" + this.mState + ";x=" + int(param1) + ";y=" + int(param2));
 			return false;
 '@.TrimEnd() 'walk_command_rejection_is_observable'
