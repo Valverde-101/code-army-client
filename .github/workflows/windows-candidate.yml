@@ -91,6 +91,7 @@ jobs:
           $checkoutSha=(& $git -C $checkout rev-parse HEAD).Trim()
           if($checkoutSha -ne $env:EXPECTED_SOURCE_SHA){throw "EXACT_ACTIONS_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$checkoutSha"}
           $repo=Join-Path $env:ANDROIDBUILD_ROOT 'Repositories\code-army-client'
+          & '.\Tools\CI\Precheck-GitIndexLock.ps1' -RepoRoot $repo
           $sync=Sync-AndroidBuildRepositoryExactHead -RepoRoot $repo -ExpectedSha $env:EXPECTED_SOURCE_SHA -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -AllowTrackedReset -CleanUntracked -SourceRemote $checkout
           if([string]$sync.status -ne 'PASS' -or [string]$sync.actual_sha -ne $env:EXPECTED_SOURCE_SHA){throw "REPOSITORY_SYNC=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$($sync.actual_sha)"}
           "PHYSICAL_REPO_ROOT=$repo"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
@@ -143,7 +144,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          foreach($script in @('.\Tools\CI\Build-WindowsFullCandidate.ps1','.\Tools\CI\Patch-WindowsSharedSwf.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\CI\Measure-WindowsPerformance.ps1','.\Tools\CI\Test-WindowsRuntime.ps1','.\Tools\CI\Invoke-SnowCampaignOverlay.ps1','.\Tools\CI\Validate-UpstreamWindowsRelease.ps1')){
+          foreach($script in @('.\Tools\CI\Precheck-GitIndexLock.ps1','.\Tools\CI\Build-WindowsFullCandidate.ps1','.\Tools\CI\Patch-WindowsSharedSwf.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\CI\Measure-WindowsPerformance.ps1','.\Tools\CI\Test-WindowsRuntime.ps1','.\Tools\CI\Invoke-SnowCampaignOverlay.ps1','.\Tools\CI\Validate-UpstreamWindowsRelease.ps1')){
             $tokens=$null;$errors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors)
             if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$script line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw "PARSER_VALID=FAIL file=$script"}

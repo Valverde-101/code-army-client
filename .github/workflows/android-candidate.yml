@@ -154,7 +154,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          foreach($script in @('.\.github\scripts\armyattack-project-precheck.ps1','.\.github\scripts\armyattack-workspace.ps1','.\.github\scripts\armyattack-build.ps1','.\.github\scripts\publish-armyattack-project-source.ps1','.\Tools\CI\Build-Android.ps1','.\Tools\CI\Validate-AndroidApk.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\SWF\Ensure-FFDec.ps1','.\Tools\CI\Ensure-HarmanAir502.ps1','.\Tools\CI\Ensure-PortableJdk17.ps1','.\Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1')){
+          foreach($script in @('.\.github\scripts\armyattack-project-precheck.ps1','.\.github\scripts\armyattack-workspace.ps1','.\.github\scripts\armyattack-build.ps1','.\.github\scripts\publish-armyattack-project-source.ps1','.\Tools\CI\Precheck-GitIndexLock.ps1','.\Tools\CI\Build-Android.ps1','.\Tools\CI\Validate-AndroidApk.ps1','.\Tools\CI\Patch-AndroidPerformanceSwf.ps1','.\Tools\SWF\Ensure-FFDec.ps1','.\Tools\CI\Ensure-HarmanAir502.ps1','.\Tools\CI\Ensure-PortableJdk17.ps1','.\Tools\CI\Ensure-PinnedAndroidSdkRoot.ps1')){
             $tokens=$null;$errors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script),[ref]$tokens,[ref]$errors)
             if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$script line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw "PARSER_VALID=FAIL file=$script"}
@@ -176,6 +176,7 @@ jobs:
           $checkoutSha=(& $git -C $checkout rev-parse HEAD).Trim()
           if($checkoutSha -ne $env:EXPECTED_SOURCE_SHA){throw "STALE_TEST_RESULT checkout=$checkoutSha expected=$env:EXPECTED_SOURCE_SHA"}
           $persistent=Join-Path $env:ANDROIDBUILD_ROOT 'Repositories\code-army-client'
+          & '.\Tools\CI\Precheck-GitIndexLock.ps1' -RepoRoot $persistent
           $pr=if([string]::IsNullOrWhiteSpace($env:PR_NUMBER)){0}else{[int]$env:PR_NUMBER}
           $projectConfig=Get-Content -LiteralPath (Join-Path $checkout '.androidbuild.json') -Raw|ConvertFrom-Json
           $leaseWait=[int]$projectConfig.timeouts.build_lease_wait_seconds
