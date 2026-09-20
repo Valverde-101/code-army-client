@@ -502,7 +502,7 @@ try {
   # owns auxiliary enemy actions, so clear those BEFORE the old scene is
   # destroyed and BEFORE the source-level response reset can invalidate them.
   $switchReset='				this.resetOfflineCampaignTurnLaneForMapSwitch(_loc2_,_loc1_);'
-  $switchWithAux='				this.clearConcurrentEnemyActions();'+"\`n"+$switchReset
+  $switchWithAux='				this.clearConcurrentEnemyActions();'+[char]10+$switchReset
   if($game.Contains($switchReset)){
     $game=Replace-One $game $switchReset $switchWithAux 'map_switch_aux_enemy_action_cleanup'
   }else{
