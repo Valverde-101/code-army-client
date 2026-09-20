@@ -28,17 +28,30 @@ $age = ([DateTime]::UtcNow - $lock.LastWriteTimeUtc).TotalSeconds
 if ($age -lt $MinAgeSeconds) {
     throw "GIT_INDEX_LOCK_PREFLIGHT=FAIL reason=recent_lock age_seconds=$([int]$age) min_age_seconds=$MinAgeSeconds"
 }
-function Assert-NoRunningGit {
-    try {
-        $active = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'git.exe'" -ErrorAction Stop | Where-Object { $_ -and $_.ProcessId })
-    } catch {
-        throw 'GIT_INDEX_LOCK_PREFLIGHT=FAIL reason=git_process_discovery_unavailable'
+function Assert-NoRunningGit([int]$WaitSeconds=0) {
+    $deadline = (Get-Date).AddSeconds($WaitSeconds)
+    $announced = $false
+    while ($true) {
+        try {
+            $active = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'git.exe'" -ErrorAction Stop | Where-Object { $_ -and $_.ProcessId })
+        } catch {
+            throw 'GIT_INDEX_LOCK_PREFLIGHT=FAIL reason=git_process_discovery_unavailable'
+        }
+        if ($active.Count -eq 0) { return }
+        if ($WaitSeconds -le 0 -or (Get-Date) -ge $deadline) { break }
+        if (-not $announced) {
+            Write-Host "GIT_INDEX_LOCK_PREFLIGHT=WAIT reason=git_process_active count=$($active.Count) timeout_seconds=$WaitSeconds"
+            $announced = $true
+        }
+        Start-Sleep -Seconds 3
     }
-    if ($active.Count -gt 0) {
-        throw "GIT_INDEX_LOCK_PREFLIGHT=FAIL reason=git_process_active count=$($active.Count)"
-    }
+    $processes = @($active | ForEach-Object {
+        $started = if ($_.CreationDate) { [int](([DateTime]::UtcNow - ([DateTime]$_.CreationDate).ToUniversalTime()).TotalSeconds) } else { -1 }
+        "pid=$($_.ProcessId):age_seconds=$started"
+    })
+    throw "GIT_INDEX_LOCK_PREFLIGHT=FAIL reason=git_process_active count=$($active.Count) wait_seconds=$WaitSeconds process_age=$($processes -join ',')"
 }
-Assert-NoRunningGit
+Assert-NoRunningGit -WaitSeconds 60
 $handle = $null
 try {
     $handle = [IO.File]::Open($lockPath,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
