@@ -23,11 +23,32 @@ if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
     Write-Host 'GIT_INDEX_LOCK_PREFLIGHT=PASS state=absent'
     return
 }
-$lock = Get-Item -LiteralPath $lockPath -Force
-$age = ([DateTime]::UtcNow - $lock.LastWriteTimeUtc).TotalSeconds
-if ($age -lt $MinAgeSeconds) {
-    throw "GIT_INDEX_LOCK_PREFLIGHT=FAIL reason=recent_lock age_seconds=$([int]$age) min_age_seconds=$MinAgeSeconds"
+# A freshly-created lock is evidence of a possibly active operation, not a
+# stale lock. Give its owner a bounded opportunity to finish; do not delete it.
+# This also avoids failing a shared-runner job merely because another trusted
+# Git command was finalizing its index when our precheck started.
+$freshLockDeadline = (Get-Date).AddSeconds([Math]::Max(150,$MinAgeSeconds + 30))
+$announcedRecentLock = $false
+while ($true) {
+    if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
+        Write-Host 'GIT_INDEX_LOCK_PREFLIGHT=PASS state=active_lock_completed'
+        return
+    }
+    $lock = Get-Item -LiteralPath $lockPath -Force
+    $age = ([DateTime]::UtcNow - $lock.LastWriteTimeUtc).TotalSeconds
+    if ($age -ge $MinAgeSeconds) { break }
+    if (-not $announcedRecentLock) {
+        Write-Host "GIT_INDEX_LOCK_PREFLIGHT=WAIT reason=recent_lock age_seconds=$([int]$age) min_age_seconds=$MinAgeSeconds bounded=true"
+        $announcedRecentLock = $true
+    }
+    if ((Get-Date) -ge $freshLockDeadline) {
+        throw "GIT_INDEX_LOCK_PREFLIGHT=FAIL reason=fresh_lock_wait_timeout age_seconds=$([int]$age) min_age_seconds=$MinAgeSeconds lock_preserved=true"
+    }
+    Start-Sleep -Seconds 3
 }
+# The lock has reached the stale-age threshold but could still belong to an
+# active Git process. Only the existing process/handle/change checks below may
+# authorize recovery.
 function Assert-NoRunningGit([int]$WaitSeconds=0) {
     $deadline = (Get-Date).AddSeconds($WaitSeconds)
     $announced = $false
