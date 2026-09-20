@@ -290,8 +290,15 @@ try {
 					done = true;
 				} else {
 					try {
-						action.update(param1);
-						done = action.isOver();
+						var auxActor:Object = this.getEnemyActionActor(action);
+						if (auxActor is EnemyUnit && !EnemyUnit(auxActor).isAlive()) {
+							Utils.DiagEvent("ENEMY_DEAD_AUX_ACTION_SKIPPED","map=" + this.mCurrentMapId + ";action=" + action.mName + ";enemy=" + EnemyUnit(auxActor).mUnitId + ";lane=aux");
+							action.skip();
+							done = true;
+						} else {
+							action.update(param1);
+							done = action.isOver();
+						}
 						if (!done && elapsed >= OFFLINE_ENEMY_ACTION_WATCHDOG_MS) {
 							this.failEnemyAction(action,"aux_timeout",elapsed);
 							done = true;
@@ -406,8 +413,17 @@ try {
 					}
 					elapsed = Math.max(0,getTimer() - this.mTrackedMainEnemyActionStartedAt);
 					try {
-						this.mCurrentAction.update(param1);
-						done = this.mCurrentAction.isOver();
+						// A mine blast can kill the actor while its response is active.
+						// Skip the dead actor immediately instead of advancing its dying animation
+						// or holding the global player-action lane until the watchdog fires.
+						if (this.mCurrentAction.mActor is EnemyUnit && !this.mCurrentAction.mActor.isAlive()) {
+							Utils.DiagEvent("ENEMY_DEAD_ACTOR_ACTION_SKIPPED","map=" + this.mCurrentMapId + ";action=" + this.mCurrentAction.mName + ";enemy=" + EnemyUnit(this.mCurrentAction.mActor).mUnitId + ";lane=main");
+							this.mCurrentAction.skip();
+							done = true;
+						} else {
+							this.mCurrentAction.update(param1);
+							done = this.mCurrentAction.isOver();
+						}
 						if (!done && elapsed >= OFFLINE_ENEMY_ACTION_WATCHDOG_MS) {
 							this.failEnemyAction(this.mCurrentAction,"main_timeout",elapsed);
 							done = true;
