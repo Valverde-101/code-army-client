@@ -483,6 +483,15 @@
 		override public function update(param1: int): void {
 			super.update(param1);
 			if (!isAlive()) {
+				// A mine can kill the acting enemy inside EnemyAttackingAction.execute().
+				// Death resets its action queue, so REACT_STATE_ACTION_COMPLETED never
+				// fires and the three-primary enemy round otherwise remains locked.
+				// Complete at the character update boundary, not reentrantly while
+				// the mine blast iterates its other victims.
+				if (Config.OFFLINE_MODE && this.mOfflineResponseTurnActive) {
+					Utils.DiagEvent("ENEMY_RESPONSE_ACTOR_DIED","map=" + (GameState.mInstance ? GameState.mInstance.mCurrentMapId : "") + ";enemy=" + this.mUnitId + ";round=" + this.mOfflineResponseRoundId + ";primary=" + this.mOfflineResponsePrimary);
+					this.finishOfflineResponseTurn("actor_died_during_response");
+				}
 				return;
 			}
 			if (mState == STATE_SUPPRESS) {
