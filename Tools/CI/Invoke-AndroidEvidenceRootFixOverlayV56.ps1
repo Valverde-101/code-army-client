@@ -397,16 +397,19 @@ try {
   Require $enemy 'case UNIT_ID_ELITE_DROID:' 'snow_elite_droid_sound_case'
   Write-Utf8Bom $enemyPath $enemy
 
-  # Combat state commits in a few hundred ms; projectile/hit animations remain
-  # autonomous and keep their own lifecycle/watchdogs.
+  # Commit a hit when the attack animation reaches its end label. If an asset
+  # has no terminal label, fall back after a bounded visual impact window rather
+  # than killing the target 220ms after the shot begins (or hanging indefinitely).
+  # Turret projectiles are shorter; keep their independent, bounded impact window.
   $attack=Normalize-Lf ([IO.File]::ReadAllText($attackPath))
-  $attack=$attack.Replace('this.mAttackDuration = Math.max(250, EffectController.getEffectLength(EffectController.EFFECT_TYPE_HIT_BULLET));','this.mAttackDuration = 220;')
-  $attack=$attack.Replace('this.mAttackDuration = GameState.mConfig.GraphicSetup.Shooting.Length;','this.mAttackDuration = 220;')
-  $attack=$attack.Replace('ATTACK_VISUAL_TIMEOUT','ATTACK_LOGIC_COMMIT_BUDGET')
-  Require $attack 'this.mAttackDuration = 220;' 'attack_budget_220'
-  Require $attack 'ATTACK_LOGIC_COMMIT_BUDGET' 'attack_budget_telemetry'
-  Reject $attack 'this.mAttackDuration = GameState.mConfig.GraphicSetup.Shooting.Length;' 'attack_waits_shooting_length'
-  Reject $attack 'this.mAttackDuration = Math.max(250, EffectController.getEffectLength' 'attack_waits_effect_length'
+  $attack=$attack.Replace('this.mAttackDuration = Math.max(250, EffectController.getEffectLength(EffectController.EFFECT_TYPE_HIT_BULLET));','this.mAttackDuration = Math.min(1500, Math.max(1200, EffectController.getEffectLength(EffectController.EFFECT_TYPE_HIT_BULLET)));')
+  $attack=$attack.Replace('this.mAttackDuration = GameState.mConfig.GraphicSetup.Shooting.Length;','this.mAttackDuration = Math.min(850, Math.max(600, GameState.mConfig.GraphicSetup.Shooting.Length));')
+  $attack=$attack.Replace('ATTACK_VISUAL_TIMEOUT','ATTACK_VISUAL_COMMIT_FALLBACK')
+  Require $attack 'this.mAttackDuration = Math.min(1500, Math.max(1200, EffectController.getEffectLength(EffectController.EFFECT_TYPE_HIT_BULLET)));' 'player_attack_visual_impact_window'
+  Require $attack 'this.mAttackDuration = Math.min(850, Math.max(600, GameState.mConfig.GraphicSetup.Shooting.Length));' 'turret_attack_visual_impact_window'
+  Require $attack 'ATTACK_VISUAL_COMMIT_FALLBACK' 'visual_impact_fallback_telemetry'
+  Reject $attack 'this.mAttackDuration = 220;' 'legacy_early_damage_budget_absent'
+  Reject $attack 'this.mAttackDuration = GameState.mConfig.GraphicSetup.Shooting.Length;' 'unbounded_turret_visual_wait'
   Write-Utf8Bom $attackPath $attack
 
   # Snow must remain an actual third destination after every predecessor.
