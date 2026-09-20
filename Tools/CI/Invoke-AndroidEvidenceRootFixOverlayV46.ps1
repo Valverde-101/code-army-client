@@ -459,9 +459,17 @@ try {
 				// already-queued player action can start a new turn and starve the enemy.
 				if (Config.OFFLINE_MODE && this.mState == STATE_PLAY) {
 					if (this.mOfflineEnemyPlayerRoundsPending > 0 && !this.mOfflineEnemyResponseActive) {
-						this.tryStartOfflineEnemyResponseAfterPlayerVisuals();
-						if (this.mOfflineEnemyPlayerRoundsPending > 0 && !this.mOfflineEnemyResponseActive) {
-							return;
+						// A manual turret may have queued other in-range turrets into
+						// this same volley. Those shots must finish before enemy turns.
+						var nextTurretVolley:AttackEnemyAction = this.mMainActionQueue.mActions.length > 0 ?
+							this.mMainActionQueue.mActions[0] as AttackEnemyAction : null;
+						if (nextTurretVolley && nextTurretVolley.mSameTurnTurretSupport) {
+							Utils.DiagEvent("TURRET_GROUP_VOLLEY_BEFORE_ENEMY_RESPONSE","map=" + this.mCurrentMapId + ";pending=" + this.mOfflineEnemyPlayerRoundsPending);
+						} else {
+							this.tryStartOfflineEnemyResponseAfterPlayerVisuals();
+							if (this.mOfflineEnemyPlayerRoundsPending > 0 && !this.mOfflineEnemyResponseActive) {
+								return;
+							}
 						}
 					}
 					// A primary may queue its action on the next scene tick. Keep

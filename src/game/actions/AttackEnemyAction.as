@@ -42,6 +42,9 @@
 
 		// Manual player-issued turret fire costs one player turn, unlike automatic fire.
 		public var mManualInstallationAttack:Boolean = false;
+		// Complete all shots in the same manually initiated volley before opening
+		// the three-enemy response; supports never consume a player turn.
+		public var mSameTurnTurretSupport:Boolean = false;
 
 		public function AttackEnemyAction(param1: Array, param2: PlayerInstallationObject, param3: IsometricCharacter, param4: Boolean = true) {
 			super("AttackEnemy");

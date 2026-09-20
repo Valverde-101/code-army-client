@@ -2303,7 +2303,9 @@
 								pendingTurretAction.mTarget == param1) { turretShotPending = true; break; }
 						}
 						if (!turretShotPending) {
-							manualShot.addSupportAction(new AttackEnemyAction(null,supportTurret,param1 as EnemyUnit,false));
+							var volleySupportShot:AttackEnemyAction = new AttackEnemyAction(null,supportTurret,param1 as EnemyUnit,false);
+							volleySupportShot.mSameTurnTurretSupport = true;
+							manualShot.addSupportAction(volleySupportShot);
 							++supportTurretCount;
 						}
 					}

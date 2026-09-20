@@ -4770,8 +4770,7 @@
 			// Force the arriving unit's display container above the defence at the
 			// same cell; game logic and map occupancy remain unchanged.
 			if (Config.OFFLINE_MODE && this.mGame && this.mGame.mState == GameState.STATE_PLAY &&
-				param1 is EnemyUnit && param2 && param2.mObject is EnemyInstallationObject &&
-				(param2.mObject.mItem.mId == "Mines" || param2.mObject.mItem.mId == "Barricade")) {
+				param1 is EnemyUnit && param2 && param2.mObject is EnemyInstallationObject) {
 				var overlappingDefence:EnemyInstallationObject = param2.mObject as EnemyInstallationObject;
 				if (overlappingDefence.isAlive() && overlappingDefence.getContainer() &&
 					param1.getContainer() && overlappingDefence.getContainer().parent == this.mContainer &&

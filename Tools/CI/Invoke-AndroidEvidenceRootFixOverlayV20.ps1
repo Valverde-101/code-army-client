@@ -206,7 +206,7 @@ if (!_loc4_.mCharacter && _loc4_.mWalkable && this.isInWalkingDistance(_loc4_) &
 			// Preserve one player command behind the enemy round rather than silently
 			// dropping it (and unselecting the unit) while the shared lane is busy.
 			if (Config.OFFLINE_MODE && this.mState == STATE_PLAY &&
-				this.mCurrentAction && this.mCurrentAction.mName == "EnemyMove" &&
+				this.mCurrentAction &&
 				!_loc4_.mCharacter && _loc4_.mWalkable && this.isInWalkingDistance(_loc4_)) {
 				var alreadyPendingWalk:Boolean = false;
 				for each (var queuedWalkAction:Action in this.mMainActionQueue.mActions) {
@@ -215,6 +215,7 @@ if (!_loc4_.mCharacter && _loc4_.mWalkable && this.isInWalkingDistance(_loc4_) &
 				if (!alreadyPendingWalk) {
 					this.queueAction(new WalkingAction(_loc3_,param1,param2));
 					Utils.DiagEvent("MOVE_COMMAND_DEFERRED_ENEMY_MOVE","map=" + this.mCurrentMapId + ";x=" + int(param1) + ";y=" + int(param2) + ";current_action=" + this.mCurrentAction.mName);
+					Utils.DiagEvent("MOVE_COMMAND_DEFERRED_BUSY_ACTION","map=" + this.mCurrentMapId + ";x=" + int(param1) + ";y=" + int(param2) + ";current_action=" + this.mCurrentAction.mName);
 					return true;
 				}
 				Utils.DiagEvent("MOVE_COMMAND_ALREADY_PENDING","map=" + this.mCurrentMapId + ";x=" + int(param1) + ";y=" + int(param2));
