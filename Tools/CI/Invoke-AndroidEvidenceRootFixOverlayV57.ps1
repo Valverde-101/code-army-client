@@ -68,7 +68,40 @@ try {
   $manifest+=@([ordered]@{path=$path;backup=$copy;sha256=$baseline})
  }
  [ordered]@{source_sha=$ExpectedSha;files=$manifest}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $manifestPath -Encoding UTF8
- $unitJson=$config.units|ConvertTo-Json -Depth 8 -Compress
+ # JsonParser.parseFile(mConfig, ...) in the game supports only:
+ # table -> unit row -> SCALAR property. It converts nested objects/arrays
+ # to String(value), making Level1 == "[object Object]" and hiding the button.
+ # Emit a flattened, legacy-parser-safe runtime projection. Keep the rich
+ # versioned unit_upgrades.json as the editable authoring catalog.
+ $legacyRows=[ordered]@{}
+ foreach($unit in $allowed){
+  $level=$config.units.$unit.Level1
+  $row=[ordered]@{
+   Health=[string]([int]$level.Health)
+   Damage=[string]([int]$level.Damage)
+   AttackRange=[string]([int]$level.AttackRange)
+  }
+  for($i=0;$i -lt 3;$i++){
+   $number=$i+1
+   $row["Material"+$number+"ID"]=[string]$level.Materials[$i].ID
+   $row["Material"+$number+"Amount"]=[string]([int]$level.Materials[$i].Amount)
+  }
+  $legacyRows[$unit]=$row
+ }
+ $unitJson=$legacyRows|ConvertTo-Json -Depth 4 -Compress
+ $projected=$unitJson|ConvertFrom-Json
+ foreach($unit in $allowed){
+  $row=$projected.$unit
+  if(@($row.PSObject.Properties).Count -ne 9 -or $row.PSObject.Properties.Name -contains 'Level1'){
+   throw "UNIT_UPGRADE_LEGACY_PARSER=FAIL row_shape=$unit"
+  }
+  foreach($field in @('Health','Damage','AttackRange','Material1ID','Material1Amount','Material2ID','Material2Amount','Material3ID','Material3Amount')){
+   if(-not($row.$field -is [string]) -or [string]::IsNullOrWhiteSpace([string]$row.$field)){
+    throw "UNIT_UPGRADE_LEGACY_PARSER=FAIL unit=$unit scalar_missing=$field"
+   }
+  }
+ }
+ Write-Host 'UNIT_UPGRADE_LEGACY_PARSER=PASS runtime_shape=table_row_scalar units=2 material_fields=9 original_catalog=untouched'
  foreach($path in $targets){
   $full=Join-Path $RepoRoot $path
   $content=[IO.File]::ReadAllText($full)
@@ -82,6 +115,11 @@ try {
   # the existing config parser/build remains the authority for the legacy body.
   if([regex]::Matches($updated,'(?m)^\s*"UnitUpgrade"\s*:').Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V57=FAIL config_injection_count=$path"}
   if($updated.IndexOf('"ArmoredCar"',[StringComparison]::Ordinal) -lt 0 -or $updated.IndexOf('"SpecialForces"',[StringComparison]::Ordinal) -lt 0){throw "ANDROID_EVIDENCE_ROOTFIX_V57=FAIL config_injection=$path"}
+  # Reject the formerly silent bug: an object-valued Level1 is not compatible
+  # with JsonParser.parseFile and would always hide the unit-upgrade action.
+  if([regex]::IsMatch($unitJson,'"Level1"') -or [regex]::IsMatch($unitJson,'"Materials"')){
+   throw "ANDROID_EVIDENCE_ROOTFIX_V57=FAIL nested_recipe_incompatible_with_legacy_parser=$path"
+  }
   [IO.File]::WriteAllText($full,$updated,(New-Object System.Text.UTF8Encoding($true)))
   Write-Host "UNIT_UPGRADE_CONFIG=PASS path=$path units=2 base_sha=$baseline validator=fragment_case_sensitive"
  }
@@ -89,7 +127,7 @@ try {
   $p=if($required -eq 'unit_upgrade_level'){'src\game\utils\OfflineSave.as'}elseif($required -eq 'openUnitUpgradeForSelection'){'src\game\gui\GameHUD.as'}else{'src\game\characters\PlayerUnit.as'}
   if(-not([IO.File]::ReadAllText((Join-Path $RepoRoot $p)).Contains($required))){throw "ANDROID_EVIDENCE_ROOTFIX_V57=FAIL code_missing=$required"}
  }
- Write-Host "ANDROID_EVIDENCE_ROOTFIX_V57=PASS mode=apply sha=$ExpectedSha catalog=individual materials=inventory_only root_swf=embedded validator=fragment_case_sensitive"
+ Write-Host "ANDROID_EVIDENCE_ROOTFIX_V57=PASS mode=apply sha=$ExpectedSha catalog=individual materials=inventory_only root_swf=embedded validator=legacy_scalar_rows"
 }catch {
  $failed=$_
  try{Restore-V57}catch{Write-Warning "ANDROID_EVIDENCE_ROOTFIX_V57_RESTORE_WARN $($_.Exception.Message)"}

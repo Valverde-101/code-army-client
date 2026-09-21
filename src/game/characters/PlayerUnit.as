@@ -258,17 +258,34 @@
       // Apply the upgraded maximum BEFORE restoring saved hit points.
       public function getOfflineUpgradeRecipe() : Object
       {
+         // Config has passed through JsonParser.parseFile: it preserves only
+         // table -> row -> scalar fields. The authoring JSON's nested Level1
+         // and Materials arrays MUST be projected to scalar fields by V57.
          if(!Config.OFFLINE_MODE || !mItem || !GameState.mConfig || !GameState.mConfig.UnitUpgrade)
          {
             return null;
          }
-         var catalog:Object = GameState.mConfig.UnitUpgrade[String(mItem.mId)];
-         if(!catalog || !catalog.Level1) return null;
-         var recipe:Object = catalog.Level1;
+         var row:Object = GameState.mConfig.UnitUpgrade[String(mItem.mId)];
+         if(!row || row.Level1 != null || row.Material1ID == null || row.Material2ID == null || row.Material3ID == null)
+         {
+            return null;
+         }
+         var recipe:Object = {
+            "Health":int(row.Health),
+            "Damage":int(row.Damage),
+            "AttackRange":int(row.AttackRange),
+            "Materials":new Array()
+         };
          if(int(recipe.Health) < int(PlayerUnitItem(mItem).mHealth) ||
             int(recipe.Damage) < int(PlayerUnitItem(mItem).mDamage) ||
-            int(recipe.AttackRange) < int(PlayerUnitItem(mItem).mAttackRange) ||
-            !(recipe.Materials is Array) || recipe.Materials.length != 3) return null;
+            int(recipe.AttackRange) < int(PlayerUnitItem(mItem).mAttackRange)) return null;
+         for(var i:int = 1;i <= 3;i++)
+         {
+            var id:String = String(row["Material" + i + "ID"]);
+            var count:int = int(row["Material" + i + "Amount"]);
+            if(!id || id == "null" || count <= 0) return null;
+            recipe.Materials.push({"ID":id,"Amount":count});
+         }
          return recipe;
       }
 
