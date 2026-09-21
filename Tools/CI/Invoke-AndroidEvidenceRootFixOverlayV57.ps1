@@ -76,16 +76,20 @@ try {
   $open=$content.IndexOf('{')
   if($open -lt 0){throw "ANDROID_EVIDENCE_ROOTFIX_V57=FAIL config_root_missing=$path"}
   $updated=$content.Substring(0,$open+1)+"`n  `"UnitUpgrade`": "+$unitJson+','+$content.Substring($open+1)
-  $decoded=$updated|ConvertFrom-Json
-  if(-not $decoded.UnitUpgrade.ArmoredCar.Level1 -or -not $decoded.UnitUpgrade.SpecialForces.Level1){throw "ANDROID_EVIDENCE_ROOTFIX_V57=FAIL config_injection=$path"}
+  # Do not round-trip the legacy authored config through ConvertFrom-Json here.
+  # It intentionally contains case-distinct keys such as ID/id that PowerShell
+  # 5.1 collapses case-insensitively. Validate only the injected V57 fragment;
+  # the existing config parser/build remains the authority for the legacy body.
+  if([regex]::Matches($updated,'(?m)^\s*"UnitUpgrade"\s*:').Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V57=FAIL config_injection_count=$path"}
+  if($updated.IndexOf('"ArmoredCar"',[StringComparison]::Ordinal) -lt 0 -or $updated.IndexOf('"SpecialForces"',[StringComparison]::Ordinal) -lt 0){throw "ANDROID_EVIDENCE_ROOTFIX_V57=FAIL config_injection=$path"}
   [IO.File]::WriteAllText($full,$updated,(New-Object System.Text.UTF8Encoding($true)))
-  Write-Host "UNIT_UPGRADE_CONFIG=PASS path=$path units=2 base_sha=$baseline"
+  Write-Host "UNIT_UPGRADE_CONFIG=PASS path=$path units=2 base_sha=$baseline validator=fragment_case_sensitive"
  }
  foreach($required in @('canOfflineUpgrade','applyOfflineUpgrade','unit_upgrade_level','openUnitUpgradeForSelection')){
   $p=if($required -eq 'unit_upgrade_level'){'src\game\utils\OfflineSave.as'}elseif($required -eq 'openUnitUpgradeForSelection'){'src\game\gui\GameHUD.as'}else{'src\game\characters\PlayerUnit.as'}
   if(-not([IO.File]::ReadAllText((Join-Path $RepoRoot $p)).Contains($required))){throw "ANDROID_EVIDENCE_ROOTFIX_V57=FAIL code_missing=$required"}
  }
- Write-Host "ANDROID_EVIDENCE_ROOTFIX_V57=PASS mode=apply sha=$ExpectedSha catalog=individual materials=inventory_only root_swf=embedded"
+ Write-Host "ANDROID_EVIDENCE_ROOTFIX_V57=PASS mode=apply sha=$ExpectedSha catalog=individual materials=inventory_only root_swf=embedded validator=fragment_case_sensitive"
 }catch {
  $failed=$_
  try{Restore-V57}catch{Write-Warning "ANDROID_EVIDENCE_ROOTFIX_V57_RESTORE_WARN $($_.Exception.Message)"}
