@@ -190,6 +190,7 @@
 						} else if (mapgrid[i]["mCharacter"] is PlayerUnit) {
 							unit["next_action_at"] = Math.round(mapgrid[i]["mCharacter"].getDyingTimer() / 1000); // Time to dying (for not-premium units)
 							unit["repairs_used"] = (mapgrid[i]["mCharacter"] as PlayerUnit).getOfflineRepairsUsed();
+							unit["unit_upgrade_level"] = (mapgrid[i]["mCharacter"] as PlayerUnit).getUnitLevel();
 							unit["activation_time"] = 0;
 						} else { // PlayerUnit + Buildings
 							unit["activation_time"] = 0;

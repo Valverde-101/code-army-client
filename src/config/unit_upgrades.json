@@ -1,0 +1,49 @@
+{
+  "schema": "armyattack-unit-upgrades/v1",
+  "scope": "individual",
+  "premium_shortcut": "disabled_until_authoritative_cost_verified",
+  "units": {
+    "ArmoredCar": {
+      "Level1": {
+        "Health": 15,
+        "Damage": 3,
+        "AttackRange": 1,
+        "Materials": [
+          {
+            "ID": "CinderBlock",
+            "Amount": 5
+          },
+          {
+            "ID": "Lumber",
+            "Amount": 5
+          },
+          {
+            "ID": "Rebars",
+            "Amount": 5
+          }
+        ]
+      }
+    },
+    "SpecialForces": {
+      "Level1": {
+        "Health": 13,
+        "Damage": 4,
+        "AttackRange": 1,
+        "Materials": [
+          {
+            "ID": "CinderBlock",
+            "Amount": 5
+          },
+          {
+            "ID": "Wiring",
+            "Amount": 5
+          },
+          {
+            "ID": "CommandoKnife",
+            "Amount": 5
+          }
+        ]
+      }
+    }
+  }
+}

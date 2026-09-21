@@ -11,7 +11,7 @@ Set-StrictMode -Version Latest
 $effectiveMode=if($PSBoundParameters.ContainsKey('Mode')){$Mode}else{$RequestedMode}
 if($effectiveMode -notin @('Apply','Restore')){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL invalid_mode=$effectiveMode"}
 
-$impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV56.ps1'
+$impl=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV57.ps1'
 $v4=Join-Path $PSScriptRoot 'Invoke-AndroidEvidenceRootFixOverlayV4.ps1'
 if(-not(Test-Path -LiteralPath $impl -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL delegate_missing=$impl"}
 if(-not(Test-Path -LiteralPath $v4 -PathType Leaf)){throw "ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v4_missing=$v4"}
@@ -20,10 +20,10 @@ $tokens=$null
 $errors=$null
 [void][System.Management.Automation.Language.Parser]::ParseFile($impl,[ref]$tokens,[ref]$errors)
 if(@($errors).Count -gt 0){
-  $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V56_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
-  throw 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v56_parser_invalid'
+  $errors|ForEach-Object{Write-Host "EVIDENCE_ROOTFIX_V57_PARSER_ERROR line=$($_.Extent.StartLineNumber) message=$($_.Message)"}
+  throw 'ANDROID_EVIDENCE_ROOTFIX_V14_COMPAT=FAIL v57_parser_invalid'
 }
-Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_DELEGATE=PASS implementation=v56 predecessor=v55 final_composition=true capture=true snow=true attack_budget=true pvp_catalog=true spatial_ai=true parser=true'
+Write-Host 'ANDROID_EVIDENCE_ROOTFIX_V14_DELEGATE=PASS implementation=v57 predecessor=v56 final_composition=true capture=true snow=true attack_budget=true pvp_catalog=true spatial_ai=true parser=true'
 Write-Host "EVIDENCE_ROOTFIX_MODE_BINDING=PASS adapter=v14 requested=$RequestedMode external_mode=$Mode effective=$effectiveMode compatibility_parameter=Mode validates_manually=true"
 
 # V3 inserts commitOwnershipVisualNow between clearDirtyBitmapRegion and
