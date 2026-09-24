@@ -1,0 +1,77 @@
+name: Army Attack Godot Home terrain extraction
+
+on:
+  push:
+    branches: [feat/godot-home-terrain-extraction-20260924]
+    paths:
+      - 'Tools/Godot/**'
+      - '.github/workflows/godot-home-terrain.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: army-attack-godot-terrain
+  cancel-in-progress: false
+
+jobs:
+  terrain:
+    name: Exact SWF 23.2 terrain extraction on portable self-hosted Windows
+    if: github.repository == 'Valverde-101/code-army-client'
+    runs-on: [self-hosted, Windows, X64, windows-build, android-parallel, pc-willthom, general]
+    timeout-minutes: 110
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - name: Precheck portable AndroidBuild and FFDec
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Set-StrictMode -Version Latest
+          $roots=@($env:ANDROIDBUILD_ROOT)
+          $roots+=@(Get-PSDrive -PSProvider FileSystem | ForEach-Object { Join-Path $_.Root 'AndroidBuild' })
+          $root=$roots | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'Core\Current\AndroidBuild.psd1') -PathType Leaf) } | Select-Object -First 1
+          if(-not $root){throw 'PRECHECK=FAIL androidbuild_root_missing'}
+          $root=(Resolve-Path -LiteralPath $root).Path
+          Import-Module (Join-Path $root 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
+          $git=Get-AndroidBuildGitPath $root
+          if(-not(Test-Path -LiteralPath $git -PathType Leaf)){throw "TOOLCHAIN=FAIL portable_git_missing=$git"}
+          $ffdec=Ensure-AndroidBuildFFDec -AndroidBuildRoot $root -Version '26.2.1' -ExpectedSha256 '0333b56998a55bd83f4e0deb678a811fcdc45607582b4f5dd438309c8c3ad5ce'
+          if([string]$ffdec.status -ne 'PASS'){throw 'TOOLCHAIN=FAIL ffdec_provision'}
+          $cli=Get-ChildItem -LiteralPath (Join-Path $root 'Tools\FFDec\26.2.1') -File -Recurse -Filter ffdec-cli.exe -ErrorAction Stop | Select-Object -First 1
+          if(-not $cli){throw 'TOOLCHAIN=FAIL ffdec_cli_missing'}
+          "ANDROIDBUILD_ROOT=$root" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PORTABLE_GIT=$git" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "FFDEC_CLI=$($cli.FullName)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          (Split-Path -Parent $git) | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "PRECHECK=PASS runner=$env:RUNNER_NAME root=$root"
+          Write-Host "TOOLCHAIN=PASS portable_git=$git ffdec=$($cli.FullName)"
+
+      - name: Checkout exact commit and pinned source SWF
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.EXPECTED_SOURCE_SHA }}
+          fetch-depth: 1
+          submodules: true
+          persist-credentials: false
+
+      - name: Curate terrain into persistent repo-local work directory
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:ANDROIDBUILD_ROOT ("Repositories\code-army-client\.work\godot-home-terrain\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
+          & "$env:GITHUB_WORKSPACE\Tools\Godot\Export-HomeTerrain.ps1" -Checkout $env:GITHUB_WORKSPACE -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $env:PORTABLE_GIT -FFDecPath $env:FFDEC_CLI -OutputRoot $out
+
+      - name: Verify manifest and curated PNG count
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:ANDROIDBUILD_ROOT ("Repositories\code-army-client\.work\godot-home-terrain\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
+          $manifest=Join-Path $out 'manifest.json'
+          if(-not(Test-Path -LiteralPath $manifest -PathType Leaf)){throw "FINAL_VALIDATION=FAIL manifest_missing=$manifest"}
+          $m=Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          if([string]$m.source_sha -ne $env:EXPECTED_SOURCE_SHA -or [int]$m.export.curated_png -lt 1){throw 'FINAL_VALIDATION=FAIL source_sha_or_empty_export'}
+          Write-Host "FINAL_VALIDATION=PASS scope=terrain_extraction_only source_sha=$env:EXPECTED_SOURCE_SHA count=$($m.export.curated_png)"
+          Write-Host "OUTPUT_PATH=$out"
+          Write-Host 'GODOT_IMPORT=NOT_RUN ANDROID_APK=NOT_RUN PHYSICAL_VALIDATION=NOT_RUN'
