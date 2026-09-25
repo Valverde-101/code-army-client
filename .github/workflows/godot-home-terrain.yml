@@ -63,6 +63,14 @@ jobs:
           $out=Join-Path $env:ANDROIDBUILD_ROOT ("Repositories\code-army-client\.work\godot-home-terrain\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
           & "$env:GITHUB_WORKSPACE\Tools\Godot\Export-HomeTerrain.ps1" -Checkout $env:GITHUB_WORKSPACE -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $env:PORTABLE_GIT -FFDecPath $env:FFDEC_CLI -OutputRoot $out
 
+      - name: Recover SWF terrain registration and transform metadata
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:ANDROIDBUILD_ROOT ("Repositories\code-army-client\.work\godot-home-terrain\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
+          $reg=Join-Path $out 'registration'
+          & "$env:GITHUB_WORKSPACE\Tools\Godot\Analyze-SwfTerrainRegistration.ps1" -Checkout $env:GITHUB_WORKSPACE -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $env:PORTABLE_GIT -OutputRoot $reg
+
       - name: Verify manifest and curated PNG count
         shell: powershell
         run: |
