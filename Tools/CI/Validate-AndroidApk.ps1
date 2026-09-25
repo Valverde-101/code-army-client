@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $reportRoot=Join-Path $AndroidBuildRoot "Builds\code-army-client\$ExpectedSha\android"
 New-Item -ItemType Directory -Force -Path $reportRoot | Out-Null

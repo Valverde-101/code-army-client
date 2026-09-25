@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\CI\Ensure-PortableFileHash.ps1')
 
 function Resolve-RepositoryRoot {
   param([string]$ExplicitRoot)

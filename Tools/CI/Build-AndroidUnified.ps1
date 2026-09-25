@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 function Copy-Tree([string]$Source,[string]$Destination){
   if(-not (Test-Path -LiteralPath $Source)){throw "UNIFIED_COPY=FAIL source_missing=$Source"}

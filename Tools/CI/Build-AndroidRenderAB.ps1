@@ -5,6 +5,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $buildScript=Join-Path $PSScriptRoot 'Build-Android.ps1'
 if(-not (Test-Path -LiteralPath $buildScript)){throw "RENDER_AB=FAIL build_script_missing=$buildScript"}

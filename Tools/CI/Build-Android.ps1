@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 $renderMode=$RenderMode.ToLowerInvariant()
 Write-Host "RENDER_MODE_REQUEST=PASS mode=$renderMode"
 $gitCandidates=@((Join-Path $AndroidBuildRoot 'Tools\Git\cmd\git.exe'),(Join-Path $AndroidBuildRoot 'PortableGit\cmd\git.exe'))

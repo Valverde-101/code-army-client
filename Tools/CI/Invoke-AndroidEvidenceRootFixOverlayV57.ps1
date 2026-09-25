@@ -9,6 +9,7 @@ param(
  [ValidateSet('Apply','Restore')][string]$RequestedMode='Apply'
 )
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 Set-StrictMode -Version Latest
 $RepoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 $head=(& $GitPath -C $RepoRoot rev-parse HEAD).Trim()

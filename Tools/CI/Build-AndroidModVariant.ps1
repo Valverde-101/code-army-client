@@ -7,6 +7,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 function Get-TreeDigest([string]$Root){
   if(-not (Test-Path -LiteralPath $Root)){throw "TREE_DIGEST=FAIL missing=$Root"}

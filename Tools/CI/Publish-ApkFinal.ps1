@@ -8,6 +8,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $configPath=Join-Path $repoRoot '.androidbuild.json'

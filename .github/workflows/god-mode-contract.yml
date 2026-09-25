@@ -44,3 +44,7 @@ jobs:
         shell: pwsh
         run: |
           & ./Tools/SWF/Test-GodModeContract.ps1 -RepoRoot $PWD.Path
+      - name: Validate missing-cmdlet portable hash fallback
+        shell: pwsh
+        run: |
+          & ./Tools/CI/Test-PortableHash.ps1 -RepoRoot $PWD.Path

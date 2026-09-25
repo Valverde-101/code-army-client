@@ -4,6 +4,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $tag='v21.1'
 $asset='AA21_1_release_android_HR.apk'

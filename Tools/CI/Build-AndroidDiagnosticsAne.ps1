@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $repo=(Resolve-Path -LiteralPath $RepoRoot).Path
 $air=(Resolve-Path -LiteralPath $AirRoot).Path

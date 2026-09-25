@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 $RepoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 if(-not(Test-Path -LiteralPath $GitPath -PathType Leaf)){throw "ANDROID_VISUAL_COMBAT_OVERLAY=FAIL git_missing=$GitPath"}
 $actual=(& $GitPath -C $RepoRoot rev-parse HEAD).Trim()

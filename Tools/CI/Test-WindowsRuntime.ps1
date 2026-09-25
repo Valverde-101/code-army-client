@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 if (-not (Test-Path -LiteralPath $ExePath)) {
   throw "WINDOW_RUNTIME_PRECHECK=FAIL label=$Label missing_exe=$ExePath"

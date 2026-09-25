@@ -7,6 +7,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $adb=Join-Path $AndroidBuildRoot 'AndroidSDK\platform-tools\adb.exe'
 if(-not(Test-Path -LiteralPath $adb -PathType Leaf)){throw "ADB_DEVICE=FAIL adb_missing=$adb"}

@@ -4,6 +4,7 @@ param(
 
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $releaseTag='jdk8u292-b10'
 $asset='OpenJDK8U-jdk_x64_windows_hotspot_8u292b10.zip'

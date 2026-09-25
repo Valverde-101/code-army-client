@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $publishedExpectedSha='306bccc7db5b1ce34dd68a3bc80093648c9224bd'
 $publishedRoot=Join-Path $RepoRoot 'vendor\Test_army_attack'

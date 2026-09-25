@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $git=Get-Command git.exe -ErrorAction SilentlyContinue
 if(-not $git){
