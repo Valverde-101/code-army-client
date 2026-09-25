@@ -2,6 +2,7 @@
 	import com.dchoc.GUI.DCButton;
 	import com.dchoc.graphics.DCResourceManager;
 	import flash.display.DisplayObject;
+	import flash.display.DisplayObjectContainer;
 	import flash.display.MovieClip;
 	import flash.display.Sprite;
 	import flash.events.*;
@@ -370,6 +371,14 @@
 			private var timer: Timer;
 		}
 
+
+		// Runtime-owned popup rendered into the published embedded root SWF.
+		// The AIR offline loader maps separate logical SWFs to dummy.json.
+		private var mUpgradeButton: Sprite;
+		private var mUpgradeBackdrop: Sprite;
+		private var mUpgradePanel: Sprite;
+		private var mUpgradeUnit: PlayerUnit;
+
 		public function GameHUD(param1: GameState) {
 			super();
 			this.mGame = param1;
@@ -508,6 +517,182 @@
 					}
 				}
 			}
+			this.updateUpgradeAction();
+		}
+
+
+		private function upgradeText(parent: Sprite, value: String, x0: Number, y0: Number, w: Number, h: Number, size: int, color: uint, strong: Boolean = false): TextField {
+			var tf: TextField = new TextField();
+			tf.defaultTextFormat = new TextFormat("_sans",size,color,strong);
+			tf.text = value;
+			tf.x = x0;
+			tf.y = y0;
+			tf.width = w;
+			tf.height = h;
+			tf.selectable = false;
+			tf.mouseEnabled = false;
+			parent.addChild(tf);
+			return tf;
+		}
+
+		private function upgradeRect(parent: Sprite, x0: Number, y0: Number, w: Number, h: Number, fill: uint, stroke: uint, radius: Number = 12): void {
+			parent.graphics.lineStyle(3,stroke);
+			parent.graphics.beginFill(fill);
+			parent.graphics.drawRoundRect(x0,y0,w,h,radius,radius);
+			parent.graphics.endFill();
+			parent.graphics.lineStyle();
+		}
+
+		private function upgradeButton(value: String, w: Number, h: Number, fill: uint): Sprite {
+			var b: Sprite = new Sprite();
+			b.buttonMode = true;
+			b.mouseChildren = false;
+			this.upgradeRect(b,0,0,w,h,fill,0xF8DC94,10);
+			this.upgradeText(b,value,10,(h-32)/2,w-20,32,19,0xFFFFFF,true);
+			return b;
+		}
+
+		private function upgradeIconReady(pic: Sprite): void {
+			if(pic) Utils.scaleIcon(pic,96,96);
+		}
+
+		private function updateUpgradeAction(): void {
+			if(!Config.OFFLINE_MODE || !this.mGame || !this.mGame.getMainClip()) return;
+			var root: DisplayObjectContainer = this.mGame.getMainClip();
+			if(!this.mUpgradeButton) {
+				this.mUpgradeButton = this.upgradeButton("MEJORAR UNIDAD",176,48,0x548F0B);
+				this.mUpgradeButton.name = "army_unit_upgrade_action";
+				this.mUpgradeButton.addEventListener(MouseEvent.CLICK,this.openUnitUpgradeForSelection,false,0,true);
+				root.addChild(this.mUpgradeButton);
+			}
+			if(this.mUpgradeButton.parent != root) root.addChild(this.mUpgradeButton);
+			this.mUpgradeButton.x = Math.max(12,this.mGame.getStageWidth()-195);
+			this.mUpgradeButton.y = Math.max(62,this.mGame.getStageHeight()-155);
+			var selected: PlayerUnit = this.mGame.mActivatedPlayerUnit;
+			this.mUpgradeButton.visible = this.mUpgradeBackdrop == null &&
+				this.mGame.mState == GameState.STATE_PLAY && !PopUpManager.isAnyPopupActive() &&
+				selected != null && selected.canOfflineUpgrade();
+		}
+
+		// Invokable from the selected-unit HUD or diagnostic instrumentation.
+		public function openUnitUpgradeForSelection(event: MouseEvent = null): void {
+			if(event) event.stopPropagation();
+			if(!Config.OFFLINE_MODE || this.mUpgradeBackdrop || !this.mGame ||
+				this.mGame.mState != GameState.STATE_PLAY || PopUpManager.isAnyPopupActive() ||
+				!this.mGame.mPlayerProfile || !this.mGame.mPlayerProfile.mInventory) return;
+			var unit: PlayerUnit = this.mGame.mActivatedPlayerUnit;
+			if(!unit || !unit.canOfflineUpgrade()) return;
+			var recipe: Object = unit.getOfflineUpgradeRecipe();
+			if(!recipe || !(recipe.Materials is Array) || recipe.Materials.length != 3) return;
+			this.mUpgradeUnit = unit;
+			var sw: Number = this.mGame.getStageWidth();
+			var sh: Number = this.mGame.getStageHeight();
+			var shade: Sprite = new Sprite();
+			shade.name = "army_unit_upgrade_dialog";
+			shade.graphics.beginFill(0x000000,0.75);
+			shade.graphics.drawRect(0,0,sw,sh);
+			shade.graphics.endFill();
+			shade.addEventListener(MouseEvent.CLICK,this.closeUpgradeDialog,false,0,true);
+			this.mUpgradeBackdrop = shade;
+			this.mGame.getMainClip().addChild(shade);
+			var panel: Sprite = new Sprite();
+			this.mUpgradePanel = panel;
+			panel.name = "army_unit_upgrade_panel";
+			var scale: Number = Math.min(1,(sw-16)/860,(sh-16)/558);
+			panel.scaleX = panel.scaleY = Math.max(0.22,scale);
+			panel.x = (sw-860*panel.scaleX)/2;
+			panel.y = (sh-558*panel.scaleY)/2;
+			panel.addEventListener(MouseEvent.CLICK,this.stopUpgradeClick,false,0,true);
+			shade.addChild(panel);
+			this.upgradeRect(panel,0,0,860,516,0xF2F1F0,0x625D53,16);
+			this.upgradeRect(panel,12,12,836,218,0xFFF8D6,0x9B8A58,16);
+			this.upgradeRect(panel,368,24,467,198,0x474338,0x26221B,14);
+			this.upgradeRect(panel,376,66,218,146,0x536675,0xD7DFE3,7);
+			this.upgradeRect(panel,600,66,227,146,0x7B8E4D,0xE5E9DB,7);
+			this.upgradeText(panel,unit.mItem.mName,28,25,325,45,23,0x303030,true);
+			var soldierSlot: Sprite = new Sprite();
+			soldierSlot.x = 180;
+			soldierSlot.y = 147;
+			panel.addChild(soldierSlot);
+			IconLoader.addIcon(soldierSlot,unit.mItem as Item,this.upgradeIconReady);
+			this.upgradeText(panel,"DETALLES DE MEJORA",452,27,374,37,25,0xFFF0C5,true);
+			this.upgradeText(panel,"ACTUAL",400,72,182,32,19,0xFFFFFF,true);
+			this.upgradeText(panel,"DESPUÉS",616,72,189,32,19,0xFFFFFF,true);
+			var afterHp: int = Math.max(1,int(recipe.Health) - Math.max(0,int(unit.mMaxHealth-unit.getHealth())));
+			this.upgradeText(panel,"VIDA   "+unit.getHealth()+"/"+unit.mMaxHealth,386,104,204,33,19,0xFFFFFF,true);
+			this.upgradeText(panel,"VIDA   "+afterHp+"/"+int(recipe.Health),610,104,207,33,19,0xFFFFFF,true);
+			this.upgradeText(panel,"ATAQUE   x"+unit.mPower,386,144,208,30,19,0xFFFFFF,true);
+			this.upgradeText(panel,"ATAQUE   x"+int(recipe.Damage),610,144,208,30,19,0xFFFFFF,true);
+			this.upgradeText(panel,"ALCANCE   x"+unit.mAttackRange,386,181,207,30,19,0xFFFFFF,true);
+			this.upgradeText(panel,"ALCANCE   x"+int(recipe.AttackRange),610,181,207,30,19,0xFFFFFF,true);
+			var ready: Boolean = true;
+			var inventory: Inventory = this.mGame.mPlayerProfile.mInventory;
+			for(var i: int = 0;i<3;i++) {
+				var material: Object = recipe.Materials[i];
+				var item: Item = ItemManager.getItem(String(material.ID),"Ingredient");
+				var qty: int = item ? inventory.getNumberOfItems(item) : 0;
+				var required: int = int(material.Amount);
+				var sufficient: Boolean = item != null && required > 0 && qty >= required;
+				if(!sufficient) ready = false;
+				var x0: Number = 16+i*281;
+				this.upgradeRect(panel,x0,242,266,214,sufficient ? 0xF1FFE6 : 0xFFEDE8,sufficient ? 0x568D24 : 0xA94444,12);
+				var nameText: String = material.ID == "CinderBlock" ? "CEMENTO" : item ? item.mName : String(material.ID);
+				this.upgradeText(panel,nameText,x0+12,253,245,29,18,0x292929,true);
+				var materialSlot: Sprite = new Sprite();
+				materialSlot.x = x0+133;
+				materialSlot.y = 352;
+				panel.addChild(materialSlot);
+				if(item) IconLoader.addIcon(materialSlot,item,this.upgradeIconReady);
+				this.upgradeText(panel,String(qty)+"/"+String(required),x0+92,413,120,32,23,sufficient ? 0x28511D : 0xA32222,true);
+			}
+			var buy: Sprite = this.upgradeButton(ready ? "MEJORAR" : "FALTAN MATERIALES",302,53,ready ? 0x548F0B : 0x767676);
+			buy.name = "army_unit_upgrade_confirm";
+			buy.buttonMode = ready;
+			buy.x = 279;
+			buy.y = 472;
+			buy.addEventListener(MouseEvent.CLICK,this.confirmUnitUpgrade,false,0,true);
+			panel.addChild(buy);
+			this.upgradeText(panel,"Mejora individual · materiales reales · sin cobro de oro",22,529,816,26,14,0xFFFFFF,false);
+			Utils.DiagEvent("UNIT_UPGRADE_OPEN","unit="+unit.getUnitId()+";level="+unit.getUnitLevel()+";materials_ready="+ready);
+		}
+
+		private function stopUpgradeClick(event: MouseEvent): void {
+			event.stopPropagation();
+		}
+
+		private function closeUpgradeDialog(event: MouseEvent = null): void {
+			if(event) event.stopPropagation();
+			if(this.mUpgradeBackdrop && this.mUpgradeBackdrop.parent)
+				this.mUpgradeBackdrop.parent.removeChild(this.mUpgradeBackdrop);
+			this.mUpgradeBackdrop = null;
+			this.mUpgradePanel = null;
+			this.mUpgradeUnit = null;
+		}
+
+		private function confirmUnitUpgrade(event: MouseEvent): void {
+			event.stopPropagation();
+			var unit: PlayerUnit = this.mUpgradeUnit;
+			if(!this.mUpgradeBackdrop || !unit || !unit.canOfflineUpgrade() ||
+				this.mGame.mActivatedPlayerUnit != unit || !this.mGame.mPlayerProfile) return;
+			var recipe: Object = unit.getOfflineUpgradeRecipe();
+			if(!recipe || !(recipe.Materials is Array) || recipe.Materials.length != 3) return;
+			var inventory: Inventory = this.mGame.mPlayerProfile.mInventory;
+			var items: Array = [];
+			for(var i: int=0;i<3;i++) {
+				var material: Object = recipe.Materials[i];
+				var item: Item = ItemManager.getItem(String(material.ID),"Ingredient");
+				var required: int = int(material.Amount);
+				if(!item || required <= 0 || inventory.getNumberOfItems(item) < required) {
+					Utils.DiagEvent("UNIT_UPGRADE_REJECTED","reason=materials_changed;unit="+unit.getUnitId());
+					return;
+				}
+				items.push(item);
+			}
+			if(!unit.applyOfflineUpgrade()) return;
+			for(i=0;i<3;i++) inventory.addItems(items[i],-int(recipe.Materials[i].Amount));
+			Utils.DiagEvent("UNIT_UPGRADE_PAID","unit="+unit.getUnitId()+";level="+unit.getUnitLevel()+";materials=3;premium=0");
+			this.closeUpgradeDialog();
+			this.requestImmediateSave();
 		}
 
 		private function setLevelText(param1: int): void {

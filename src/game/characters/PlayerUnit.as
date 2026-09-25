@@ -253,8 +253,76 @@
          return this.mUnitSightRadius;
       }
       
+      // Level 0 is the canonical source stat block. The level-1 recipe is
+      // injected from unit_upgrades.json into both runtime config variants.
+      // Apply the upgraded maximum BEFORE restoring saved hit points.
+      public function getOfflineUpgradeRecipe() : Object
+      {
+         // Config has passed through JsonParser.parseFile: it preserves only
+         // table -> row -> scalar fields. The authoring JSON's nested Level1
+         // and Materials arrays MUST be projected to scalar fields by V57.
+         if(!Config.OFFLINE_MODE || !mItem || !GameState.mConfig || !GameState.mConfig.UnitUpgrade)
+         {
+            return null;
+         }
+         var row:Object = GameState.mConfig.UnitUpgrade[String(mItem.mId)];
+         if(!row || row.Level1 != null || row.Material1ID == null || row.Material2ID == null || row.Material3ID == null)
+         {
+            return null;
+         }
+         var recipe:Object = {
+            "Health":int(row.Health),
+            "Damage":int(row.Damage),
+            "AttackRange":int(row.AttackRange),
+            "Materials":new Array()
+         };
+         if(int(recipe.Health) < int(PlayerUnitItem(mItem).mHealth) ||
+            int(recipe.Damage) < int(PlayerUnitItem(mItem).mDamage) ||
+            int(recipe.AttackRange) < int(PlayerUnitItem(mItem).mAttackRange)) return null;
+         for(var i:int = 1;i <= 3;i++)
+         {
+            var id:String = String(row["Material" + i + "ID"]);
+            var count:int = int(row["Material" + i + "Amount"]);
+            if(!id || id == "null" || count <= 0) return null;
+            recipe.Materials.push({"ID":id,"Amount":count});
+         }
+         return recipe;
+      }
+
+      public function canOfflineUpgrade() : Boolean
+      {
+         return Config.OFFLINE_MODE && GameState.mInstance != null &&
+            GameState.mInstance.mState == GameState.STATE_PLAY && this.isAlive() &&
+            this.mUnitLevel == UNIT_LEVEL_RECRUIT && this.getOfflineUpgradeRecipe() != null;
+      }
+
+      public function applyOfflineUpgrade() : Boolean
+      {
+         if(!this.canOfflineUpgrade()) return false;
+         var recipe:Object = this.getOfflineUpgradeRecipe();
+         var missingHealth:int = mMaxHealth - mHealth;
+         this.mUnitLevel = 1;
+         mMaxHealth = int(recipe.Health);
+         mPower = int(recipe.Damage);
+         mAttackRange = int(recipe.AttackRange);
+         if(mAttackRange > smLongestAttackRange) smLongestAttackRange = mAttackRange;
+         setHealth(Math.max(1,mMaxHealth - missingHealth));
+         Utils.DiagEvent("UNIT_UPGRADE_APPLIED","unit=" + String(mItem.mId) + ";level=1;max_health=" + mMaxHealth + ";attack=" + mPower + ";range=" + mAttackRange);
+         return true;
+      }
+
       override public function setupFromServer(param1:Object) : void
       {
+         var upgradeLevel:int = param1 != null && param1.unit_upgrade_level != null ? int(param1.unit_upgrade_level) : 0;
+         var recipe:Object = this.getOfflineUpgradeRecipe();
+         if(Config.OFFLINE_MODE && upgradeLevel == 1 && recipe != null)
+         {
+            this.mUnitLevel = 1;
+            mMaxHealth = int(recipe.Health);
+            mPower = int(recipe.Damage);
+            mAttackRange = int(recipe.AttackRange);
+            if(mAttackRange > smLongestAttackRange) smLongestAttackRange = mAttackRange;
+         }
          super.setupFromServer(param1);
          this.mOfflineRepairsUsed = param1.repairs_used != null ? int(Math.max(0,Math.min(MAX_OFFLINE_REPAIRS,int(param1.repairs_used)))) : 0;
          if(mHealth < mMaxHealth)
