@@ -8,6 +8,19 @@ param(
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
+# Some isolated self-hosted runner profiles do not expose Get-FileHash from
+# Microsoft.PowerShell.Utility. Use deterministic SHA-256 via .NET instead.
+function Get-ArmyFileSha256 {
+  param([Parameter(Mandatory=$true)][string]$Path)
+  $stream=[IO.File]::OpenRead($Path)
+  try {
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-','').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+  } finally { $stream.Dispose() }
+}
+
+
 $repoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 $root=(Resolve-Path -LiteralPath $AndroidBuildRoot).Path
 if($ExpectedSha -notmatch '^[a-f0-9]{40}$'){throw "ARMY_PROJECT_SOURCE_EXPORT=FAIL invalid_sha=$ExpectedSha"}
@@ -164,9 +177,9 @@ AndroidBuild Core minimum: 3.0.9
   [IO.File]::WriteAllText($instructionsPath,$instructions,(New-Object Text.UTF8Encoding($false)))
   Copy-Item -LiteralPath $configPath -Destination $configCopy -Force
 
-  $sourceHash=(Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
-  $instructionsHash=(Get-FileHash -LiteralPath $instructionsPath -Algorithm SHA256).Hash.ToLowerInvariant()
-  $configHash=(Get-FileHash -LiteralPath $configCopy -Algorithm SHA256).Hash.ToLowerInvariant()
+  $sourceHash=(Get-ArmyFileSha256 -Path $sourcePath)
+  $instructionsHash=(Get-ArmyFileSha256 -Path $instructionsPath)
+  $configHash=(Get-ArmyFileSha256 -Path $configCopy)
   $metadata=[ordered]@{
     schema='armyattack-project-source/v1'
     repository='Valverde-101/code-army-client'
@@ -221,9 +234,9 @@ AndroidBuild Core minimum: 3.0.9
   foreach($file in @($pubSource,$pubInstructions,$pubMetadata,$pubConfig)){if(-not(Test-Path -LiteralPath $file -PathType Leaf)){throw "ARMY_PROJECT_SOURCE_EXPORT=FAIL published_file_missing=$file"}}
   $m=Get-Content -LiteralPath $pubMetadata -Raw|ConvertFrom-Json
   if([string]$m.source_sha -ne $ExpectedSha){throw 'ARMY_PROJECT_SOURCE_EXPORT=FAIL metadata_sha'}
-  if((Get-FileHash $pubSource -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$m.files.'armyattack-project-source-v1.md'){throw 'ARMY_PROJECT_SOURCE_EXPORT=FAIL source_hash'}
-  if((Get-FileHash $pubInstructions -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$m.files.'armyattack-project-instructions-v1.txt'){throw 'ARMY_PROJECT_SOURCE_EXPORT=FAIL instructions_hash'}
-  if((Get-FileHash $pubConfig -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$m.files.'.androidbuild.json'){throw 'ARMY_PROJECT_SOURCE_EXPORT=FAIL config_hash'}
+  if((Get-ArmyFileSha256 -Path $pubSource) -ne [string]$m.files.'armyattack-project-source-v1.md'){throw 'ARMY_PROJECT_SOURCE_EXPORT=FAIL source_hash'}
+  if((Get-ArmyFileSha256 -Path $pubInstructions) -ne [string]$m.files.'armyattack-project-instructions-v1.txt'){throw 'ARMY_PROJECT_SOURCE_EXPORT=FAIL instructions_hash'}
+  if((Get-ArmyFileSha256 -Path $pubConfig) -ne [string]$m.files.'.androidbuild.json'){throw 'ARMY_PROJECT_SOURCE_EXPORT=FAIL config_hash'}
   Write-Host "ARMY_PROJECT_SOURCE_IDENTITY=PASS repository=Valverde-101/code-army-client sha=$ExpectedSha core=$core"
   Write-Host "ARMY_PROJECT_SOURCE_FILE=PASS name=armyattack-project-source-v1.md sha256=$($m.files.'armyattack-project-source-v1.md')"
   Write-Host "ARMY_PROJECT_SOURCE_FILE=PASS name=armyattack-project-instructions-v1.txt sha256=$($m.files.'armyattack-project-instructions-v1.txt')"
