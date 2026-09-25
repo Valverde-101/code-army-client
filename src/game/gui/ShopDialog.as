@@ -306,6 +306,26 @@
             this.mAllItems[_loc4_.ID] = _loc5_;
          }
          this.mAllItems[TAB_SPECIALS] = _loc3_;
+			if (GameState.isOfflineGodModeActive()) {
+				// ShopUnit misses BlackFox in the shipped full catalogue. Enumerate PlayerUnit.
+				var fullUnits:Array = this.mAllItems[TAB_UNITS] as Array;
+				if (!fullUnits) fullUnits = new Array();
+				var unit:Object = null;
+				var candidate:PlayerUnitItem = null;
+				var alreadyListed:Boolean = false;
+				var listed:ShopItem = null;
+				for each (unit in GameState.mConfig.PlayerUnit) {
+					candidate = ItemManager.getItemByTableName(String(unit.ID), "PlayerUnit") as PlayerUnitItem;
+					if (!candidate) continue;
+					alreadyListed = false;
+					for each (listed in fullUnits) {
+						if (listed && listed.mId == candidate.mId) { alreadyListed = true; break; }
+					}
+					if (!alreadyListed) fullUnits.push(candidate);
+				}
+				this.mAllItems[TAB_UNITS] = fullUnits;
+				Utils.DiagEvent("GOD_MODE_SHOP", "units=" + fullUnits.length + ";catalogue=PlayerUnit");
+			}
       }
       
       private function setTab(param1:String) : void

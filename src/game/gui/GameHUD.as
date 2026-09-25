@@ -378,6 +378,8 @@
 		private var mUpgradeBackdrop: Sprite;
 		private var mUpgradePanel: Sprite;
 		private var mUpgradeUnit: PlayerUnit;
+		private var mGodModeButton: Sprite;
+		private var mGodModeLabel: TextField;
 
 		public function GameHUD(param1: GameState) {
 			super();
@@ -518,6 +520,7 @@
 				}
 			}
 			this.updateUpgradeAction();
+			this.updateGodModeAction();
 		}
 
 
@@ -554,6 +557,40 @@
 
 		private function upgradeIconReady(pic: Sprite): void {
 			if(pic) Utils.scaleIcon(pic,96,96);
+		}
+
+		// Floating button over the root screen: independent of the SWF HUD art.
+		private function updateGodModeAction():void {
+			if (!Config.OFFLINE_MODE || !Config.DEBUG_MODE || Config.USE_LIVE_BUILD || !this.mGame ||
+				!this.mGame.getMainClip()) return;
+			var root:DisplayObjectContainer = this.mGame.getMainClip();
+			if (!this.mGodModeButton) {
+				this.mGodModeButton = this.upgradeButton("DIOS: OFF",136,43,0x495E70);
+				this.mGodModeButton.name = "army_offline_god_mode";
+				this.mGodModeLabel = this.mGodModeButton.getChildAt(0) as TextField;
+				this.mGodModeButton.addEventListener(MouseEvent.CLICK,this.toggleOfflineGodMode,false,0,true);
+				root.addChild(this.mGodModeButton);
+			}
+			if (this.mGodModeButton.parent != root) root.addChild(this.mGodModeButton);
+			this.mGodModeButton.x = Math.max(10,this.mGame.getStageWidth() - 156);
+			this.mGodModeButton.y = 76;
+			this.mGodModeButton.visible = GameState.isOfflineGodModeAvailable() &&
+				this.mGame.mState == GameState.STATE_PLAY && !PopUpManager.isAnyPopupActive();
+			if (this.mGodModeLabel)
+				this.mGodModeLabel.text = GameState.isOfflineGodModeActive() ? "DIOS: ON" : "DIOS: OFF";
+		}
+
+		// Accessible by name and directly callable from instrumentation in DEBUG/TEST.
+		public function toggleOfflineGodMode(event:MouseEvent = null):void {
+			if (event) event.stopPropagation();
+			if (!GameState.isOfflineGodModeAvailable() || !this.mGame ||
+				this.mGame.mState != GameState.STATE_PLAY || PopUpManager.isAnyPopupActive()) return;
+			var enable:Boolean = !GameState.isOfflineGodModeActive();
+			if (this.mGame.setOfflineGodMode(enable) && this.mGodModeButton) {
+				this.mGodModeButton.graphics.clear();
+				this.upgradeRect(this.mGodModeButton,0,0,136,43,enable ? 0x2F8A45 : 0x495E70,0xF8DC94,10);
+				if (this.mGodModeLabel) this.mGodModeLabel.text = enable ? "DIOS: ON" : "DIOS: OFF";
+			}
 		}
 
 		private function updateUpgradeAction(): void {

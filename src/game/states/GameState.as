@@ -121,6 +121,40 @@
 
 		public static var smUnlockCheat: Boolean;
 
+		// Offline player feature; never persisted as campaign progress or exposed in online/PvP.
+		private static var smOfflineGodMode:Boolean = false;
+
+		public static function isOfflineGodModeAvailable():Boolean {
+			return Config.OFFLINE_MODE && Config.DEBUG_MODE && !Config.USE_LIVE_BUILD && mInstance != null &&
+				!mInstance.visitingFriend() && mInstance.mCurrentMapId != null &&
+				mInstance.mCurrentMapId.indexOf("pvp_") != 0 && mInstance.mState != STATE_PVP;
+		}
+
+		public static function isOfflineGodModeActive():Boolean {
+			return smOfflineGodMode && isOfflineGodModeAvailable();
+		}
+
+		// Developer hook; no inventory/currency/premium grants and no permanent area purchases.
+		public function setOfflineGodMode(enabled:Boolean):Boolean {
+			if (!isOfflineGodModeAvailable() || this.mState != STATE_PLAY) return false;
+			if (smOfflineGodMode == enabled) return true;
+			smOfflineGodMode = enabled;
+			if (this.mScene) {
+				this.mScene.updateBorderTiles();
+				if (this.mScene.mFog) {
+					this.mScene.mFog.init(false);
+					this.mScene.mFog.recalculateFogEdges();
+				}
+				if (this.mScene.mTilemapGraphic) this.mScene.mTilemapGraphic.updateTilemap();
+			}
+			Utils.DiagEvent("GOD_MODE", "enabled=" + enabled + ";map=" + this.mCurrentMapId + ";temporary=true");
+			return true;
+		}
+
+		public function getOfflineGodModeStatus():String {
+			return isOfflineGodModeActive() ? "ON" : "OFF";
+		}
+
 		private static var smHiddenErrorMessageCodeString: String = "";
 
 		private static var smDebugCodeString: String = "";

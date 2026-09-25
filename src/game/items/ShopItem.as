@@ -131,6 +131,9 @@
 		}
 
 		public function isUnlocked(): Boolean {
+			// Offline God Mode exposes all player troops, not unrelated shop products.
+			// Resource and premium prices are retained by the normal purchase path.
+			if (this is PlayerUnitItem && GameState.isOfflineGodModeActive()) return true;
 			return this.mEarlyUnlockBought || this.hasRequiredLevel() && this.hasRequiredAllies() && this.hasRequiredMission() && this.hasRequiredItem() && this.hasRequiredBuilding() && !this.isAlreadyAdded() && this.canBeBuiltOnThisMap();
 		}
 

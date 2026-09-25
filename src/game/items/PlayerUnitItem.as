@@ -124,7 +124,8 @@ package game.items
       
       override public function capAvailable() : Boolean
       {
-         return GameState.mInstance.mPlayerProfile.capAvailable(mType);
+         if (GameState.isOfflineGodModeActive()) return true;
+			return GameState.mInstance.mPlayerProfile.capAvailable(mType);
       }
       
       public function getDefaultActorPriority() : Number

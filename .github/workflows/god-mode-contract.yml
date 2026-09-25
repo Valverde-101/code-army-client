@@ -1,0 +1,46 @@
+name: Army Attack offline God Mode contract
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+      - 'fix/**'
+      - main
+    paths:
+      - 'src/game/**'
+      - 'src/config/army_config_base.json'
+      - 'Tools/SWF/Test-GodModeContract.ps1'
+      - '.github/workflows/god-mode-contract.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/game/**'
+      - 'src/config/army_config_base.json'
+      - 'Tools/SWF/Test-GodModeContract.ps1'
+      - '.github/workflows/god-mode-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Exact checkout
+        shell: pwsh
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $sha=(git rev-parse HEAD).Trim()
+          if($sha -ne $env:EXPECTED_SOURCE_SHA){throw "EXACT_HEAD=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$sha"}
+          Write-Host "EXACT_HEAD=PASS sha=$sha"
+      - name: Validate complete troop catalogue and God Mode wiring
+        shell: pwsh
+        run: |
+          & ./Tools/SWF/Test-GodModeContract.ps1 -RepoRoot $PWD.Path

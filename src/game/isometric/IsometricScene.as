@@ -814,7 +814,7 @@
 			// Use the target map identity as well as the FSM state so a freshly-created
 			// PvP battlefield is never classified as a locked campaign area and covered
 			// entirely by CLOUD_BIT_FULL tiles during that pre-state initialization window.
-			if (GameState.mInstance.visitingTutor() || GameState.mInstance.mState == GameState.STATE_PVP || (GameState.mInstance.mCurrentMapId && GameState.mInstance.mCurrentMapId.indexOf("pvp_") == 0)) {
+			if (GameState.isOfflineGodModeActive() || GameState.mInstance.visitingTutor() || GameState.mInstance.mState == GameState.STATE_PVP || (GameState.mInstance.mCurrentMapId && GameState.mInstance.mCurrentMapId.indexOf("pvp_") == 0)) {
 				return true;
 			}
 			if (param1) {

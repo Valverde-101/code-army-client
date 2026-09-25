@@ -3,6 +3,7 @@ package game.isometric
    import game.battlefield.MapData;
    import game.gameElements.PowerUpObject;
    import game.isometric.characters.IsometricCharacter;
+    import game.states.GameState;
    import game.isometric.elements.Renderable;
    
    public class GridCell
@@ -62,7 +63,7 @@ package game.isometric
       
       public function hasFog() : Boolean
       {
-         return this.mViewers == 0 && this.mOwner != MapData.TILE_OWNER_FRIENDLY;
+         return !GameState.isOfflineGodModeActive() && this.mViewers == 0 && this.mOwner != MapData.TILE_OWNER_FRIENDLY;
       }
    }
 }
