@@ -17,3 +17,12 @@ Ruta reproducible y portátil:
 No se presupone que el código numérico de `tile_map_home.csv` corresponda directamente al identificador de cada sprite. La reconstrucción de Home en Godot y la verificación de sus transformaciones son trabajo posterior. El workflow marca PASS **solo** la extracción, no la importación Godot, compilación APK ni validación física.
 
 No subir volcados de miles de PNG, SDK, cachés ni binarios al PR ni a GitHub Actions Artifacts. Los resultados permanecen en `.work` del SSD. Esta rama es independiente del PR #5 (mejoras del juego AIR). Confirmar derechos sobre los recursos antes de distribuir una reconstrucción públicamente.
+
+
+## Organización automática para Godot
+
+Tras extraer y recuperar los datos de registro, `Organize-HomeTerrain.ps1` crea una vista organizada en `organized/home/` sin mover ni destruir los PNG fuente. La clasificación deriva de `TileType` y de los IDs realmente usados por `tile_map.csv`: base, rocas, colinas, bancos, bosque, lagunas, río, ferrocarril, costa, montañas, restos y otros. Se separan friendly/enemy y base/overlay.
+
+Los archivos mantienen sus dimensiones originales. Cuando existe versión recortada se conserva también, y `catalog.json` registra lienzo, tamaño visible, `crop_left/crop_top`, SHA-256, tile ID, descripción, recurso SWF, símbolo y metadatos de registro cuando están disponibles. En el mismo volumen se prefieren hardlinks para no duplicar cientos de PNG; si el sistema no permite hardlink, se copia el archivo.
+
+La celda lógica de Home sigue siendo **96×96**. El tamaño del PNG no se usa para inferir la ocupación de la celda.

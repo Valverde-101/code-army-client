@@ -71,6 +71,14 @@ jobs:
           $reg=Join-Path $out 'registration'
           & "$env:GITHUB_WORKSPACE\Tools\Godot\Analyze-SwfTerrainRegistration.ps1" -Checkout $env:GITHUB_WORKSPACE -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $env:PORTABLE_GIT -OutputRoot $reg
 
+      - name: Organize Home assets into Godot-ready folders
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $out=Join-Path $env:ANDROIDBUILD_ROOT ("Repositories\code-army-client\.work\godot-home-terrain\"+$env:EXPECTED_SOURCE_SHA+"\"+$env:GITHUB_RUN_ID)
+          $organized=Join-Path $out 'organized\home'
+          & "$env:GITHUB_WORKSPACE\Tools\Godot\Organize-HomeTerrain.ps1" -Checkout $env:GITHUB_WORKSPACE -ExtractionRoot $out -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $env:PORTABLE_GIT -OutputRoot $organized
+
       - name: Verify manifest and curated PNG count
         shell: powershell
         run: |
@@ -80,6 +88,11 @@ jobs:
           if(-not(Test-Path -LiteralPath $manifest -PathType Leaf)){throw "FINAL_VALIDATION=FAIL manifest_missing=$manifest"}
           $m=Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
           if([string]$m.source_sha -ne $env:EXPECTED_SOURCE_SHA -or [int]$m.export.curated_png -lt 1){throw 'FINAL_VALIDATION=FAIL source_sha_or_empty_export'}
-          Write-Host "FINAL_VALIDATION=PASS scope=terrain_extraction_only source_sha=$env:EXPECTED_SOURCE_SHA count=$($m.export.curated_png)"
+          $catalog=Join-Path $out 'organized\home\catalog.json'
+          if(-not(Test-Path -LiteralPath $catalog -PathType Leaf)){throw "FINAL_VALIDATION=FAIL organized_catalog_missing=$catalog"}
+          $c=Get-Content -LiteralPath $catalog -Raw|ConvertFrom-Json
+          if([string]$c.status -ne 'PASS' -or [int]$c.mapped_records -lt 1){throw 'FINAL_VALIDATION=FAIL organized_catalog_invalid'}
+          Write-Host "FINAL_VALIDATION=PASS scope=terrain_extraction_and_organization source_sha=$env:EXPECTED_SOURCE_SHA extracted=$($m.export.curated_png) mapped=$($c.mapped_records) missing=$($c.missing_records)"
           Write-Host "OUTPUT_PATH=$out"
+          Write-Host "ORGANIZED_HOME_PATH=$(Join-Path $out 'organized\home')"
           Write-Host 'GODOT_IMPORT=NOT_RUN ANDROID_APK=NOT_RUN PHYSICAL_VALIDATION=NOT_RUN'

@@ -11,6 +11,16 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+
+function Get-Sha256Hex {
+  param([Parameter(Mandatory=$true)][string]$Path)
+  $stream=[IO.File]::OpenRead($Path)
+  try {
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-','').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+  } finally { $stream.Dispose() }
+}
 $swfSha='99a7e8c219610eabbe97aee74228d52ded1532b4c2d4310432d15082b2ff11c4'
 $submoduleSha='306bccc7db5b1ce34dd68a3bc80093648c9224bd'
 $checkout=(Resolve-Path -LiteralPath $Checkout).Path
@@ -22,13 +32,13 @@ $subHead=(& $GitPath -C $sub rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $subHead -ne $submoduleSha){throw "SUBMODULE_PIN=FAIL expected=$submoduleSha actual=$subHead"}
 $swf=Join-Path $sub 'armyattack\assets\iArmyAirOfflineSavingv23.swf'
 if(-not(Test-Path -LiteralPath $swf -PathType Leaf)){throw "SWF_SOURCE=FAIL missing=$swf"}
-$actualHash=(Get-FileHash -LiteralPath $swf -Algorithm SHA256).Hash.ToLowerInvariant()
+$actualHash=Get-Sha256Hex -Path $swf
 $sourceSize=(Get-Item -LiteralPath $swf).Length
 if($actualHash -ne $swfSha -or $sourceSize -ne 24871956){throw "SWF_SOURCE=FAIL actual_sha256=$actualHash size=$sourceSize"}
 Write-Host "SWF_SOURCE=PASS submodule=$subHead size=$sourceSize sha256=$actualHash"
 $csv=Join-Path $checkout 'src\config\tile_map.csv'
 if(-not(Test-Path -LiteralPath $csv -PathType Leaf)){throw 'HOME_MAP=FAIL tile_map_csv_missing'}
-$csvHash=(Get-FileHash -LiteralPath $csv -Algorithm SHA256).Hash.ToLowerInvariant()
+$csvHash=Get-Sha256Hex -Path $csv
 $cache=Join-Path $AndroidBuildRoot 'Repositories\code-army-client\.work\swf-extracted\23.2'
 $cacheManifest=Join-Path $cache 'manifest.json'
 $cacheRows=@{}
@@ -86,7 +96,7 @@ $copied=0;$bytes=0L;$duplicates=0;$truncated=$false
 foreach($f in $candidates){
  if($copied -ge $MaxPng -or ($bytes+$f.Length) -gt $MaxBytes){$truncated=$true;break}
  $rel=$f.FullName.Substring($pngRoot.Length).TrimStart('\','/').Replace('\','/')
- $hash=(Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+ $hash=Get-Sha256Hex -Path $f.FullName
  if($fromCache){
   $key='sprites/'+$rel
   if(-not $cacheRows.ContainsKey($key)){throw "RAW_CACHE_FILE=FAIL missing_hash_inventory=$key"}
@@ -132,7 +142,7 @@ foreach($f in $candidates){
     }finally{$g.Dispose()}
     $crop.Save($trimDest,[System.Drawing.Imaging.ImageFormat]::Png)
     $trimRel='trimmed/'+$rel
-    $trimHash=(Get-FileHash -LiteralPath $trimDest -Algorithm SHA256).Hash.ToLowerInvariant()
+    $trimHash=Get-Sha256Hex -Path $trimDest
     $state='TRIMMED_KEEP_OFFSET'
    }
   }
