@@ -11,6 +11,8 @@ package game.items
    
    public class AreaItem extends ShopItem
    {
+      // TEST ONLY: dedicated Home purchase trial; does not affect main or other maps.
+      private static const TEST_HOME_NORTH_PURCHASE:Boolean = true;
        
       
       public var mX:int;
@@ -41,6 +43,20 @@ package game.items
          this.mWidth = param1.AreaWidth;
          this.mHeight = param1.AreaHeight;
          this.mMapId = param1.MapID;
+         // The authored missions for these three original Home regions are absent.
+         // Keep normal cash/material/supply prices and the shop's adjacency check,
+         // but make ONLY these existing areas purchasable in offline trial builds.
+         // Never complete fake missions, grant free land or touch extra polar areas.
+         if(Config.OFFLINE_MODE && TEST_HOME_NORTH_PURCHASE && this.mMapId == "Home" &&
+            (mId == "AreaNW" || mId == "AreaN" || mId == "AreaNE"))
+         {
+            mRequiredMission = null;
+            mRequiredLevel = 0;
+            mRequiredAllies = 0;
+            mRequiredItem = null;
+            mRequiredBuilding = null;
+            mCostIntel = 0;
+         }
          this.mRightX = this.mX + this.mWidth;
          this.mBottomY = this.mY + this.mHeight;
       }

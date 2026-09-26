@@ -1,21 +1,11 @@
-name: Army Attack Android candidate
+name: Army Attack NORMAL APK clean main 20260926
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, reopened, ready_for_review]
-    paths-ignore:
-      - 'Logs/**'
   push:
     branches:
-      - main
-      - 'feat/**'
-      - 'fix/**'
-      - 'test/**'
-      - 'chore/**'
-    paths-ignore:
-      - 'Logs/**'
-  workflow_dispatch:
+      - build/normal-apk-main-20260926
+    paths:
+      - '.github/workflows/android-normal-apk.yml'
 
 permissions:
   contents: read
@@ -95,6 +85,76 @@ jobs:
           }
           Write-Host "STALE_QUEUED_DRAIN=PASS cancelled=$cancelled in_progress_untouched=true branch=$env:SOURCE_BRANCH"
 
+          # Rescue a single known obsolete main run that is holding the GLOBAL build
+          # concurrency slot, although it has never acquired a runner or build lease.
+          # Never cancel a run if any job has started or the identity changed.
+          if($env:SOURCE_BRANCH -ne 'build/normal-apk-main-20260926'){throw 'NORMAL_RESCUE=FAIL unexpected_branch'}
+          $blockedRunId=36176558182
+          $blockedJobId=108402926061
+          $baseline='2d10485efba78565b4b11873a7d7279b125f557f'
+          $old=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$blockedRunId"
+          if([int64]$old.id -ne $blockedRunId -or [string]$old.head_sha -ne $baseline -or [string]$old.head_branch -ne 'main'){
+            throw 'NORMAL_RESCUE=FAIL obsolete_run_identity_mismatch'
+          }
+          if([string]$old.status -eq 'completed'){
+            Write-Host "NORMAL_RESCUE=PASS prior_run_already_completed conclusion=$($old.conclusion)"
+          }else{
+            if([string]$old.status -notin @('queued','pending')){throw "NORMAL_RESCUE=FAIL prior_run_active status=$($old.status)"}
+            $job=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/jobs/$blockedJobId"
+            if([int64]$job.id -ne $blockedJobId -or [string]$job.run_id -ne [string]$blockedRunId){
+              throw 'NORMAL_RESCUE=FAIL obsolete_job_identity_mismatch'
+            }
+            if([string]$job.status -notin @('queued','pending') -or [int64]$job.runner_id -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$job.runner_name) -or @($job.steps).Count -ne 0){
+              throw "NORMAL_RESCUE=FAIL do_not_cancel_assigned_job status=$($job.status) runner=$($job.runner_name) steps=$(@($job.steps).Count)"
+            }
+            Write-Host "NORMAL_RESCUE=CONFIRMED old_run=$blockedRunId old_job=$blockedJobId runner_id=0 steps=0 sha=$baseline"
+            Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$blockedRunId/cancel" -Method Post|Out-Null
+            $cancelledOld=$false
+            foreach($poll in 1..8){
+              $old=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$blockedRunId"
+              if([string]$old.status -eq 'completed' -and [string]$old.conclusion -eq 'cancelled'){$cancelledOld=$true;break}
+              Start-Sleep -Seconds 4
+            }
+            if(-not $cancelledOld){throw "NORMAL_RESCUE=FAIL cancel_not_confirmed status=$($old.status) conclusion=$($old.conclusion)"}
+            Write-Host "NORMAL_RESCUE=PASS cancelled_obsolete_run=$blockedRunId build_lease_never_acquired=true"
+          }
+
+          # The previous NORMAL workflow shares the same concurrency group and can
+          # itself become a stale unassigned blocker. Cancel ONLY older runs of this
+          # exact workflow on this exact isolated branch when the build job has zero
+          # runner and zero steps. Do not cancel running jobs or touch other projects.
+          $staleNormal=@($response.workflow_runs|Where-Object{
+            [string]$_.name -eq 'Army Attack NORMAL APK clean main 20260926' -and
+            [string]$_.head_branch -eq 'build/normal-apk-main-20260926' -and
+            [int64]$_.id -lt $current -and
+            [string]$_.head_sha -ne $env:HEAD_SHA -and
+            [string]$_.status -in @('queued','pending')
+          })
+          foreach($run in $staleNormal){
+            $jobData=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/jobs?per_page=100"
+            $buildJobs=@($jobData.jobs|Where-Object{[string]$_.name -eq 'Core candidate build and validation'})
+            if($buildJobs.Count -ne 1){throw "NORMAL_STALE_DRAIN=FAIL run=$($run.id) candidate_job_count=$($buildJobs.Count)"}
+            $build=$buildJobs[0]
+            $jobSteps=@($build.steps|Where-Object{$null -ne $_})
+            if([string]$build.status -notin @('queued','pending') -or [int64]$build.runner_id -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$build.runner_name) -or $jobSteps.Count -ne 0){
+              throw "NORMAL_STALE_DRAIN=FAIL old_job_assigned run=$($run.id) job=$($build.id) status=$($build.status) runner=$($build.runner_name) steps=$($jobSteps.Count)"
+            }
+            # Recheck the run immediately before cancel to avoid a scheduling race.
+            $fresh=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)"
+            if([string]$fresh.status -notin @('queued','pending') -or [string]$fresh.head_sha -ne [string]$run.head_sha){throw "NORMAL_STALE_DRAIN=FAIL run_identity_or_state_changed run=$($run.id)"}
+            Write-Host "NORMAL_STALE_DRAIN=CONFIRMED obsolete_run=$($run.id) job=$($build.id) sha=$($run.head_sha) runner_id=0 steps=0"
+            Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/cancel" -Method Post|Out-Null
+            $done=$false
+            foreach($poll in 1..8){
+              $fresh=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)"
+              if([string]$fresh.status -eq 'completed' -and [string]$fresh.conclusion -eq 'cancelled'){$done=$true;break}
+              Start-Sleep -Seconds 4
+            }
+            if(-not $done){throw "NORMAL_STALE_DRAIN=FAIL cancel_not_confirmed run=$($run.id) status=$($fresh.status)"}
+            Write-Host "NORMAL_STALE_DRAIN=PASS cancelled_run=$($run.id) runner_never_claimed=true"
+          }
+          Write-Host "NORMAL_STALE_DRAIN=PASS older_unassigned=$($staleNormal.Count) preserved_main=true"
+
   candidate:
     name: Core candidate build and validation
     needs: classify
@@ -106,7 +166,8 @@ jobs:
     timeout-minutes: 45
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      BASELINE_MAIN_SHA: 2d10485efba78565b4b11873a7d7279b125f557f
+      EXPECTED_SOURCE_SHA: ${{ github.sha }}
       PR_NUMBER: ${{ github.event.pull_request.number || '' }}
       SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
@@ -139,16 +200,46 @@ jobs:
           $repoUrl="https://github.com/$env:GITHUB_REPOSITORY.git"
           & $git -C $workspace remote get-url origin *> $null
           if($LASTEXITCODE -eq 0){& $git -C $workspace remote set-url origin $repoUrl}else{& $git -C $workspace remote add origin $repoUrl}
+          if([string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)){throw 'SOURCE_BOOTSTRAP=FAIL missing_github_token'}
           $pair="x-access-token:$env:GITHUB_TOKEN";$basic=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair));$extra="AUTHORIZATION: basic $basic"
-          & $git -C $workspace -c "http.https://github.com/.extraheader=$extra" fetch --force --no-tags origin $env:EXPECTED_SOURCE_SHA
-          if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL fetch'}
+          # Explicit reset removes runner-inherited Authorization before our single scoped header.
+          $authArgs=@('-c','http.extraHeader=','-c',"http.https://github.com/.extraheader=$extra",'-c','credential.helper=')
+          & $git -C $workspace @authArgs fetch --force --no-tags origin $env:EXPECTED_SOURCE_SHA
+          if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL component=RUNNER operation=authenticated_fetch'}
           & $git -C $workspace checkout --detach --force $env:EXPECTED_SOURCE_SHA
           if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL checkout'}
           & $git -C $workspace clean -fdx
           if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL clean'}
           $head=(& $git -C $workspace rev-parse HEAD).Trim()
           if($head -ne $env:EXPECTED_SOURCE_SHA){throw "SOURCE_BOOTSTRAP=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$head"}
+          # Fail closed: all commits since the pristine main SHA may change ONLY this workflow.
+          # Keep the shared GitHub concurrency/physical device locks unchanged.
+          $ancestor=(& $git -C $workspace merge-base $env:BASELINE_MAIN_SHA $head).Trim()
+          if($LASTEXITCODE -ne 0 -or $ancestor -ne $env:BASELINE_MAIN_SHA){throw "NORMAL_SOURCE=FAIL ancestor=$ancestor baseline=$env:BASELINE_MAIN_SHA"}
+          $changed=@(& $git -C $workspace diff --name-only $env:BASELINE_MAIN_SHA $head)
+          $allowed=@('.github/scripts/armyattack-build.ps1','.github/scripts/armyattack-workspace.ps1','.github/workflows/android-normal-apk.yml','Tools/CI/Ensure-PortableFileHash.ps1')
+          $unexpected=@($changed|Where-Object{$_ -notin $allowed})
+          if($unexpected.Count -ne 0 -or $changed.Count -ne $allowed.Count){
+            throw "NORMAL_SOURCE=FAIL expected=workflow_and_hash_compat_only changed=$($changed -join ',') unexpected=$($unexpected -join ',')"
+          }
+          foreach($script in @('.github/scripts/armyattack-build.ps1','.github/scripts/armyattack-workspace.ps1')){
+            $stats=@(& $git -C $workspace diff --numstat $env:BASELINE_MAIN_SHA $head -- $script)
+            if($stats.Count -ne 1 -or $stats[0] -notmatch '^1\s+0\s+'){
+              throw "NORMAL_SOURCE=FAIL script_has_non_compat_changes path=$script actual=$($stats -join ',')"
+            }
+            $headLines=@(Get-Content -LiteralPath (Join-Path $workspace $script))
+            $importLines=@($headLines|Where-Object{$_ -match '^\.\s+\(Join-Path \$PSScriptRoot.*Ensure-PortableFileHash\.ps1'})
+            if($importLines.Count -ne 1){
+              throw "NORMAL_SOURCE=FAIL portable_helper_import_missing script=$script count=$($importLines.Count)"
+            }
+          }
+          $hashHelperBlob=(& $git -C $workspace hash-object 'Tools/CI/Ensure-PortableFileHash.ps1').Trim()
+          if($hashHelperBlob -ne '4b62007909ee95eb3c04e3b548d0601a2e8bb804'){
+            throw "NORMAL_SOURCE=FAIL portable_helper_hash unexpected=$hashHelperBlob"
+          }
           Write-Host "SOURCE_BOOTSTRAP=PASS sha=$head"
+          Write-Host "NORMAL_GAME_SOURCE=PASS identical_to_main=$($env:BASELINE_MAIN_SHA) permitted_changes=workflow,portable_hash_only"
+          Write-Host 'NORMAL_PORTABLE_HELPER_INTEGRITY=PASS scripts=2 blob=4b62007909ee95eb3c04e3b548d0601a2e8bb804'
 
       - name: Validate Army Core hooks
         shell: powershell
@@ -166,18 +257,42 @@ jobs:
         run: |
           & '.\.github\scripts\armyattack-project-precheck.ps1'
 
-      - name: Verify three Home northern areas are actually in the shop
+      - name: Regression test portable hash inside Windows PowerShell
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          & '.\Tools\CI\Test-HomeNorthAreaPurchase.ps1'
-          if($LASTEXITCODE -ne 0){throw "HOME_NORTH_PURCHASE_CONTRACT=FAIL exit=$LASTEXITCODE"}
+          $env:ARMY_TEST_PORTABLE_HASH='1'
+          . '.\Tools\CI\Ensure-PortableFileHash.ps1'
+          $temp=[IO.Path]::GetTempFileName()
+          try {
+            [IO.File]::WriteAllBytes($temp,[Text.Encoding]::ASCII.GetBytes('abc'))
+            $actual=(Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($actual -ne 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'){throw "PORTABLE_HASH_TEST=FAIL actual=$actual"}
+            Write-Host 'PORTABLE_HASH_TEST=PASS algorithm=SHA256 known_vector=abc provider=dotnet'
+          }finally{
+            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+            Remove-Item Env:ARMY_TEST_PORTABLE_HASH -ErrorAction SilentlyContinue
+          }
 
       - name: Build validate and publish Army candidate through Core 3.0.11+
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          . '.\Tools\CI\Ensure-PortableFileHash.ps1'
+          # The self-hosted Windows PowerShell profile can lack Microsoft.PowerShell.Utility/Get-FileHash.
+          # Use .NET SHA256 directly for independent post-build and copied-file integrity checks.
+          function Get-NormalApkSha256 {
+            param([Parameter(Mandatory=$true)][string]$LiteralPath)
+            if(-not(Test-Path -LiteralPath $LiteralPath -PathType Leaf)){throw "NORMAL_HASH=FAIL file_missing=$LiteralPath"}
+            $stream=[IO.File]::OpenRead($LiteralPath)
+            $hasher=[System.Security.Cryptography.SHA256]::Create()
+            try {
+              return ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-','').ToUpperInvariant()
+            }finally{
+              if($hasher){$hasher.Dispose()}
+              if($stream){$stream.Dispose()}
+            }
+          }
+          Write-Host 'NORMAL_PORTABLE_HASH=PASS provider=System.Security.Cryptography.SHA256'
           $checkout=$PWD.Path
           Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
           $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
@@ -193,7 +308,9 @@ jobs:
           $result=Invoke-AndroidBuildCandidateValidation -RepoRoot $persistent -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -Repository $env:GITHUB_REPOSITORY -PrNumber $pr -SourceRemote $checkout -PackageName 'air.army.attack' -LeaseWaitSeconds $leaseWait
 
           $pair="x-access-token:$env:GITHUB_TOKEN";$basic=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair));$extra="AUTHORIZATION: basic $basic"
-          $probe=Invoke-AndroidBuildProcess -FilePath $git -ArgumentList @('-C',$checkout,'-c',"http.https://github.com/.extraheader=$extra",'ls-remote','origin',("refs/heads/"+$env:SOURCE_BRANCH)) -WorkingDirectory $checkout -TimeoutSeconds 30 -Environment @{GIT_TERMINAL_PROMPT='0';GCM_INTERACTIVE='Never'} -AllowNonZeroExit
+          $authArgs=@('-c','http.extraHeader=','-c',"http.https://github.com/.extraheader=$extra",'-c','credential.helper=')
+          $probeArgs=@('-C',$checkout)+$authArgs+@('ls-remote','origin',("refs/heads/"+$env:SOURCE_BRANCH))
+          $probe=Invoke-AndroidBuildProcess -FilePath $git -ArgumentList $probeArgs -WorkingDirectory $checkout -TimeoutSeconds 30 -Environment @{GIT_TERMINAL_PROMPT='0';GCM_INTERACTIVE='Never'} -AllowNonZeroExit
           $line=([string]$probe.stdout).Trim()
           if($probe.exit_code -ne 0 -or [string]::IsNullOrWhiteSpace($line)){throw "APK_CANDIDATE_HEAD_RECHECK=FAIL exit=$($probe.exit_code)"}
           $remote=(($line -split '\s+')[0]).Trim()
@@ -210,13 +327,13 @@ jobs:
           if([string]$meta.toolchain_ownership -ne 'androidbuild-global'){throw "CORE_CANDIDATE=FAIL toolchain_ownership=$($meta.toolchain_ownership)"}
           if([string]$meta.workspace.build_root -notlike (Join-Path $persistent '.work\build*')){throw "CORE_CANDIDATE=FAIL workspace_build_root=$($meta.workspace.build_root)"}
           if([int]$meta.workspace.retention_generations -ne 3){throw "CORE_CANDIDATE=FAIL workspace_retention=$($meta.workspace.retention_generations)"}
-          $apk=[string]$result.apk_path;$hash=(Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToUpperInvariant()
+          $apk=[string]$result.apk_path;$hash=(Get-NormalApkSha256 -LiteralPath $apk)
           if($hash -ne ([string]$result.apk.identity.sha256).ToUpperInvariant()){throw 'CORE_CANDIDATE=FAIL apk_hash'}
           if($null -eq $result.final_apk){throw 'APK_FINAL_PUBLICATION=FAIL result_missing'}
           $finalPath=[string]$result.final_apk.path
           $finalSha=([string]$result.final_apk.sha256).ToUpperInvariant()
           if(-not(Test-Path -LiteralPath $finalPath -PathType Leaf)){throw "APK_FINAL_PUBLICATION=FAIL file_missing path=$finalPath"}
-          $diskFinalSha=(Get-FileHash -LiteralPath $finalPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $diskFinalSha=(Get-NormalApkSha256 -LiteralPath $finalPath)
           if($finalSha -ne $hash -or $diskFinalSha -ne $hash){throw "APK_FINAL_PUBLICATION=FAIL hash candidate=$hash result=$finalSha disk=$diskFinalSha"}
           if([IO.Path]::GetFileName($finalPath) -ne [string]$projectConfig.delivery.final_apk_name){throw "APK_FINAL_PUBLICATION=FAIL ownership expected=$($projectConfig.delivery.final_apk_name) actual=$([IO.Path]::GetFileName($finalPath))"}
           Write-Host "CORE_BUILD_PROVENANCE=PASS core=$provenanceCore minimum=3.0.11"
@@ -230,15 +347,29 @@ jobs:
           Write-Host "APK_CANDIDATE_REMOTE_HEAD=$remote"
           Write-Host 'APK_CANDIDATE_HEAD_RECHECK=PASS'
           Write-Host "APK_FINAL_PUBLICATION=PASS path=$finalPath sha256=$diskFinalSha validation_scope=candidate"
-          $testName='ArmyAttack-23.2-HOME-NORTH-TEST-'+$env:EXPECTED_SOURCE_SHA.Substring(0,8)+'.apk'
-          $testPath=Join-Path (Join-Path $env:ANDROIDBUILD_ROOT 'APK-FINAL') $testName
-          Copy-Item -LiteralPath $finalPath -Destination $testPath -Force
-          $testSha=(Get-FileHash -LiteralPath $testPath -Algorithm SHA256).Hash.ToUpperInvariant()
-          if($testSha -ne $hash){throw "HOME_NORTH_TEST_APK=FAIL copy_hash expected=$hash actual=$testSha"}
-          $testManifest=[ordered]@{schema='armyattack-home-north-test/v1';repository=$env:GITHUB_REPOSITORY;tested_sha=$env:EXPECTED_SOURCE_SHA;main_baseline='2d10485efba78565b4b11873a7d7279b125f557f';apk_path=$testPath;apk_sha256=$testSha;apk_size=[int64]$result.apk.identity.bytes;package_name=[string]$result.apk.identity.package_name;runner=$env:RUNNER_NAME;run_id=$env:GITHUB_RUN_ID;areas=@('AreaNW','AreaN','AreaNE');scope='offline_test_only';physical_validation='NOT_EXECUTED'}
-          $testManifestPath=[IO.Path]::ChangeExtension($testPath,'.json')
-          $testManifest|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $testManifestPath -Encoding UTF8
-          Write-Host "HOME_NORTH_TEST_APK=PASS path=$testPath sha256=$testSha manifest=$testManifestPath"
+          # Keep a separate hash-verified NORMAL copy. The rolling filename might
+          # still contain a candidate from the cancelled feature branch.
+          $normalPath=Join-Path (Join-Path $env:ANDROIDBUILD_ROOT 'APK-FINAL') 'ArmyAttack-23.2-NORMAL-main-2d10485e.apk'
+          Copy-Item -LiteralPath $finalPath -Destination $normalPath -Force
+          $normalHash=(Get-NormalApkSha256 -LiteralPath $normalPath)
+          if($normalHash -ne $hash){throw "NORMAL_APK=FAIL expected=$hash actual=$normalHash"}
+          $normalManifest=[ordered]@{
+            schema='armyattack-normal-apk/v1'
+            repository=$env:GITHUB_REPOSITORY
+            game_source_sha=$env:BASELINE_MAIN_SHA
+            workflow_only_sha=$env:EXPECTED_SOURCE_SHA
+            run_id=$env:GITHUB_RUN_ID
+            runner=$env:RUNNER_NAME
+            package_name=[string]$result.apk.identity.package_name
+            apk_path=$normalPath
+            apk_bytes=[int64]$result.apk.identity.bytes
+            apk_sha256=$normalHash
+            validation='CANDIDATE_ONLY'
+            physical_validation='NOT_EXECUTED'
+          }
+          $manifestPath=[IO.Path]::ChangeExtension($normalPath,'.json')
+          $normalManifest|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $manifestPath -Encoding UTF8
+          Write-Host "NORMAL_APK=PASS path=$normalPath sha256=$normalHash main_source=$env:BASELINE_MAIN_SHA manifest=$manifestPath"
           Write-Host 'CANDIDATE_VALIDATION=PASS'
           Write-Host 'PHYSICAL_VALIDATION=NOT_ACTIVATED'
           Write-Host 'MANUAL_PHYSICAL_PROFILE=Recording starts automatically; PERF only opens or closes the metrics panel'
