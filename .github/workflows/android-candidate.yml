@@ -170,14 +170,14 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          & '.\\Tools\\CI\\Test-HomeNorthAreaPurchase.ps1'
+          & '.\Tools\CI\Test-HomeNorthAreaPurchase.ps1'
           if($LASTEXITCODE -ne 0){throw "HOME_NORTH_PURCHASE_CONTRACT=FAIL exit=$LASTEXITCODE"}
 
       - name: Build validate and publish Army candidate through Core 3.0.11+
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          . '.\\Tools\\CI\\Ensure-PortableFileHash.ps1'
+          . '.\Tools\CI\Ensure-PortableFileHash.ps1'
           $checkout=$PWD.Path
           Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
           $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT

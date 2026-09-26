@@ -1,8 +1,8 @@
 param([string]$RepoRoot)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if([string]::IsNullOrWhiteSpace($RepoRoot)){$RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\\..')).Path}
-$configPath=Join-Path $RepoRoot 'src\\config\\army_config_base.json'
+if([string]::IsNullOrWhiteSpace($RepoRoot)){$RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path}
+$configPath=Join-Path $RepoRoot 'src\config\army_config_base.json'
 if(-not(Test-Path -LiteralPath $configPath -PathType Leaf)){throw "HOME_NORTH_CONFIG=FAIL missing=$configPath"}
 $cfg=Get-Content -LiteralPath $configPath -Raw|ConvertFrom-Json
 $targets=@('AreaNW','AreaN','AreaNE')
@@ -19,11 +19,11 @@ foreach($id in $targets){
   if(@($shopIds|Where-Object{$_ -eq $id}).Count -ne 1){throw "HOME_NORTH_SHOP=FAIL missing_shop_entry=$id detected=$($shopIds -join ',')"}
   Write-Host "HOME_NORTH_AREA=PASS id=$id map=Home shop=$tableName"
 }
-$areaSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\\game\\items\\AreaItem.as') -Raw
+$areaSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\items\AreaItem.as') -Raw
 foreach($needle in @('TEST_HOME_NORTH_PURCHASE:Boolean = true','Config.OFFLINE_MODE','this.mMapId == "Home"','mId == "AreaNW"','mId == "AreaN"','mId == "AreaNE"','mRequiredMission = null;','mRequiredLevel = 0;','mRequiredAllies = 0;','mRequiredItem = null;','mRequiredBuilding = null;','mCostIntel = 0;','mId != "AreaNorthW"','mId != "AreaNorthC"','mId != "AreaNorthE"')){
  if(-not $areaSource.Contains($needle)){throw "HOME_NORTH_SOURCE=FAIL required=$needle"}
 }
-if($areaSource -match 'mCostMoney\\s*=|mCostPremium\\s*=|smUnlockCheat\\s*=|mEarlyUnlockBought\\s*='){throw 'HOME_NORTH_SOURCE=FAIL forbidden_free_or_global_cheat_change'}
-$patchSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\\CI\\Patch-AndroidPerformanceSwf.ps1') -Raw
-if(-not $patchSource.Contains("Class='game.items.AreaItem';Source='src\\game\\items\\AreaItem.as'")){throw 'HOME_NORTH_SWF=FAIL AreaItem_not_in_root_swf_patch_specs'}
+if($areaSource -match 'mCostMoney\s*=|mCostPremium\s*=|smUnlockCheat\s*=|mEarlyUnlockBought\s*='){throw 'HOME_NORTH_SOURCE=FAIL forbidden_free_or_global_cheat_change'}
+$patchSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1') -Raw
+if(-not $patchSource.Contains("Class='game.items.AreaItem';Source='src\game\items\AreaItem.as'")){throw 'HOME_NORTH_SWF=FAIL AreaItem_not_in_root_swf_patch_specs'}
 Write-Host 'HOME_NORTH_PURCHASE_CONTRACT=PASS scope=Home:AreaNW,AreaN,AreaNE mode=offline mission_and_prerequisites=bypassed intel=0 normal_prices=preserved adjacency=preserved extra_north_areas=locked'
