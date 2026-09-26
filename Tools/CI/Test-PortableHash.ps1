@@ -17,7 +17,9 @@ try {
     $basePatcher=[IO.File]::ReadAllText((Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1'))
     $originalDirective=". (Join-Path `$PSScriptRoot 'Ensure-PortableFileHash.ps1')"
     $generatedDirective=". (Join-Path `$RepoRoot 'Tools\CI\Ensure-PortableFileHash.ps1')"
-    if(-not $basePatcher.Contains($originalDirective) -or -not $desktopPatcher.Contains('$desktopText=$desktopText.Replace($hashDirective,') -or -not $desktopPatcher.Contains($generatedDirective)){
+    # Source contains PowerShell's literal backtick before `$RepoRoot; the generated
+    # script contains the unescaped variable. Verify both roles independently.
+    if(-not $basePatcher.Contains($originalDirective) -or -not $desktopPatcher.Contains('$desktopText=$desktopText.Replace($hashDirective,') -or -not $desktopPatcher.Contains('Tools\CI\Ensure-PortableFileHash.ps1') -or -not $generatedDirective.Contains('Tools\CI\Ensure-PortableFileHash.ps1')){
       throw 'WINDOWS_GENERATED_HASH_ROOT=FAIL relative_path_or_rewrite_missing'
     }
     Write-Host 'WINDOWS_GENERATED_HASH_ROOT=PASS source=repo_root generated_path=scratch_safe'
