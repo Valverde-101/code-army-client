@@ -139,9 +139,14 @@ jobs:
           $repoUrl="https://github.com/$env:GITHUB_REPOSITORY.git"
           & $git -C $workspace remote get-url origin *> $null
           if($LASTEXITCODE -eq 0){& $git -C $workspace remote set-url origin $repoUrl}else{& $git -C $workspace remote add origin $repoUrl}
+          if([string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)){throw 'SOURCE_BOOTSTRAP=FAIL component=RUNNER operation=auth_token actual=missing'}
           $pair="x-access-token:$env:GITHUB_TOKEN";$basic=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair));$extra="AUTHORIZATION: basic $basic"
-          & $git -C $workspace -c "http.https://github.com/.extraheader=$extra" fetch --force --no-tags origin $env:EXPECTED_SOURCE_SHA
-          if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL fetch'}
+          # Reset all inherited http.extraHeader entries first: Auto-Repo runners may already
+          # inject Authorization. Adding our own without a reset causes HTTP 400 Duplicate header.
+          # Explicitly disable credential helpers for this invocation; do not mutate global Git.
+          $authArgs=@('-c','http.extraHeader=','-c',"http.https://github.com/.extraheader=$extra",'-c','credential.helper=')
+          & $git -C $workspace @authArgs fetch --force --no-tags origin $env:EXPECTED_SOURCE_SHA
+          if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL component=RUNNER operation=scoped_authenticated_fetch expected=single_authorization_header'}
           & $git -C $workspace checkout --detach --force $env:EXPECTED_SOURCE_SHA
           if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL checkout'}
           & $git -C $workspace clean -fdx
@@ -184,8 +189,12 @@ jobs:
           Write-Host "BUILD_LEASE_WAIT=PASS seconds=$leaseWait serialization=army-attack-core-build"
           $result=Invoke-AndroidBuildCandidateValidation -RepoRoot $persistent -AndroidBuildRoot $env:ANDROIDBUILD_ROOT -ExpectedSha $env:EXPECTED_SOURCE_SHA -Repository $env:GITHUB_REPOSITORY -PrNumber $pr -SourceRemote $checkout -PackageName 'air.army.attack' -LeaseWaitSeconds $leaseWait
 
+          if([string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)){throw 'APK_CANDIDATE_HEAD_RECHECK=FAIL component=RUNNER operation=auth_token actual=missing'}
           $pair="x-access-token:$env:GITHUB_TOKEN";$basic=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair));$extra="AUTHORIZATION: basic $basic"
-          $probe=Invoke-AndroidBuildProcess -FilePath $git -ArgumentList @('-C',$checkout,'-c',"http.https://github.com/.extraheader=$extra",'ls-remote','origin',("refs/heads/"+$env:SOURCE_BRANCH)) -WorkingDirectory $checkout -TimeoutSeconds 30 -Environment @{GIT_TERMINAL_PROMPT='0';GCM_INTERACTIVE='Never'} -AllowNonZeroExit
+          # Same inherited-header reset is required for the post-build remote-HEAD recheck.
+          $authArgs=@('-c','http.extraHeader=','-c',"http.https://github.com/.extraheader=$extra",'-c','credential.helper=')
+          $probeArgs=@('-C',$checkout)+$authArgs+@('ls-remote','origin',("refs/heads/"+$env:SOURCE_BRANCH))
+          $probe=Invoke-AndroidBuildProcess -FilePath $git -ArgumentList $probeArgs -WorkingDirectory $checkout -TimeoutSeconds 30 -Environment @{GIT_TERMINAL_PROMPT='0';GCM_INTERACTIVE='Never'} -AllowNonZeroExit
           $line=([string]$probe.stdout).Trim()
           if($probe.exit_code -ne 0 -or [string]::IsNullOrWhiteSpace($line)){throw "APK_CANDIDATE_HEAD_RECHECK=FAIL exit=$($probe.exit_code)"}
           $remote=(($line -split '\s+')[0]).Trim()

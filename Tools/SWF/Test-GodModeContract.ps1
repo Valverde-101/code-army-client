@@ -71,4 +71,8 @@ foreach($prefix in @('TEST_','GOD_MODE','BOOT_','TERRITORY_','ASSET_','GAME_')){
 }
 Assert-Contains $regress 'GOD_MODE_ALL_TROOPS=PASS' 'GOD_MODE_PHYSICAL_SHOP_TEST'
 Assert-Contains $regress 'GOD_MODE_MAP_PERSISTENCE' 'GOD_MODE_PHYSICAL_MAP_TEST'
+$candidateWorkflow=Read-Source '.github\workflows\android-candidate.yml'
+Assert-Contains $candidateWorkflow '(?s)Bootstrap exact source without codeload.*?http\.extraHeader=.{0,110}fetch --force --no-tags origin' 'GIT_FETCH_INHERITED_AUTH_RESET'
+Assert-Contains $candidateWorkflow '(?s)Same inherited-header reset is required.*?http\.extraHeader=.*?\$probeArgs=.*?ls-remote' 'GIT_RECHECK_INHERITED_AUTH_RESET'
+Assert-Contains $candidateWorkflow "credential\.helper=" 'GIT_AUTH_NO_CREDENTIAL_HELPER'
 Write-Host 'FINAL_VALIDATION=PASS scope=static_god_mode_contract_only'
