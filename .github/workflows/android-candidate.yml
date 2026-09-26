@@ -171,7 +171,10 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           & '.\Tools\CI\Test-HomeNorthAreaPurchase.ps1'
-          if($LASTEXITCODE -ne 0){throw "HOME_NORTH_PURCHASE_CONTRACT=FAIL exit=$LASTEXITCODE"}
+          # PowerShell .ps1 does not set LASTEXITCODE; with no native process it is $null,
+          # and $null -ne 0 is TRUE. Terminating errors propagate via Stop above.
+          if(-not $?){throw 'HOME_NORTH_PURCHASE_CONTRACT=FAIL script_failed'}
+          Write-Host 'HOME_NORTH_PURCHASE_GATE=PASS exit=powershell_success'
 
       - name: Build validate and publish Army candidate through Core 3.0.11+
         shell: powershell
