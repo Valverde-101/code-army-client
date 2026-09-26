@@ -74,6 +74,7 @@ $patchSpecs=@(
   [ordered]@{Class='game.gameElements.PlayerBuildingObject';Source='src\game\gameElements\PlayerBuildingObject.as';Log='ffdec-performance-player-building.log'},
   [ordered]@{Class='game.gameElements.HFEObject';Source='src\game\gameElements\HFEObject.as';Log='ffdec-feature-hfe-harvest.log'},
   [ordered]@{Class='game.items.PowerUpItem';Source='src\game\items\PowerUpItem.as';Log='ffdec-feature-pvp-powerup-item.log'},
+  [ordered]@{Class='game.items.AreaItem';Source='src\game\items\AreaItem.as';Log='ffdec-feature-home-north-purchase-test.log'},
   [ordered]@{Class='game.gameElements.PowerUpObject';Source='src\game\gameElements\PowerUpObject.as';Log='ffdec-feature-pvp-powerup-object.log'},
   [ordered]@{Class='game.gameElements.FireMissionObject';Source='src\game\gameElements\FireMissionObject.as';Log='ffdec-feature-firemission-object.log'},
   [ordered]@{Class='game.gameElements.LootReward';Source='src\game\gameElements\LootReward.as';Log='ffdec-feature-pvp-loot.log'},

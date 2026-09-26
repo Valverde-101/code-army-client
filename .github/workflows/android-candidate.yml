@@ -166,10 +166,18 @@ jobs:
         run: |
           & '.\.github\scripts\armyattack-project-precheck.ps1'
 
+      - name: Verify three Home northern areas are actually in the shop
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & '.\\Tools\\CI\\Test-HomeNorthAreaPurchase.ps1'
+          if($LASTEXITCODE -ne 0){throw "HOME_NORTH_PURCHASE_CONTRACT=FAIL exit=$LASTEXITCODE"}
+
       - name: Build validate and publish Army candidate through Core 3.0.11+
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
+          . '.\\Tools\\CI\\Ensure-PortableFileHash.ps1'
           $checkout=$PWD.Path
           Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
           $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
@@ -222,6 +230,15 @@ jobs:
           Write-Host "APK_CANDIDATE_REMOTE_HEAD=$remote"
           Write-Host 'APK_CANDIDATE_HEAD_RECHECK=PASS'
           Write-Host "APK_FINAL_PUBLICATION=PASS path=$finalPath sha256=$diskFinalSha validation_scope=candidate"
+          $testName='ArmyAttack-23.2-HOME-NORTH-TEST-'+$env:EXPECTED_SOURCE_SHA.Substring(0,8)+'.apk'
+          $testPath=Join-Path (Join-Path $env:ANDROIDBUILD_ROOT 'APK-FINAL') $testName
+          Copy-Item -LiteralPath $finalPath -Destination $testPath -Force
+          $testSha=(Get-FileHash -LiteralPath $testPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          if($testSha -ne $hash){throw "HOME_NORTH_TEST_APK=FAIL copy_hash expected=$hash actual=$testSha"}
+          $testManifest=[ordered]@{schema='armyattack-home-north-test/v1';repository=$env:GITHUB_REPOSITORY;tested_sha=$env:EXPECTED_SOURCE_SHA;main_baseline='2d10485efba78565b4b11873a7d7279b125f557f';apk_path=$testPath;apk_sha256=$testSha;apk_size=[int64]$result.apk.identity.bytes;package_name=[string]$result.apk.identity.package_name;runner=$env:RUNNER_NAME;run_id=$env:GITHUB_RUN_ID;areas=@('AreaNW','AreaN','AreaNE');scope='offline_test_only';physical_validation='NOT_EXECUTED'}
+          $testManifestPath=[IO.Path]::ChangeExtension($testPath,'.json')
+          $testManifest|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $testManifestPath -Encoding UTF8
+          Write-Host "HOME_NORTH_TEST_APK=PASS path=$testPath sha256=$testSha manifest=$testManifestPath"
           Write-Host 'CANDIDATE_VALIDATION=PASS'
           Write-Host 'PHYSICAL_VALIDATION=NOT_ACTIVATED'
           Write-Host 'MANUAL_PHYSICAL_PROFILE=Recording starts automatically; PERF only opens or closes the metrics panel'
