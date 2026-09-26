@@ -13,6 +13,14 @@ try {
     if($a.Hash -ne $expected -or $b.Hash -ne $expected){throw "PORTABLE_HASH_TEST=FAIL literal=$($a.Hash) positional=$($b.Hash) expected=$expected"}
     if(-not (Test-Path -LiteralPath $a.Path -PathType Leaf)){throw 'PORTABLE_HASH_TEST=FAIL output_path'}
     Write-Host "PORTABLE_HASH_TEST=PASS algorithm=$($a.Algorithm) literal=true positional=true"
+    $desktopPatcher=[IO.File]::ReadAllText((Join-Path $RepoRoot 'Tools\CI\Patch-WindowsSharedSwf.ps1'))
+    $basePatcher=[IO.File]::ReadAllText((Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1'))
+    $originalDirective=". (Join-Path `$PSScriptRoot 'Ensure-PortableFileHash.ps1')"
+    $generatedDirective=". (Join-Path `$RepoRoot 'Tools\CI\Ensure-PortableFileHash.ps1')"
+    if(-not $basePatcher.Contains($originalDirective) -or -not $desktopPatcher.Contains('$desktopText=$desktopText.Replace($hashDirective,') -or -not $desktopPatcher.Contains($generatedDirective)){
+      throw 'WINDOWS_GENERATED_HASH_ROOT=FAIL relative_path_or_rewrite_missing'
+    }
+    Write-Host 'WINDOWS_GENERATED_HASH_ROOT=PASS source=repo_root generated_path=scratch_safe'
   }finally{
     if(Test-Path -LiteralPath $file){Remove-Item -LiteralPath $file -Force}
   }
