@@ -139,6 +139,10 @@ $manifestPatchClasses=@($patchManifest.classes|ForEach-Object{[string]$_.name})
 foreach($requiredPatchClass in $manifestPatchClasses){
   if($patchClasses -notcontains $requiredPatchClass){$failures.Add("performance_patch_class_missing=$requiredPatchClass")}
 }
+$godModeClasses=@('game.states.GameState','game.gui.GameHUD','game.isometric.IsometricScene','game.isometric.GridCell','game.items.ShopItem','game.items.PlayerUnitItem','game.gui.ShopDialog')
+foreach($requiredGodClass in $godModeClasses){
+  if($patchClasses -notcontains $requiredGodClass -or $manifestPatchClasses -notcontains $requiredGodClass){$failures.Add("god_mode_swf_class_missing=$requiredGodClass")}
+}
 foreach($actualPatchClass in $patchClasses){
   if($manifestPatchClasses -notcontains [string]$actualPatchClass){$failures.Add("performance_patch_class_unexpected=$actualPatchClass")}
 }

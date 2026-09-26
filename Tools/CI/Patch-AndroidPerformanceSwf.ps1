@@ -48,7 +48,7 @@ if($ffdec.Extension -eq '.jar'){
 $outDir=Split-Path -Parent $OutputSwf
 New-Item -ItemType Directory -Force -Path $outDir|Out-Null
 if(-not $ManifestPath){$ManifestPath=Join-Path $outDir 'SWF-PERFORMANCE-PATCH.json'}
-$patchVersion='mobile-engine-v3.22-offline-daily-reward-360'
+$patchVersion='mobile-engine-v3.23-offline-god-mode-full-catalog'
 $patchSpecs=@(
   [ordered]@{Class='AssetManager';Source='src\AssetManager.as';Log='ffdec-feature-asset-manager.log'},
   [ordered]@{Class='Config';Source='src\Config.as';Log='ffdec-feature-config.log'},
@@ -70,6 +70,11 @@ $patchSpecs=@(
   [ordered]@{Class='game.utils.OfflineSave';Source='src\game\utils\OfflineSave.as';Log='ffdec-feature-offlinesave.log'},
   [ordered]@{Class='game.net.PvPMatch';Source='src\game\net\PvPMatch.as';Log='ffdec-feature-pvp-match.log'},
   [ordered]@{Class='game.states.GameState';Source='src\game\states\GameState.as';Log='ffdec-feature-gamestate.log'},
+  # God Mode requires these actual root-SWF class replacements, not just AS3 source files.
+  [ordered]@{Class='game.isometric.GridCell';Source='src\game\isometric\GridCell.as';Log='ffdec-god-mode-gridcell.log'},
+  [ordered]@{Class='game.items.ShopItem';Source='src\game\items\ShopItem.as';Log='ffdec-god-mode-shopitem.log'},
+  [ordered]@{Class='game.items.PlayerUnitItem';Source='src\game\items\PlayerUnitItem.as';Log='ffdec-god-mode-playerunititem.log'},
+  [ordered]@{Class='game.gui.ShopDialog';Source='src\game\gui\ShopDialog.as';Log='ffdec-god-mode-shopdialog.log'},
   [ordered]@{Class='game.states.GameLoadingFirst';Source='src\game\states\GameLoadingFirst.as';Log='ffdec-feature-loading-first.log'},
   [ordered]@{Class='game.states.GameLoadingSecond';Source='src\game\states\GameLoadingSecond.as';Log='ffdec-feature-loading-second.log'},
   [ordered]@{Class='game.gameElements.PlayerBuildingObject';Source='src\game\gameElements\PlayerBuildingObject.as';Log='ffdec-performance-player-building.log'},

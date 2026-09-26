@@ -20,6 +20,8 @@ $shop=Read-Source 'src\game\items\ShopItem.as'
 $units=Read-Source 'src\game\items\PlayerUnitItem.as'
 $dialog=Read-Source 'src\game\gui\ShopDialog.as'
 $hud=Read-Source 'src\game\gui\GameHUD.as'
+$patcher=Read-Source 'Tools\CI\Patch-AndroidPerformanceSwf.ps1'
+$validator=Read-Source 'Tools\CI\Validate-AndroidApk.ps1'
 $conf=Read-Source 'src\config\army_config_base.json'
 $config=$conf|ConvertFrom-Json
 $playerUnits=@($config.PlayerUnit.PSObject.Properties|ForEach-Object{$_.Value})
@@ -50,4 +52,11 @@ Assert-Contains $hud '!PopUpManager\.isAnyPopupActive\(\)' 'FLOATING_BUTTON_POPU
 if($game -match 'smOfflineGodMode\s*=\s*true\s*;'){throw 'MODE_DEFAULT_OFF=FAIL enabled_without_user_action'}
 if($game -match 'mInventory\.addItems\([^)]*AreaItem'){throw 'PERSISTENCE_GUARD=FAIL suspicious_area_grant'}
 Write-Host 'PERSISTENCE_GUARD=PASS temporary_flag_and_no_auto_area_purchase'
+# A green source contract is not enough: all altered classes must actually replace
+# their binary counterparts in the Android root SWF and be enforced at APK validation.
+foreach($class in @('game.states.GameState','game.gui.GameHUD','game.isometric.IsometricScene','game.isometric.GridCell','game.items.ShopItem','game.items.PlayerUnitItem','game.gui.ShopDialog')){
+  Assert-Contains $patcher ([regex]::Escape("Class='$class'")) "GOD_MODE_SWF_SPEC_$class"
+  Assert-Contains $validator ([regex]::Escape("'$class'")) "GOD_MODE_APK_CLASS_$class"
+}
+Write-Host 'GOD_MODE_BINARY_CONTRACT=PASS classes=7 android_root_swf=true'
 Write-Host 'FINAL_VALIDATION=PASS scope=static_god_mode_contract_only'

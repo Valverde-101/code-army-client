@@ -19,3 +19,7 @@ La pestaña **Units** utiliza el catálogo runtime `GameState.mConfig.PlayerUnit
 ### Validación requerida
 
 Ejecutar `Tools/SWF/Test-GodModeContract.ps1` (gate estático), compilar SHA exacto con AIR/FFDec/AndroidBuild Core y probar el APK exacto en ADB físico con capturas de modo OFF, modo ON, mapa Home/Desert/Snow y tienda mostrando todas las 15 tropas. Registrar FAIL/CORRECT/PASS en el mismo PR, incluyendo crash/ANR. No afirmar `PHYSICALLY_VALIDATED` sin APK+ADB+capturas/logs del mismo SHA.
+
+### Contrato binario obligatorio
+
+El parcheador Android debe sustituir las siete clases de integración del modo Dios dentro del SWF raíz: `GameState`, `GameHUD`, `IsometricScene`, `GridCell`, `ShopItem`, `PlayerUnitItem` y `ShopDialog`. `Validate-AndroidApk.ps1` compara los nombres presentes en el manifiesto de parche y la procedencia del APK; omitir una de ellas es `god_mode_swf_class_missing` y FAIL, aunque los tests de fuente estén verdes.
