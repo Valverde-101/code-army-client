@@ -13,7 +13,24 @@ $tableName=[string]$cfg.ShopTab.Areas.ItemTable
 if([string]::IsNullOrWhiteSpace($tableName) -or $null -eq $cfg.PSObject.Properties[$tableName]){throw "HOME_NORTH_SHOP=FAIL item_table=$tableName"}
 $shopTable=$cfg.PSObject.Properties[$tableName].Value
 $shopRows=if($shopTable -is [array]){@($shopTable)}else{@($shopTable.PSObject.Properties|ForEach-Object{$_.Value})}
-$shopIds=@($shopRows|Where-Object{$null -ne $_ -and $null -ne $_.Item -and [string]$_.Item.Type -eq 'Area'}|ForEach-Object{[string]$_.Item.ID})
+# Only inspect the exact requested three IDs. Other shop rows legitimately lack Item.Type.
+# The shop itself resolves each target through ItemManager.getItem(Item.ID,Item.Type).
+$shopIds=@()
+foreach($row in $shopRows){
+  if($null -eq $row){continue}
+  $itemProperty=$row.PSObject.Properties['Item']
+  if($null -eq $itemProperty -or $null -eq $itemProperty.Value){continue}
+  $itemRef=$itemProperty.Value
+  $idProperty=$itemRef.PSObject.Properties['ID']
+  if($null -eq $idProperty){continue}
+  $shopId=[string]$idProperty.Value
+  if($targets -notcontains $shopId){continue}
+  $typeProperty=$itemRef.PSObject.Properties['Type']
+  $shopType=if($null -ne $typeProperty){[string]$typeProperty.Value}else{'<missing>'}
+  Write-Host "HOME_NORTH_SHOP_TARGET id=$shopId type=$shopType"
+  if($shopType -ne 'Area'){throw "HOME_NORTH_SHOP=FAIL invalid_target_type id=$shopId type=$shopType"}
+  $shopIds+= $shopId
+}
 foreach($id in $targets){
   if(@($areaIDs|Where-Object{$_ -eq $id}).Count -ne 1){throw "HOME_NORTH_CONFIG=FAIL missing_home_area=$id detected=$($areaIDs -join ',')"}
   if(@($shopIds|Where-Object{$_ -eq $id}).Count -ne 1){throw "HOME_NORTH_SHOP=FAIL missing_shop_entry=$id detected=$($shopIds -join ',')"}
