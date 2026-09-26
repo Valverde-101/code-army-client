@@ -123,13 +123,13 @@ try{
     Assert-TerritoryCommit -SourcePattern 'switch:Home' -Gate 'TERRITORY_MAP_SWITCH'
   }
   $homeShot=Save-Screenshot 'screen-territory-home-before-capture.png'
-  # Exact-APK God Mode regression uses the protected native ADB command console:
+  # TEST_COMMAND_RESULT sanitizes '=' and ';' to '_' before writing logcat.\n  # Exact-APK God Mode regression uses the protected native ADB command console:
   # no coordinate taps and no fabricated campaign/inventory state.
-  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'status' -ExpectedResult '^READY:god_mode=OFF;map=Home$')
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'status' -ExpectedResult '^READY:god_mode_OFF_map_Home$')
   $godOffShot=Save-Screenshot 'screen-god-mode-off-before.png'
-  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'on' -ExpectedResult '^READY:god_mode=ON;map=Home$')
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'on' -ExpectedResult '^READY:god_mode_ON_map_Home$')
   $godOnShot=Save-Screenshot 'screen-god-mode-on-home.png'
-  [void](Invoke-TestCommand -Command 'god_shop' -ExpectedResult '^ACCEPTED:shop=Units$')
+  [void](Invoke-TestCommand -Command 'god_shop' -ExpectedResult '^ACCEPTED:shop_Units$')
   [void](Wait-LogPattern -Pattern '(?m)ArmyAttackGame\s*:\s*GOD_MODE_SHOP\b.*units=15;catalogue=PlayerUnit' -Gate 'GOD_MODE_ALL_TROOPS' -TimeoutSeconds 45)
   $godShopShot=Save-Screenshot 'screen-god-mode-shop-all-15.png'
   [void](Invoke-TestCommand -Command 'god_shop_close' -ExpectedResult '^ACCEPTED:shop_closed$')
@@ -140,7 +140,7 @@ try{
   [void](Invoke-TestCommand -Command 'open_map' -Arg 'Snow' -ExpectedResult '^ACCEPTED:map_Snow$')
   Wait-MapCommit -Target 'Snow'
   Assert-TerritoryCommit -SourcePattern 'switch:Snow' -Gate 'TERRITORY_MAP_SWITCH'
-  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'status' -ExpectedResult '^READY:god_mode=ON;map=Snow$')
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'status' -ExpectedResult '^READY:god_mode_ON_map_Snow$')
   $snowFirstShot=Save-Screenshot 'screen-snow-first-entry.png'
   $firstLog=Get-Logcat
   if($firstLog -match '(?m)ArmyAttackGame\s*:\s*MAP_TRANSITION_FAIL\b' -or $firstLog -match '(?i)Error #1009|TypeError:\s*Error #1009|Cannot access a property or method of a null object reference'){
@@ -157,8 +157,8 @@ try{
 
   [void](Invoke-TestCommand -Command 'open_map' -Arg 'Home' -ExpectedResult '^ACCEPTED:map_Home$')
   Wait-MapCommit -Target 'Home'
-  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'status' -ExpectedResult '^READY:god_mode=ON;map=Home$')
-  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'off' -ExpectedResult '^READY:god_mode=OFF;map=Home$')
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'status' -ExpectedResult '^READY:god_mode_ON_map_Home$')
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'off' -ExpectedResult '^READY:god_mode_OFF_map_Home$')
   $godRestoredShot=Save-Screenshot 'screen-god-mode-off-restored.png'
   $finalLog=Get-Logcat
   if($finalLog -notmatch '(?m)ArmyAttackGame\s*:\s*GOD_MODE\b.*enabled=true' -or $finalLog -notmatch '(?m)ArmyAttackGame\s*:\s*GOD_MODE\b.*enabled=false'){throw 'GOD_MODE_TOGGLE=FAIL transition_trace_missing'}
