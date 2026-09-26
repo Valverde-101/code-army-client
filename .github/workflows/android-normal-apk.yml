@@ -228,8 +228,9 @@ jobs:
               throw "NORMAL_SOURCE=FAIL script_has_non_compat_changes path=$script actual=$($stats -join ',')"
             }
             $headLines=@(Get-Content -LiteralPath (Join-Path $workspace $script))
-            if($headLines[3] -ne ". (Join-Path `$PSScriptRoot '..\\..\\Tools\\CI\\Ensure-PortableFileHash.ps1')"){
-              throw "NORMAL_SOURCE=FAIL portable_helper_import_missing script=$script"
+            $importLines=@($headLines|Where-Object{$_ -match '^\.\s+\(Join-Path \$PSScriptRoot.*Ensure-PortableFileHash\.ps1'})
+            if($importLines.Count -ne 1){
+              throw "NORMAL_SOURCE=FAIL portable_helper_import_missing script=$script count=$($importLines.Count)"
             }
           }
           $hashHelperBlob=(& $git -C $workspace hash-object 'Tools/CI/Ensure-PortableFileHash.ps1').Trim()
