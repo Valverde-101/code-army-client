@@ -65,6 +65,10 @@ $regress=Read-Source 'Tools\CI\Test-AndroidTargetedRegressions.ps1'
 Assert-Contains $marker 'command == "god_mode"' 'GOD_MODE_DEBUG_COMMAND'
 Assert-Contains $marker 'command == "god_shop"' 'GOD_SHOP_DEBUG_COMMAND'
 Assert-Contains $native '"god_mode"\.equals\(command\)' 'GOD_MODE_NATIVE_ALLOWLIST'
+$mirror=Read-Source 'android\native\diagnostics\java\com\valverde\armyattack\diagnostics\PerformanceOverlay.java'
+foreach($prefix in @('TEST_','GOD_MODE','BOOT_','TERRITORY_','ASSET_','GAME_')){
+  Assert-Contains $mirror ([regex]::Escape('kind.startsWith("'+$prefix+'")')) ("LOGCAT_REQUIRED_"+$prefix)
+}
 Assert-Contains $regress 'GOD_MODE_ALL_TROOPS=PASS' 'GOD_MODE_PHYSICAL_SHOP_TEST'
 Assert-Contains $regress 'GOD_MODE_MAP_PERSISTENCE' 'GOD_MODE_PHYSICAL_MAP_TEST'
 Write-Host 'FINAL_VALIDATION=PASS scope=static_god_mode_contract_only'

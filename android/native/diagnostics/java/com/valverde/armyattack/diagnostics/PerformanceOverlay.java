@@ -123,7 +123,15 @@ public final class PerformanceOverlay {
 
     private static boolean shouldMirrorToLogcat(String kind) {
         if (kind == null) return false;
-        return kind.startsWith("SWF_")
+        // These are mandatory gates consumed by exact-APK physical ADB scripts.
+        // Keep the flight recorder bounded; mirror only diagnostic event families.
+        return kind.startsWith("TEST_")
+            || kind.startsWith("GOD_MODE")
+            || kind.startsWith("BOOT_")
+            || kind.startsWith("TERRITORY_")
+            || kind.startsWith("ASSET_")
+            || kind.startsWith("GAME_")
+            || kind.startsWith("SWF_")
             || kind.startsWith("PVP_")
             || kind.startsWith("MAP_")
             || kind.startsWith("WORLD_MAP_")
