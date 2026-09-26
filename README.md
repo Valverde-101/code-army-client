@@ -183,7 +183,7 @@ Telemetría:
 
 En la rama `test/home-north-areas-purchase-20260926`, y **solo en modo offline**, se permite comprar `AreaNW` (Picos del Oeste), `AreaN` (Comunidad Norteña) y `AreaNE` (Macizo oriental) sin sus misiones aún ausentes. La compatibilidad de compra elimina exclusivamente para esos tres objetos los requisitos de misión/nivel/aliados/edificio/objeto y su Intel de desbloqueo. Se mantienen el precio normal de recursos monetarios, la comprobación de adyacencia del catálogo, la confirmación de compra, la persistencia del inventario y la niebla que se retira **después** de comprar. No completa misiones ni concede terrenos gratuitamente.
 
-`AreaNorthW`, `AreaNorthC` y `AreaNorthE` continúan bloqueados, al igual que las restantes regiones y los mapas Desert/Snow. No usar este código de prueba como cambio de producción sin una decisión explícita. La clase `AreaItem` debe estar entre las clases recompiladas del SWF raíz; editar solamente el AS3 sin añadirlo a `Patch-AndroidPerformanceSwf.ps1` no modifica la APK.
+Las ampliaciones posteriores `AreaNorthW2`, `AreaNorthC2` y `AreaNorthE2` conservan sus requisitos originales, al igual que las restantes regiones y los mapas Desert/Snow. El catálogo fuente `ShopArea` almacena referencias como `#MapArea.AreaNW`; el juego las resuelve al cargar la configuración. No usar este código de prueba como cambio de producción sin una decisión explícita. La clase `AreaItem` debe estar entre las clases recompiladas del SWF raíz; editar solamente el AS3 sin añadirlo a `Patch-AndroidPerformanceSwf.ps1` no modifica la APK.
 
 ### Mapas de campaña
 
