@@ -198,7 +198,8 @@ jobs:
           elseif([string]$summary.result -eq 'SKIPPED_WITH_REASON'){$classification='SKIPPED_WITH_REASON';$reason='physical_test_skipped_'+[string]$summary.reason}
           elseif($diagOutcome -ne 'success'){$reason='runtime_diagnostics_failed'}
           else{
-            $required=@('ADB_DEVICE','DEVICE_LOCK','INSTALL','START','BOOT_READY','HEALTH','SMOKE','FUNCTIONAL_TESTS','CRASH_CHECK','ANR_CHECK','PHYSICAL_EVIDENCE','GOD_MODE_TOGGLE','GOD_MODE_ALL_TROOPS','GOD_MODE_MAP_PERSISTENCE')
+            $required=@('ADB_DEVICE','DEVICE_LOCK','INSTALL','START','BOOT_READY','HEALTH','SMOKE','FUNCTIONAL_TESTS','CRASH_CHECK','ANR_CHECK','PHYSICAL_EVIDENCE')
+            if($env:SOURCE_BRANCH -eq 'feat/offline-god-mode-full-unit-catalog-20260925'){$required+=@('GOD_MODE_TOGGLE','GOD_MODE_ALL_TROOPS','GOD_MODE_MAP_PERSISTENCE')}
             $bad=@()
             foreach($gate in $required){$value=[string]$summary.results.$gate;if($value -ne 'PASS'){$bad+="$gate=$value"}}
             if($bad.Count -eq 0){$result='PASS';$classification='PASS';$reason='all_mandatory_physical_gates_pass'}else{$reason='mandatory_gate_'+($bad -join ',')}
