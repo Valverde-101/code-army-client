@@ -39,6 +39,11 @@ foreach($needle in @(
 # Derive the desktop-AIR FFDec compiler path from the exact same patch set used by Android.
 # Outside CONFIG blocks is shared. BUILD_FOR_AIR blocks are retained, MOBILE and NOT_AIR blocks are excluded.
 $desktopText=$baseText
+# The desktop patcher is generated outside Tools/CI. Resolve this dependency from
+# the exact repository root, not from the generated script's scratch directory.
+$hashDirective=". (Join-Path `$PSScriptRoot 'Ensure-PortableFileHash.ps1')"
+if(-not $desktopText.Contains($hashDirective)){throw 'WINDOWS_SWF_PATCH=FAIL portable_hash_directive_missing'}
+$desktopText=$desktopText.Replace($hashDirective,". (Join-Path `$RepoRoot 'Tools\CI\Ensure-PortableFileHash.ps1')")
 $desktopText=$desktopText.Replace('function Convert-MobileAirSourceForFFDec','function Convert-WindowsAirSourceForFFDec')
 $desktopText=$desktopText.Replace("if(`$configMode -eq 'BUILD_FOR_MOBILE_AIR')","if(`$configMode -eq 'BUILD_FOR_AIR')")
 $desktopText=$desktopText.Replace('Convert-MobileAirSourceForFFDec -Source $source -Destination $ffdecSource','Convert-WindowsAirSourceForFFDec -Source $source -Destination $ffdecSource')
