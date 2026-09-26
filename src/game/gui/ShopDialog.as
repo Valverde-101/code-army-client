@@ -64,6 +64,9 @@
       private var mPanels:Array;
       
       private var mAllItems:Object;
+
+      // Rebuild the cached list when God Mode toggles, including ON -> OFF.
+      private var mLastGodModeCatalog:Boolean = false;
       
       private var mItemsForSell:Array;
       
@@ -168,9 +171,10 @@
             _loc4_++;
          }
          this.activateShopTabButtons();
-         if(!this.mAllItems)
+         if(!this.mAllItems || this.mLastGodModeCatalog != GameState.isOfflineGodModeActive())
          {
             this.updateItems();
+            this.mLastGodModeCatalog = GameState.isOfflineGodModeActive();
          }
          for(_loc5_ in this.mTabButtonsByName)
          {

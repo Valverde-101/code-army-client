@@ -42,6 +42,8 @@ Assert-Contains $units 'if \(GameState\.isOfflineGodModeActive\(\)\) return true
 Assert-Contains $dialog 'for each \(unit in GameState\.mConfig\.PlayerUnit\)' 'FULL_UNIT_SOURCE'
 Assert-Contains $dialog 'ItemManager\.getItemByTableName\(String\(unit\.ID\), "PlayerUnit"\)' 'ALL_UNIT_LOOKUP'
 Assert-Contains $dialog 'if \(!alreadyListed\) fullUnits\.push\(candidate\)' 'SHOP_DEDUP'
+Assert-Contains $dialog 'this\.mLastGodModeCatalog != GameState\.isOfflineGodModeActive\(\)' 'SHOP_MODE_CHANGE_REFRESH'
+Assert-Contains $dialog 'this\.mLastGodModeCatalog = GameState\.isOfflineGodModeActive\(\)' 'SHOP_MODE_CHANGE_TRACKED'
 Assert-Contains $hud 'army_offline_god_mode' 'FLOATING_BUTTON_ID'
 Assert-Contains $hud 'this\.mGame\.setOfflineGodMode\(enable\)' 'FLOATING_BUTTON_HOOK'
 Assert-Contains $hud '!PopUpManager\.isAnyPopupActive\(\)' 'FLOATING_BUTTON_POPUP_GUARD'
