@@ -119,6 +119,42 @@ jobs:
             Write-Host "NORMAL_RESCUE=PASS cancelled_obsolete_run=$blockedRunId build_lease_never_acquired=true"
           }
 
+          # The previous NORMAL workflow shares the same concurrency group and can
+          # itself become a stale unassigned blocker. Cancel ONLY older runs of this
+          # exact workflow on this exact isolated branch when the build job has zero
+          # runner and zero steps. Do not cancel running jobs or touch other projects.
+          $staleNormal=@($response.workflow_runs|Where-Object{
+            [string]$_.name -eq 'Army Attack NORMAL APK clean main 20260926' -and
+            [string]$_.head_branch -eq 'build/normal-apk-main-20260926' -and
+            [int64]$_.id -lt $current -and
+            [string]$_.head_sha -ne $env:HEAD_SHA -and
+            [string]$_.status -in @('queued','pending')
+          })
+          foreach($run in $staleNormal){
+            $jobData=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/jobs?per_page=100"
+            $buildJobs=@($jobData.jobs|Where-Object{[string]$_.name -eq 'Core candidate build and validation'})
+            if($buildJobs.Count -ne 1){throw "NORMAL_STALE_DRAIN=FAIL run=$($run.id) candidate_job_count=$($buildJobs.Count)"}
+            $build=$buildJobs[0]
+            $jobSteps=@($build.steps|Where-Object{$null -ne $_})
+            if([string]$build.status -notin @('queued','pending') -or [int64]$build.runner_id -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$build.runner_name) -or $jobSteps.Count -ne 0){
+              throw "NORMAL_STALE_DRAIN=FAIL old_job_assigned run=$($run.id) job=$($build.id) status=$($build.status) runner=$($build.runner_name) steps=$($jobSteps.Count)"
+            }
+            # Recheck the run immediately before cancel to avoid a scheduling race.
+            $fresh=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)"
+            if([string]$fresh.status -notin @('queued','pending') -or [string]$fresh.head_sha -ne [string]$run.head_sha){throw "NORMAL_STALE_DRAIN=FAIL run_identity_or_state_changed run=$($run.id)"}
+            Write-Host "NORMAL_STALE_DRAIN=CONFIRMED obsolete_run=$($run.id) job=$($build.id) sha=$($run.head_sha) runner_id=0 steps=0"
+            Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/cancel" -Method Post|Out-Null
+            $done=$false
+            foreach($poll in 1..8){
+              $fresh=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)"
+              if([string]$fresh.status -eq 'completed' -and [string]$fresh.conclusion -eq 'cancelled'){$done=$true;break}
+              Start-Sleep -Seconds 4
+            }
+            if(-not $done){throw "NORMAL_STALE_DRAIN=FAIL cancel_not_confirmed run=$($run.id) status=$($fresh.status)"}
+            Write-Host "NORMAL_STALE_DRAIN=PASS cancelled_run=$($run.id) runner_never_claimed=true"
+          }
+          Write-Host "NORMAL_STALE_DRAIN=PASS older_unassigned=$($staleNormal.Count) preserved_main=true"
+
   candidate:
     name: Core candidate build and validation
     needs: classify
