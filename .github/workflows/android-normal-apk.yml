@@ -243,6 +243,21 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
+          # The self-hosted Windows PowerShell profile can lack Microsoft.PowerShell.Utility/Get-FileHash.
+          # Use .NET SHA256 directly for independent post-build and copied-file integrity checks.
+          function Get-NormalApkSha256 {
+            param([Parameter(Mandatory=$true)][string]$LiteralPath)
+            if(-not(Test-Path -LiteralPath $LiteralPath -PathType Leaf)){throw "NORMAL_HASH=FAIL file_missing=$LiteralPath"}
+            $stream=[IO.File]::OpenRead($LiteralPath)
+            $hasher=[System.Security.Cryptography.SHA256]::Create()
+            try {
+              return ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-','').ToUpperInvariant()
+            }finally{
+              if($hasher){$hasher.Dispose()}
+              if($stream){$stream.Dispose()}
+            }
+          }
+          Write-Host 'NORMAL_PORTABLE_HASH=PASS provider=System.Security.Cryptography.SHA256'
           $checkout=$PWD.Path
           Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
           $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
@@ -277,13 +292,13 @@ jobs:
           if([string]$meta.toolchain_ownership -ne 'androidbuild-global'){throw "CORE_CANDIDATE=FAIL toolchain_ownership=$($meta.toolchain_ownership)"}
           if([string]$meta.workspace.build_root -notlike (Join-Path $persistent '.work\build*')){throw "CORE_CANDIDATE=FAIL workspace_build_root=$($meta.workspace.build_root)"}
           if([int]$meta.workspace.retention_generations -ne 3){throw "CORE_CANDIDATE=FAIL workspace_retention=$($meta.workspace.retention_generations)"}
-          $apk=[string]$result.apk_path;$hash=(Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToUpperInvariant()
+          $apk=[string]$result.apk_path;$hash=(Get-NormalApkSha256 -LiteralPath $apk)
           if($hash -ne ([string]$result.apk.identity.sha256).ToUpperInvariant()){throw 'CORE_CANDIDATE=FAIL apk_hash'}
           if($null -eq $result.final_apk){throw 'APK_FINAL_PUBLICATION=FAIL result_missing'}
           $finalPath=[string]$result.final_apk.path
           $finalSha=([string]$result.final_apk.sha256).ToUpperInvariant()
           if(-not(Test-Path -LiteralPath $finalPath -PathType Leaf)){throw "APK_FINAL_PUBLICATION=FAIL file_missing path=$finalPath"}
-          $diskFinalSha=(Get-FileHash -LiteralPath $finalPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $diskFinalSha=(Get-NormalApkSha256 -LiteralPath $finalPath)
           if($finalSha -ne $hash -or $diskFinalSha -ne $hash){throw "APK_FINAL_PUBLICATION=FAIL hash candidate=$hash result=$finalSha disk=$diskFinalSha"}
           if([IO.Path]::GetFileName($finalPath) -ne [string]$projectConfig.delivery.final_apk_name){throw "APK_FINAL_PUBLICATION=FAIL ownership expected=$($projectConfig.delivery.final_apk_name) actual=$([IO.Path]::GetFileName($finalPath))"}
           Write-Host "CORE_BUILD_PROVENANCE=PASS core=$provenanceCore minimum=3.0.11"
@@ -301,7 +316,7 @@ jobs:
           # still contain a candidate from the cancelled feature branch.
           $normalPath=Join-Path (Join-Path $env:ANDROIDBUILD_ROOT 'APK-FINAL') 'ArmyAttack-23.2-NORMAL-main-2d10485e.apk'
           Copy-Item -LiteralPath $finalPath -Destination $normalPath -Force
-          $normalHash=(Get-FileHash -LiteralPath $normalPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $normalHash=(Get-NormalApkSha256 -LiteralPath $normalPath)
           if($normalHash -ne $hash){throw "NORMAL_APK=FAIL expected=$hash actual=$normalHash"}
           $normalManifest=[ordered]@{
             schema='armyattack-normal-apk/v1'
