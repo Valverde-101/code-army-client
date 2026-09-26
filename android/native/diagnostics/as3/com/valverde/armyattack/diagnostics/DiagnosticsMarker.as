@@ -70,6 +70,34 @@ package com.valverde.armyattack.diagnostics {
             }
             if (!gameState) throw new Error("game_state_unavailable");
 
+            if (command == "god_mode") {
+                if (arg != "status" && arg != "on" && arg != "off") throw new Error("invalid_god_mode_arg");
+                var statusFn:Function = readField(gameState, "getOfflineGodModeStatus") as Function;
+                if (!statusFn) throw new Error("god_mode_status_unavailable");
+                if (arg != "status") {
+                    var setter:Function = readField(gameState, "setOfflineGodMode") as Function;
+                    if (!setter) throw new Error("god_mode_setter_unavailable");
+                    if (!Boolean(setter.apply(gameState, [arg == "on"]))) throw new Error("god_mode_change_rejected");
+                }
+                var godStatus:String = String(statusFn.apply(gameState, []));
+                if (arg == "on" && godStatus != "ON") throw new Error("god_mode_on_postcondition");
+                if (arg == "off" && godStatus != "OFF") throw new Error("god_mode_off_postcondition");
+                return "READY:god_mode=" + godStatus + ";map=" + String(readField(gameState, "mCurrentMapId"));
+            }
+            if (command == "god_shop") {
+                var currentMode:Function = readField(gameState, "getOfflineGodModeStatus") as Function;
+                if (!currentMode || String(currentMode.apply(gameState, [])) != "ON") throw new Error("god_mode_required_for_shop");
+                var shopHud:Object = readField(gameState, "mHUD");
+                invokeNoReturn(shopHud, "triggerShopOpening", ["Units", "normal"]);
+                return "ACCEPTED:shop=Units";
+            }
+            if (command == "god_shop_close") {
+                var closeHud:Object = readField(gameState, "mHUD");
+                var shopClass:Class = getDefinitionByName("game.gui.ShopDialog") as Class;
+                if (!shopClass) throw new Error("shop_class_unavailable");
+                invokeNoReturn(closeHud, "closeDialog", [shopClass]);
+                return "ACCEPTED:shop_closed";
+            }
             if (command == "open_map") {
                 if (arg != "Home" && arg != "Desert" && arg != "Snow") throw new Error("invalid_map");
                 invokeNoReturn(gameState, "requestWorldMapSwitch", [arg]);

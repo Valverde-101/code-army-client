@@ -123,10 +123,24 @@ try{
     Assert-TerritoryCommit -SourcePattern 'switch:Home' -Gate 'TERRITORY_MAP_SWITCH'
   }
   $homeShot=Save-Screenshot 'screen-territory-home-before-capture.png'
+  # Exact-APK God Mode regression uses the protected native ADB command console:
+  # no coordinate taps and no fabricated campaign/inventory state.
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'status' -ExpectedResult '^READY:god_mode=OFF;map=Home$')
+  $godOffShot=Save-Screenshot 'screen-god-mode-off-before.png'
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'on' -ExpectedResult '^READY:god_mode=ON;map=Home$')
+  $godOnShot=Save-Screenshot 'screen-god-mode-on-home.png'
+  [void](Invoke-TestCommand -Command 'god_shop' -ExpectedResult '^ACCEPTED:shop=Units$')
+  [void](Wait-LogPattern -Pattern '(?m)ArmyAttackGame\s*:\s*GOD_MODE_SHOP\b.*units=15;catalogue=PlayerUnit' -Gate 'GOD_MODE_ALL_TROOPS' -TimeoutSeconds 45)
+  $godShopShot=Save-Screenshot 'screen-god-mode-shop-all-15.png'
+  [void](Invoke-TestCommand -Command 'god_shop_close' -ExpectedResult '^ACCEPTED:shop_closed$')
+  $shopCloseLog=Get-Logcat
+  if($shopCloseLog -match '(?m)ArmyAttackGame\s*:\s*POPUP_CLOSE_MISSING\b.*ShopDialog'){throw 'GOD_MODE_SHOP_CLOSE=FAIL popup_not_active'}
+  Write-Host 'GOD_MODE_ALL_TROOPS=PASS runtime_catalogue=15 shop=Units screenshot=true no_coordinate_taps=true'
 
   [void](Invoke-TestCommand -Command 'open_map' -Arg 'Snow' -ExpectedResult '^ACCEPTED:map_Snow$')
   Wait-MapCommit -Target 'Snow'
   Assert-TerritoryCommit -SourcePattern 'switch:Snow' -Gate 'TERRITORY_MAP_SWITCH'
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'status' -ExpectedResult '^READY:god_mode=ON;map=Snow$')
   $snowFirstShot=Save-Screenshot 'screen-snow-first-entry.png'
   $firstLog=Get-Logcat
   if($firstLog -match '(?m)ArmyAttackGame\s*:\s*MAP_TRANSITION_FAIL\b' -or $firstLog -match '(?i)Error #1009|TypeError:\s*Error #1009|Cannot access a property or method of a null object reference'){
@@ -143,7 +157,11 @@ try{
 
   [void](Invoke-TestCommand -Command 'open_map' -Arg 'Home' -ExpectedResult '^ACCEPTED:map_Home$')
   Wait-MapCommit -Target 'Home'
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'status' -ExpectedResult '^READY:god_mode=ON;map=Home$')
+  [void](Invoke-TestCommand -Command 'god_mode' -Arg 'off' -ExpectedResult '^READY:god_mode=OFF;map=Home$')
+  $godRestoredShot=Save-Screenshot 'screen-god-mode-off-restored.png'
   $finalLog=Get-Logcat
+  if($finalLog -notmatch '(?m)ArmyAttackGame\s*:\s*GOD_MODE\b.*enabled=true' -or $finalLog -notmatch '(?m)ArmyAttackGame\s*:\s*GOD_MODE\b.*enabled=false'){throw 'GOD_MODE_TOGGLE=FAIL transition_trace_missing'}
   $finalLog|Set-Content -LiteralPath (Join-Path $EvidenceRoot 'targeted-regression-logcat.txt') -Encoding UTF8
 
   $fatal='(?i)FATAL EXCEPTION|AndroidRuntime.*FATAL|Fatal signal|SIGSEGV|SIGABRT'
@@ -165,10 +183,13 @@ try{
     territory_switch_commit='PASS'
     snow_first_entry='PASS'
     snow_repeat_entry='PASS'
+    god_mode_toggle='PASS'
+    god_mode_shop_all_15='PASS'
+    god_mode_map_persistence='PASS'
     null_reference_count=0
     crash_check='PASS'
     anr_check='PASS'
-    screenshots=@($territoryShot,$homeShot,$snowFirstShot,$snowRepeatShot)
+    screenshots=@($territoryShot,$homeShot,$godOffShot,$godOnShot,$godShopShot,$snowFirstShot,$snowRepeatShot,$godRestoredShot)
     timestamp_utc=[DateTime]::UtcNow.ToString('o')
   }
   $result|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $EvidenceRoot 'targeted-regression.json') -Encoding UTF8
@@ -182,6 +203,9 @@ try{
     TARGETED_CRASH_CHECK='PASS'
     TARGETED_ANR_CHECK='PASS'
     TARGETED_REGRESSION='PASS'
+    GOD_MODE_TOGGLE='PASS'
+    GOD_MODE_ALL_TROOPS='PASS'
+    GOD_MODE_MAP_PERSISTENCE='PASS'
   }
   foreach($entry in $gateResults.GetEnumerator()){
     $prop=$summary.results.PSObject.Properties[$entry.Key]
@@ -191,6 +215,8 @@ try{
   $summary|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $summaryPath -Encoding UTF8
 
   Write-Host 'TEST_CONSOLE=PASS transport=adb_broadcast permission=android.permission.DUMP no_coordinate_taps=true'
+  Write-Host 'GOD_MODE_TOGGLE=PASS off_on_off=true diagnostics_trace=true screenshots=3'
+  Write-Host 'GOD_MODE_MAP_PERSISTENCE=PASS Home_Snow_Home=true default_off=true temporary=true'
   Write-Host 'TERRITORY_RESTORE_TOPOLOGY=PASS boot_restore=true visual_commit=full screenshot_before_capture=true'
   Write-Host 'TERRITORY_MAP_SWITCH=PASS Home=true Snow=true visual_commit=full'
   Write-Host 'SNOW_REPEAT_ENTRY=PASS sequence=Home-Snow-Home-Snow-Home null_reference=0'
