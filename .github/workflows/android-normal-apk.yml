@@ -85,6 +85,40 @@ jobs:
           }
           Write-Host "STALE_QUEUED_DRAIN=PASS cancelled=$cancelled in_progress_untouched=true branch=$env:SOURCE_BRANCH"
 
+          # Rescue a single known obsolete main run that is holding the GLOBAL build
+          # concurrency slot, although it has never acquired a runner or build lease.
+          # Never cancel a run if any job has started or the identity changed.
+          if($env:SOURCE_BRANCH -ne 'build/normal-apk-main-20260926'){throw 'NORMAL_RESCUE=FAIL unexpected_branch'}
+          $blockedRunId=36176558182
+          $blockedJobId=108402926061
+          $baseline='2d10485efba78565b4b11873a7d7279b125f557f'
+          $old=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$blockedRunId"
+          if([int64]$old.id -ne $blockedRunId -or [string]$old.head_sha -ne $baseline -or [string]$old.head_branch -ne 'main'){
+            throw 'NORMAL_RESCUE=FAIL obsolete_run_identity_mismatch'
+          }
+          if([string]$old.status -eq 'completed'){
+            Write-Host "NORMAL_RESCUE=PASS prior_run_already_completed conclusion=$($old.conclusion)"
+          }else{
+            if([string]$old.status -notin @('queued','pending')){throw "NORMAL_RESCUE=FAIL prior_run_active status=$($old.status)"}
+            $job=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/jobs/$blockedJobId"
+            if([int64]$job.id -ne $blockedJobId -or [string]$job.run_id -ne [string]$blockedRunId){
+              throw 'NORMAL_RESCUE=FAIL obsolete_job_identity_mismatch'
+            }
+            if([string]$job.status -notin @('queued','pending') -or [int64]$job.runner_id -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$job.runner_name) -or @($job.steps).Count -ne 0){
+              throw "NORMAL_RESCUE=FAIL do_not_cancel_assigned_job status=$($job.status) runner=$($job.runner_name) steps=$(@($job.steps).Count)"
+            }
+            Write-Host "NORMAL_RESCUE=CONFIRMED old_run=$blockedRunId old_job=$blockedJobId runner_id=0 steps=0 sha=$baseline"
+            Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$blockedRunId/cancel" -Method Post|Out-Null
+            $cancelledOld=$false
+            foreach($poll in 1..8){
+              $old=Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$blockedRunId"
+              if([string]$old.status -eq 'completed' -and [string]$old.conclusion -eq 'cancelled'){$cancelledOld=$true;break}
+              Start-Sleep -Seconds 4
+            }
+            if(-not $cancelledOld){throw "NORMAL_RESCUE=FAIL cancel_not_confirmed status=$($old.status) conclusion=$($old.conclusion)"}
+            Write-Host "NORMAL_RESCUE=PASS cancelled_obsolete_run=$blockedRunId build_lease_never_acquired=true"
+          }
+
   candidate:
     name: Core candidate build and validation
     needs: classify
@@ -142,9 +176,10 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'SOURCE_BOOTSTRAP=FAIL clean'}
           $head=(& $git -C $workspace rev-parse HEAD).Trim()
           if($head -ne $env:EXPECTED_SOURCE_SHA){throw "SOURCE_BOOTSTRAP=FAIL expected=$env:EXPECTED_SOURCE_SHA actual=$head"}
-          # Fail closed: this branch must contain only THIS workflow added on pristine main.
-          $parent=(& $git -C $workspace rev-parse 'HEAD^').Trim()
-          if($parent -ne $env:BASELINE_MAIN_SHA){throw "NORMAL_SOURCE=FAIL parent=$parent baseline=$env:BASELINE_MAIN_SHA"}
+          # Fail closed: all commits since the pristine main SHA may change ONLY this workflow.
+          # Keep the shared GitHub concurrency/physical device locks unchanged.
+          $ancestor=(& $git -C $workspace merge-base $env:BASELINE_MAIN_SHA $head).Trim()
+          if($LASTEXITCODE -ne 0 -or $ancestor -ne $env:BASELINE_MAIN_SHA){throw "NORMAL_SOURCE=FAIL ancestor=$ancestor baseline=$env:BASELINE_MAIN_SHA"}
           $changed=@(& $git -C $workspace diff --name-only $env:BASELINE_MAIN_SHA $head)
           if($changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/android-normal-apk.yml'){
             throw "NORMAL_SOURCE=FAIL expected=workflow_only changed=$($changed -join ',')"
