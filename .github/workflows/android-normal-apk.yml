@@ -217,11 +217,28 @@ jobs:
           $ancestor=(& $git -C $workspace merge-base $env:BASELINE_MAIN_SHA $head).Trim()
           if($LASTEXITCODE -ne 0 -or $ancestor -ne $env:BASELINE_MAIN_SHA){throw "NORMAL_SOURCE=FAIL ancestor=$ancestor baseline=$env:BASELINE_MAIN_SHA"}
           $changed=@(& $git -C $workspace diff --name-only $env:BASELINE_MAIN_SHA $head)
-          if($changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/android-normal-apk.yml'){
-            throw "NORMAL_SOURCE=FAIL expected=workflow_only changed=$($changed -join ',')"
+          $allowed=@('.github/scripts/armyattack-build.ps1','.github/scripts/armyattack-workspace.ps1','.github/workflows/android-normal-apk.yml','Tools/CI/Ensure-PortableFileHash.ps1')
+          $unexpected=@($changed|Where-Object{$_ -notin $allowed})
+          if($unexpected.Count -ne 0 -or $changed.Count -ne $allowed.Count){
+            throw "NORMAL_SOURCE=FAIL expected=workflow_and_hash_compat_only changed=$($changed -join ',') unexpected=$($unexpected -join ',')"
+          }
+          foreach($script in @('.github/scripts/armyattack-build.ps1','.github/scripts/armyattack-workspace.ps1')){
+            $stats=@(& $git -C $workspace diff --numstat $env:BASELINE_MAIN_SHA $head -- $script)
+            if($stats.Count -ne 1 -or $stats[0] -notmatch '^1\s+0\s+'){
+              throw "NORMAL_SOURCE=FAIL script_has_non_compat_changes path=$script actual=$($stats -join ',')"
+            }
+            $headLines=@(Get-Content -LiteralPath (Join-Path $workspace $script))
+            if($headLines[3] -ne ". (Join-Path `$PSScriptRoot '..\\..\\Tools\\CI\\Ensure-PortableFileHash.ps1')"){
+              throw "NORMAL_SOURCE=FAIL portable_helper_import_missing script=$script"
+            }
+          }
+          $hashHelperBlob=(& $git -C $workspace hash-object 'Tools/CI/Ensure-PortableFileHash.ps1').Trim()
+          if($hashHelperBlob -ne '4b62007909ee95eb3c04e3b548d0601a2e8bb804'){
+            throw "NORMAL_SOURCE=FAIL portable_helper_hash unexpected=$hashHelperBlob"
           }
           Write-Host "SOURCE_BOOTSTRAP=PASS sha=$head"
-          Write-Host "NORMAL_GAME_SOURCE=PASS identical_to_main=$($env:BASELINE_MAIN_SHA) only_changed=.github/workflows/android-normal-apk.yml"
+          Write-Host "NORMAL_GAME_SOURCE=PASS identical_to_main=$($env:BASELINE_MAIN_SHA) permitted_changes=workflow,portable_hash_only"
+          Write-Host 'NORMAL_PORTABLE_HELPER_INTEGRITY=PASS scripts=2 blob=4b62007909ee95eb3c04e3b548d0601a2e8bb804'
 
       - name: Validate Army Core hooks
         shell: powershell
@@ -238,6 +255,23 @@ jobs:
         shell: powershell
         run: |
           & '.\.github\scripts\armyattack-project-precheck.ps1'
+
+      - name: Regression test portable hash inside Windows PowerShell
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:ARMY_TEST_PORTABLE_HASH='1'
+          . '.\Tools\CI\Ensure-PortableFileHash.ps1'
+          $temp=[IO.Path]::GetTempFileName()
+          try {
+            [IO.File]::WriteAllBytes($temp,[Text.Encoding]::ASCII.GetBytes('abc'))
+            $actual=(Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($actual -ne 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'){throw "PORTABLE_HASH_TEST=FAIL actual=$actual"}
+            Write-Host 'PORTABLE_HASH_TEST=PASS algorithm=SHA256 known_vector=abc provider=dotnet'
+          }finally{
+            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+            Remove-Item Env:ARMY_TEST_PORTABLE_HASH -ErrorAction SilentlyContinue
+          }
 
       - name: Build validate and publish Army candidate through Core 3.0.11+
         shell: powershell
