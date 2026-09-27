@@ -65,7 +65,8 @@ $state=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\states\GameState.
 $save=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\utils\OfflineSave.as') -Raw
 $patch=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1') -Raw
 foreach($needle in @('public function activate(param1:Boolean = false)','public function createGameObjects(param1:Boolean = false)',
- 'trialCell.mCharacter != null','trialCell.mObject != null')){
+ 'trialCell.mCharacter != null','trialCell.mObject != null',
+ '(_loc7_.mType == "EnemyInstallation" || _loc7_.mType == "PermanentHFE")')){
  if(-not $mission.Contains($needle)){throw "HOME_NORTH_CONTENT=FAIL mission_runtime=$needle"}
 }
 foreach($needle in @('getNumberOfItems(area) < 1','setup.mState != Mission.STATE_INACTIVE','setup.activate(true);',
@@ -78,8 +79,11 @@ foreach($needle in @('getNumberOfItems(area) < 1','setup.mState != Mission.STATE
 if($manager.Contains('smNodes = new Array;')){throw 'HOME_NORTH_WINDOWS_REGRESSION=FAIL invalid_array_ctor'}
 if(-not $state.Contains('MissionManager.ensureTrialHomeNorthContent(param1.mId)')){throw 'HOME_NORTH_CONTENT=FAIL purchase_hook_missing'}
 if(-not $save.Contains('MissionManager.reconcileTrialHomeNorthContent()')){throw 'HOME_NORTH_CONTENT=FAIL restore_hook_missing'}
+$overlay=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\CI\Invoke-AndroidEvidenceRootFixOverlayV32.ps1') -Raw
+if(-not $overlay.Contains("already_normalized=true") -or -not $overlay.Contains("normalized_match_count=")){throw 'HOME_NORTH_CONTENT=FAIL rootfix_v32_non_idempotent'}
 foreach($class in @('game.items.AreaItem','game.missions.Mission','game.missions.MissionManager','game.states.GameState','game.utils.OfflineSave')){
  if(-not $patch.Contains("Class='$class'")){throw "HOME_NORTH_CONTENT=FAIL swf_patch_missing=$class"}
 }
-Write-Host 'HOME_NORTH_WINDOWS_REGRESSION=PASS ffdec_array_constructor=true'
+Write-Host 'HOME_NORTH_WINDOWS_REGRESSION=PASS ffdec_array_constructor=true android_overlay_idempotent=true'
+Write-Host 'HOME_NORTH_CITY_OCCUPANCY=PASS city=NCTown no_double_object_placement=true'
 Write-Host 'HOME_NORTH_CONTENT_CONTRACT=PASS scope=six_home_north_regions original_objects=388 new_upper_objects=226 city=NCTown once_only=true preserve_occupied_layers=true save_migration=true'

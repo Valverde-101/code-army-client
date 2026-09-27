@@ -622,7 +622,7 @@
                trialCell = _loc1_.getCellAt(_loc3_,_loc4_);
                if(!_loc7_ || !trialCell ||
                   (_loc7_.mType == "EnemyUnit" && trialCell.mCharacter != null) ||
-                  (_loc7_.mType == "EnemyInstallation" && trialCell.mObject != null))
+                  ((_loc7_.mType == "EnemyInstallation" || _loc7_.mType == "PermanentHFE") && trialCell.mObject != null))
                {
                   trialOccupied++;
                   continue;
