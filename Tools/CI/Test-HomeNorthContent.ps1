@@ -76,7 +76,12 @@ foreach($needle in @('getNumberOfItems(area) < 1','setup.mState != Mission.STATE
  'smNodes = new Array();')){
  if(-not $manager.Contains($needle)){throw "HOME_NORTH_CONTENT=FAIL manager_runtime=$needle"}
 }
-if($manager.Contains('smNodes = new Array;')){throw 'HOME_NORTH_WINDOWS_REGRESSION=FAIL invalid_array_ctor'}
+# Both assignment sites must remain normalized; the V32 overlay handles an older
+# checkout and must be idempotent for this updated source.
+$normalizedCount=[regex]::Matches($manager,'smNodes[ \t]*=[ \t]*new[ \t]+Array[ \t]*\(\)[ \t]*;').Count
+if($normalizedCount -ne 2 -or [regex]::IsMatch($manager,'smNodes[ \t]*=[ \t]*new[ \t]+Array[ \t]*;')){
+ throw "HOME_NORTH_WINDOWS_REGRESSION=FAIL smNodes_constructors expected=2 actual=$normalizedCount"
+}
 if(-not $state.Contains('MissionManager.ensureTrialHomeNorthContent(param1.mId)')){throw 'HOME_NORTH_CONTENT=FAIL purchase_hook_missing'}
 if(-not $save.Contains('MissionManager.reconcileTrialHomeNorthContent()')){throw 'HOME_NORTH_CONTENT=FAIL restore_hook_missing'}
 $overlay=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\CI\Invoke-AndroidEvidenceRootFixOverlayV32.ps1') -Raw
