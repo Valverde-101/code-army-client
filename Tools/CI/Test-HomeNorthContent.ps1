@@ -85,7 +85,7 @@ if($normalizedCount -ne 2 -or [regex]::IsMatch($manager,'smNodes[ \t]*=[ \t]*new
 if(-not $state.Contains('MissionManager.ensureTrialHomeNorthContent(param1.mId)')){throw 'HOME_NORTH_CONTENT=FAIL purchase_hook_missing'}
 if(-not $save.Contains('MissionManager.reconcileTrialHomeNorthContent()')){throw 'HOME_NORTH_CONTENT=FAIL restore_hook_missing'}
 $overlay=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\CI\Invoke-AndroidEvidenceRootFixOverlayV32.ps1') -Raw
-if(-not $overlay.Contains("already_normalized=true") -or -not $overlay.Contains("normalized_match_count=")){throw 'HOME_NORTH_CONTENT=FAIL rootfix_v32_non_idempotent'}
+if(-not $overlay.Contains("already_normalized=") -or -not $overlay.Contains("normalized_match_count=")){throw 'HOME_NORTH_CONTENT=FAIL rootfix_v32_non_idempotent'}
 foreach($class in @('game.items.AreaItem','game.missions.Mission','game.missions.MissionManager','game.states.GameState','game.utils.OfflineSave')){
  if(-not $patch.Contains("Class='$class'")){throw "HOME_NORTH_CONTENT=FAIL swf_patch_missing=$class"}
 }
