@@ -72,7 +72,7 @@
 		mCompletedMissions = new Array();
 		mCompletedCOsWithMissions = new Array();
 		mCompletedMissionsGlobal = new Array();
-		smNodes = new Array;
+		smNodes = new Array();
 	  }
       
       private static function sortMissions(param1:Mission, param2:Mission) : int
@@ -281,9 +281,17 @@
          {
             return false;
          }
-         var setupId:String = param1 == "AreaNW" ? "SETUP_NW" :
-            (param1 == "AreaN" ? "SETUP_NC" : "SETUP_NE");
-         var expectedCount:int = param1 == "AreaNW" ? 43 : (param1 == "AreaN" ? 66 : 53);
+         // Upper-area IDs and their source setup group IDs are deliberately
+         // different; resolve from the real mission ID, never from a suffix.
+         var setupId:String = "";
+         var expectedCount:int = 0;
+         if(param1 == "AreaNW") { setupId = "SETUP_NW"; expectedCount = 43; }
+         else if(param1 == "AreaN") { setupId = "SETUP_NC"; expectedCount = 66; }
+         else if(param1 == "AreaNE") { setupId = "SETUP_NE"; expectedCount = 53; }
+         else if(param1 == "AreaNorthW2") { setupId = "SETUP_NORTHW2"; expectedCount = 80; }
+         else if(param1 == "AreaNorthC2") { setupId = "SETUP_NORTHC2"; expectedCount = 77; }
+         else if(param1 == "AreaNorthE2") { setupId = "SETUP_NORTHE2"; expectedCount = 69; }
+         else { return false; }
          var setup:Mission = getMission(setupId);
          if(!setup || setup.mMapId != "Home" || setup.getSetupObjectCount() != expectedCount)
          {
@@ -311,7 +319,8 @@
          if(!Config.OFFLINE_MODE || !GameState.mInstance ||
             GameState.mInstance.mCurrentMapId != "Home") return false;
          var changed:Boolean = false;
-         for each(var areaId:String in ["AreaNW","AreaN","AreaNE"])
+         for each(var areaId:String in ["AreaNW","AreaN","AreaNE",
+                                         "AreaNorthW2","AreaNorthC2","AreaNorthE2"])
          {
             if(ensureTrialHomeNorthContent(areaId)) changed = true;
          }

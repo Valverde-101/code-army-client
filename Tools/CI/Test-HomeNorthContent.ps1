@@ -3,54 +3,83 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 if([string]::IsNullOrWhiteSpace($RepoRoot)){$RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path}
 $config=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\config\army_config_base.json') -Raw|ConvertFrom-Json
-$expected=@{
- AreaNW=@{Setup='SETUP_NW';Count=43;Units=30;Defenses=13}
- AreaN=@{Setup='SETUP_NC';Count=66;Units=33;Defenses=33}
- AreaNE=@{Setup='SETUP_NE';Count=53;Units=28;Defenses=25}
+$expected=[ordered]@{
+ AreaNW=@{Setup='SETUP_NW';Group='AreaNW';Count=43;Units=30;Defenses=13;Civilian=0}
+ AreaN=@{Setup='SETUP_NC';Group='AreaN';Count=66;Units=33;Defenses=33;Civilian=0}
+ AreaNE=@{Setup='SETUP_NE';Group='AreaNE';Count=53;Units=28;Defenses=25;Civilian=0}
+ AreaNorthW2=@{Setup='SETUP_NORTHW2';Group='AreaNorthW';Count=80;Units=27;Defenses=53;Civilian=0}
+ AreaNorthC2=@{Setup='SETUP_NORTHC2';Group='AreaNorthC';Count=77;Units=44;Defenses=33;Civilian=0}
+ AreaNorthE2=@{Setup='SETUP_NORTHE2';Group='AreaNorthE';Count=69;Units=45;Defenses=23;Civilian=1}
 }
-foreach($id in @('AreaNW','AreaN','AreaNE')){
-  $areaProp=$config.MapArea.PSObject.Properties[$id]
+$total=0;$upper=0
+foreach($id in $expected.Keys){
   $spec=$expected[$id]
-  $stageProp=$config.Mission.PSObject.Properties[$spec.Setup]
-  if($null -eq $areaProp -or $null -eq $stageProp){throw "HOME_NORTH_CONTENT=FAIL absent_area_or_stage id=$id"}
+  $areaProp=$config.MapArea.PSObject.Properties[$id]
+  $stageProp=$config.Mission.PSObject.Properties[[string]$spec.Setup]
+  if($null -eq $areaProp -or $null -eq $stageProp){throw "HOME_NORTH_CONTENT=FAIL missing_area_or_mission id=$id"}
   $area=$areaProp.Value;$stage=$stageProp.Value
-  if([string]$area.MapID -cne 'Home' -or [string]$area.Type -cne 'Area' -or [string]$stage.MapId -cne 'Home' -or [string]$stage.SetupGroup -cne $id){throw "HOME_NORTH_CONTENT=FAIL original_area_or_stage id=$id"}
-  $rows=@($config.MissionSetup.PSObject.Properties|ForEach-Object{$_.Value}|Where-Object{[string]$_.Group -ceq $id})
-  if($rows.Count -ne $spec.Count){throw "HOME_NORTH_CONTENT=FAIL authored_count area=$id expected=$($spec.Count) actual=$($rows.Count)"}
-  $occupied=@{};$units=0;$defenses=0
+  if([string]$area.ID -cne $id -or [string]$area.MapID -cne 'Home' -or
+     [string]$stage.MapId -cne 'Home' -or [string]$stage.SetupGroup -cne [string]$spec.Group){
+    throw "HOME_NORTH_CONTENT=FAIL source_group_mapping id=$id group=$($stage.SetupGroup)"
+  }
+  $rows=@($config.MissionSetup.PSObject.Properties|ForEach-Object{$_.Value}|Where-Object{[string]$_.Group -ceq [string]$spec.Group})
+  if($rows.Count -ne [int]$spec.Count){throw "HOME_NORTH_CONTENT=FAIL authored_count area=$id expected=$($spec.Count) actual=$($rows.Count)"}
+  $occupied=@{};$units=0;$defenses=0;$civilian=0
   foreach($entry in $rows){
     $ref=[string]$entry.Item
-    if($ref -notmatch '^#(EnemyUnit|EnemyInstallation)\.([A-Za-z0-9_]+)$'){throw "HOME_NORTH_CONTENT=FAIL invalid_item area=$id ref=$ref"}
+    if($ref -notmatch '^#(EnemyUnit|EnemyInstallation|PermanentHFE)\.([A-Za-z0-9_]+)$'){throw "HOME_NORTH_CONTENT=FAIL invalid_item area=$id ref=$ref"}
     $type=$Matches[1];$name=$Matches[2]
-    $itemTable=$config.PSObject.Properties[$type]
-    if($null -eq $itemTable -or $null -eq $itemTable.Value.PSObject.Properties[$name]){throw "HOME_NORTH_CONTENT=FAIL unresolved_item area=$id ref=$ref"}
+    $table=$config.PSObject.Properties[$type]
+    if($null -eq $table -or $null -eq $table.Value.PSObject.Properties[$name]){throw "HOME_NORTH_CONTENT=FAIL unresolved_item area=$id ref=$ref"}
+    $item=$table.Value.PSObject.Properties[$name].Value
     $x=[int]$entry.AreaX;$y=[int]$entry.AreaY
-    if($x -lt [int]$area.AreaX -or $x -ge ([int]$area.AreaX+[int]$area.AreaWidth) -or $y -lt [int]$area.AreaY -or $y -ge ([int]$area.AreaY+[int]$area.AreaHeight)){throw "HOME_NORTH_CONTENT=FAIL out_of_bounds area=$id row=$($entry.ID)"}
+    $dx=if($null -ne $item.PSObject.Properties['DimX']){[int]$item.DimX}else{1}
+    $dy=if($null -ne $item.PSObject.Properties['DimY']){[int]$item.DimY}else{1}
+    if($dx -lt 1 -or $dy -lt 1 -or $x -lt [int]$area.AreaX -or
+       ($x+$dx) -gt ([int]$area.AreaX+[int]$area.AreaWidth) -or
+       $y -lt [int]$area.AreaY -or
+       ($y+$dy) -gt ([int]$area.AreaY+[int]$area.AreaHeight)){
+      throw "HOME_NORTH_CONTENT=FAIL footprint area=$id row=$($entry.ID) x=$x y=$y dx=$dx dy=$dy"
+    }
     $slot="$x,$y,$type"
-    if($occupied.ContainsKey($slot)){throw "HOME_NORTH_CONTENT=FAIL overlapping_layer area=$id slot=$slot"}
+    if($occupied.ContainsKey($slot)){throw "HOME_NORTH_CONTENT=FAIL duplicate_layer area=$id slot=$slot"}
     $occupied[$slot]=$true
-    if($type -eq 'EnemyUnit'){$units++}else{$defenses++}
+    if($type -eq 'EnemyUnit'){$units++}
+    elseif($type -eq 'EnemyInstallation'){$defenses++}
+    else{
+      if($id -cne 'AreaNorthE2' -or $name -cne 'NCTown'){throw "HOME_NORTH_CONTENT=FAIL unexpected_civilian area=$id ref=$ref"}
+      $civilian++
+    }
   }
-  if($units -ne $spec.Units -or $defenses -ne $spec.Defenses){throw "HOME_NORTH_CONTENT=FAIL wrong_distribution area=$id units=$units defenses=$defenses"}
-  Write-Host "HOME_NORTH_CONTENT=PASS area=$id original_stage=$($spec.Setup) entries=$($rows.Count) enemy_units=$units enemy_installations=$defenses"
+  if($units -ne [int]$spec.Units -or $defenses -ne [int]$spec.Defenses -or $civilian -ne [int]$spec.Civilian){
+    throw "HOME_NORTH_CONTENT=FAIL distribution area=$id units=$units defenses=$defenses civilian=$civilian"
+  }
+  $total+=$rows.Count
+  if($id.StartsWith('AreaNorth')){$upper+=$rows.Count}
+  Write-Host "HOME_NORTH_CONTENT=PASS area=$id stage=$($spec.Setup) group=$($spec.Group) entries=$($rows.Count) enemy_units=$units enemy_installations=$defenses civilian=$civilian"
 }
+if($total -ne 388 -or $upper -ne 226){throw "HOME_NORTH_CONTENT=FAIL total=$total upper=$upper"}
 $mission=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\missions\Mission.as') -Raw
 $manager=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\missions\MissionManager.as') -Raw
 $state=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\states\GameState.as') -Raw
 $save=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\utils\OfflineSave.as') -Raw
 $patch=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1') -Raw
-foreach($check in @(
- @{text=$mission;needle='public function activate(param1:Boolean = false)'},
- @{text=$mission;needle='public function createGameObjects(param1:Boolean = false)'},
- @{text=$mission;needle='trialCell.mCharacter != null'},
- @{text=$mission;needle='trialCell.mObject != null'},
- @{text=$manager;needle='getNumberOfItems(area) < 1'},
- @{text=$manager;needle='setup.mState != Mission.STATE_INACTIVE'},
- @{text=$manager;needle='setup.activate(true);'},
- @{text=$state;needle='MissionManager.ensureTrialHomeNorthContent(param1.mId)'},
- @{text=$save;needle='MissionManager.reconcileTrialHomeNorthContent()'}
-)){if(-not $check.text.Contains([string]$check.needle)){throw "HOME_NORTH_CONTENT=FAIL missing_runtime=$($check.needle)"}}
-foreach($class in @('game.items.AreaItem','game.missions.Mission','game.missions.MissionManager','game.states.GameState','game.utils.OfflineSave')){
-  if(-not $patch.Contains("Class='$class'")){throw "HOME_NORTH_CONTENT=FAIL swf_patch_missing=$class"}
+foreach($needle in @('public function activate(param1:Boolean = false)','public function createGameObjects(param1:Boolean = false)',
+ 'trialCell.mCharacter != null','trialCell.mObject != null')){
+ if(-not $mission.Contains($needle)){throw "HOME_NORTH_CONTENT=FAIL mission_runtime=$needle"}
 }
-Write-Host 'HOME_NORTH_CONTENT_CONTRACT=PASS scope=AreaNW,AreaN,AreaNE original_group_objects=162 purchase_only=true older_save_reconcile=true once=true preserve_occupied_layers=true extra_areas=unchanged'
+foreach($needle in @('getNumberOfItems(area) < 1','setup.mState != Mission.STATE_INACTIVE','setup.activate(true);',
+ 'setupId = "SETUP_NORTHW2"; expectedCount = 80;',
+ 'setupId = "SETUP_NORTHC2"; expectedCount = 77;',
+ 'setupId = "SETUP_NORTHE2"; expectedCount = 69;',
+ 'smNodes = new Array();')){
+ if(-not $manager.Contains($needle)){throw "HOME_NORTH_CONTENT=FAIL manager_runtime=$needle"}
+}
+if($manager.Contains('smNodes = new Array;')){throw 'HOME_NORTH_WINDOWS_REGRESSION=FAIL invalid_array_ctor'}
+if(-not $state.Contains('MissionManager.ensureTrialHomeNorthContent(param1.mId)')){throw 'HOME_NORTH_CONTENT=FAIL purchase_hook_missing'}
+if(-not $save.Contains('MissionManager.reconcileTrialHomeNorthContent()')){throw 'HOME_NORTH_CONTENT=FAIL restore_hook_missing'}
+foreach($class in @('game.items.AreaItem','game.missions.Mission','game.missions.MissionManager','game.states.GameState','game.utils.OfflineSave')){
+ if(-not $patch.Contains("Class='$class'")){throw "HOME_NORTH_CONTENT=FAIL swf_patch_missing=$class"}
+}
+Write-Host 'HOME_NORTH_WINDOWS_REGRESSION=PASS ffdec_array_constructor=true'
+Write-Host 'HOME_NORTH_CONTENT_CONTRACT=PASS scope=six_home_north_regions original_objects=388 new_upper_objects=226 city=NCTown once_only=true preserve_occupied_layers=true save_migration=true'

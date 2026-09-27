@@ -179,17 +179,28 @@ Telemetría:
 - Producciones originales: 30 unidades por 75 de dinero en 240 s; 45 por 140 en 480 s; 60 por 195 en 960 s. Hay que iniciar y recoger la producción.
 - La disponibilidad se ajusta en la configuración compuesta del build y necesita comprobación en el APK; la verificación estática `offline_desert_water_source` no equivale a una prueba física.
 
-### Prueba acotada: compra de las tres últimas regiones de Home
+### Prueba acotada: compra y poblamiento de las seis regiones norteñas de Home
 
-En la rama `test/home-north-areas-purchase-20260926`, y **solo en modo offline**, se permite comprar `AreaNW` (Picos del Oeste), `AreaN` (Comunidad Norteña) y `AreaNE` (Macizo oriental) sin sus misiones aún ausentes. La compatibilidad de compra elimina exclusivamente para esos tres objetos los requisitos de misión/nivel/aliados/edificio/objeto y su Intel de desbloqueo. Se mantienen el precio normal de recursos monetarios, la comprobación de adyacencia del catálogo, la confirmación de compra, la persistencia del inventario y la niebla que se retira **después** de comprar. No completa misiones ni concede terrenos gratuitamente.
+Rama `test/home-north-areas-purchase-20260926`, **solo modo offline**. Las áreas `AreaNW`, `AreaN`, `AreaNE`, `AreaNorthW2`, `AreaNorthC2` y `AreaNorthE2` se pueden **comprar**, sin exigir misión/nivel/aliados/edificio/ítem ni Intel como requisito de apertura. Mantienen los precios monetarios, los otros recursos, la adyacencia de la tienda, la confirmación y la apertura de niebla posterior. No concede áreas, dinero, misiones ni recompensas sin efectuar la compra.
 
-Las ampliaciones posteriores `AreaNorthW2`, `AreaNorthC2` y `AreaNorthE2` conservan sus requisitos originales, al igual que las restantes regiones y los mapas Desert/Snow. El catálogo fuente `ShopArea` almacena referencias como `#MapArea.AreaNW`; el juego las resuelve al cargar la configuración. No usar este código de prueba como cambio de producción sin una decisión explícita. La clase `AreaItem` debe estar entre las clases recompiladas del SWF raíz; editar solamente el AS3 sin añadirlo a `Patch-AndroidPerformanceSwf.ps1` no modifica la APK.
+Los tres nuevos precios originales son `150000`, `200000` y `300000`. El catálogo fuente almacena referencias literales como `#MapArea.AreaNorthW2`, no objetos con `Item.ID`. Los IDs de los grupos **no son los IDs de las áreas**:
 
-**Contenido de las tres regiones en esta prueba:** al comprar NW, N o NE se activa su grupo original `SETUP_NW`, `SETUP_NC` o `SETUP_NE`: 43/66/53 entradas de enemigos y defensas. La misión activa es el marcador de una sola preparación persistida. Al cargar partidas anteriores con zonas compradas pero vacías, se reconcilia solamente si la misión sigue inactiva, preservando las capas ocupadas y sin revivir enemigos destruidos tras la preparación. No concede dinero, terrenos ni recompensas gratis; la progresión narrativa completa debe validarse por separado.
+| Área | Misión de preparación | Grupo original | Contenido |
+| --- | --- | --- | --- |
+| AreaNW | SETUP_NW | AreaNW | 30 tropas + 13 defensas |
+| AreaN | SETUP_NC | AreaN | 33 tropas + 33 defensas |
+| AreaNE | SETUP_NE | AreaNE | 28 tropas + 25 defensas |
+| AreaNorthW2 | SETUP_NORTHW2 | AreaNorthW | 27 tropas + 53 defensas |
+| AreaNorthC2 | SETUP_NORTHC2 | AreaNorthC | 44 tropas + 33 defensas |
+| AreaNorthE2 | SETUP_NORTHE2 | AreaNorthE | 45 tropas + 23 defensas + NCTown |
+
+Son **388 objetos fuente**, 226 de las ampliaciones superiores. La compra llama al escenario original una sola vez según su estado de misión persistido. Las partidas anteriores con el área comprada y misión aún inactiva se reconcilian al cargar, respetando las capas ocupadas; no deben revivir enemigos que ya se hayan destruido después de una preparación registrada. No se completan artificialmente las misiones narrativas.
+
+El test de configuración confirma referencias, coordenadas, dimensiones, clases y entrada de tienda. La comprobación estática y una APK compilada **no sustituyen la prueba funcional en ADB físico** de compra, aparición, guardado/reapertura, ausencia de respawn indebido, bloqueo de las otras seis áreas y ausencia de crash/ANR. No fusionar como producción sin dichas pruebas.
 
 ### Mapas de campaña
 
-Los mapas de campaña autorados son:
+La configuración base delimita **12 áreas de Home**, sin una tercera fila más al norte de `AreaNorthW2/AreaNorthC2/AreaNorthE2`. Los mapas de campaña autorados son:
 
 - `Home`
 - `Desert`

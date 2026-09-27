@@ -46,9 +46,10 @@ package game.items
          // The authored missions exist; this trial bypasses only the purchase prerequisites.
          // Keep normal cash/material/supply prices and the shop's adjacency check,
          // but make ONLY these existing areas purchasable in offline trial builds.
-         // Never complete fake missions, grant free land or touch extra polar areas.
+         // Never complete fake missions, grant free land or touch other maps/areas.
          if(Config.OFFLINE_MODE && TEST_HOME_NORTH_PURCHASE && this.mMapId == "Home" &&
-            (mId == "AreaNW" || mId == "AreaN" || mId == "AreaNE"))
+            (mId == "AreaNW" || mId == "AreaN" || mId == "AreaNE" ||
+             mId == "AreaNorthW2" || mId == "AreaNorthC2" || mId == "AreaNorthE2"))
          {
             mRequiredMission = null;
             mRequiredLevel = 0;
@@ -64,7 +65,8 @@ package game.items
       public static function isTrialHomeNorthArea(param1:String) : Boolean
       {
          return Config.OFFLINE_MODE && TEST_HOME_NORTH_PURCHASE &&
-            (param1 == "AreaNW" || param1 == "AreaN" || param1 == "AreaNE");
+            (param1 == "AreaNW" || param1 == "AreaN" || param1 == "AreaNE" ||
+             param1 == "AreaNorthW2" || param1 == "AreaNorthC2" || param1 == "AreaNorthE2");
       }
       
       public function addAreaLockedIcon(param1:DisplayObjectContainer, param2:int, param3:int) : void
