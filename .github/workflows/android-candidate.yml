@@ -176,6 +176,14 @@ jobs:
           if(-not $?){throw 'HOME_NORTH_PURCHASE_CONTRACT=FAIL script_failed'}
           Write-Host 'HOME_NORTH_PURCHASE_GATE=PASS exit=powershell_success'
 
+      - name: Verify authored Home enemy and defense setup
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & '.\Tools\CI\Test-HomeNorthContent.ps1'
+          if(-not $?){throw 'HOME_NORTH_CONTENT_GATE=FAIL script_failed'}
+          Write-Host 'HOME_NORTH_CONTENT_GATE=PASS'
+
       - name: Build validate and publish Army candidate through Core 3.0.11+
         shell: powershell
         run: |

@@ -448,6 +448,9 @@
 			GameState.mInstance.mMissionIconsManager.reset();
 			MissionManager.setupFromServer(fakeservercall);
 			MissionManager.findNewActiveMissions();
+			// Older trial saves may own an area without its authored enemies.
+			var restoredHomeContent:Boolean = MissionManager.reconcileTrialHomeNorthContent();
+			if (restoredHomeContent) Utils.DiagEvent("HOME_NORTH_RESTORE_PASS","map=" + map_id);
 			Utils.DiagEvent("OFFLINE_MAP_TIMING","map=" + map_id + ";phase=fog_missions;ms=" + (getTimer() - mapPhaseStarted));
 			if (map_id == "Desert") {
 				(GameState.mInstance.getMainClip() as GameMain).changeDiscordMap("Desert");
@@ -791,9 +794,12 @@
 			MissionManager.initialize()
 			MissionManager.setupFromServer(fakeservercall);
 			MissionManager.findNewActiveMissions();
-
+			var migratedHomeContent:Boolean = MissionManager.reconcileTrialHomeNorthContent();
 
 			GameState.mInstance.mLoadingStatesOver = true;
+			if (migratedHomeContent && GameState.mInstance.mHUD) {
+				GameState.mInstance.mHUD.requestImmediateSave();
+			}
 			// Start homeland music
 			GameState.mInstance.mCurrentMusic = GameState.mInstance.getMapMusic()
 			ArmySoundManager.loadMusic(GameState.mInstance.mCurrentMusic);

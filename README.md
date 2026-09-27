@@ -185,6 +185,8 @@ En la rama `test/home-north-areas-purchase-20260926`, y **solo en modo offline**
 
 Las ampliaciones posteriores `AreaNorthW2`, `AreaNorthC2` y `AreaNorthE2` conservan sus requisitos originales, al igual que las restantes regiones y los mapas Desert/Snow. El catálogo fuente `ShopArea` almacena referencias como `#MapArea.AreaNW`; el juego las resuelve al cargar la configuración. No usar este código de prueba como cambio de producción sin una decisión explícita. La clase `AreaItem` debe estar entre las clases recompiladas del SWF raíz; editar solamente el AS3 sin añadirlo a `Patch-AndroidPerformanceSwf.ps1` no modifica la APK.
 
+**Contenido de las tres regiones en esta prueba:** al comprar NW, N o NE se activa su grupo original `SETUP_NW`, `SETUP_NC` o `SETUP_NE`: 43/66/53 entradas de enemigos y defensas. La misión activa es el marcador de una sola preparación persistida. Al cargar partidas anteriores con zonas compradas pero vacías, se reconcilia solamente si la misión sigue inactiva, preservando las capas ocupadas y sin revivir enemigos destruidos tras la preparación. No concede dinero, terrenos ni recompensas gratis; la progresión narrativa completa debe validarse por separado.
+
 ### Mapas de campaña
 
 Los mapas de campaña autorados son:

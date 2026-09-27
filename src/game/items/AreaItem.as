@@ -43,7 +43,7 @@ package game.items
          this.mWidth = param1.AreaWidth;
          this.mHeight = param1.AreaHeight;
          this.mMapId = param1.MapID;
-         // The authored missions for these three original Home regions are absent.
+         // The authored missions exist; this trial bypasses only the purchase prerequisites.
          // Keep normal cash/material/supply prices and the shop's adjacency check,
          // but make ONLY these existing areas purchasable in offline trial builds.
          // Never complete fake missions, grant free land or touch extra polar areas.
@@ -59,6 +59,12 @@ package game.items
          }
          this.mRightX = this.mX + this.mWidth;
          this.mBottomY = this.mY + this.mHeight;
+      }
+      
+      public static function isTrialHomeNorthArea(param1:String) : Boolean
+      {
+         return Config.OFFLINE_MODE && TEST_HOME_NORTH_PURCHASE &&
+            (param1 == "AreaNW" || param1 == "AreaN" || param1 == "AreaNE");
       }
       
       public function addAreaLockedIcon(param1:DisplayObjectContainer, param2:int, param3:int) : void

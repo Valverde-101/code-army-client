@@ -4,6 +4,8 @@
    import game.magicBox.FlurryEvents;
    import game.magicBox.MagicBoxTracker;
    import game.net.ServerCall;
+   import game.items.AreaItem;
+   import game.items.ItemManager;
    import game.net.ServiceIDs;
    import game.player.RankManager;
    import game.states.GameState;
@@ -262,6 +264,60 @@
 		 }
       }
       
+      // Offline trial only: invoke the original area setup, but never grant an
+      // area, fake mission rewards or resurrect a previously defeated enemy.
+      // Persisted Mission.mState is the once-only marker on save/reload.
+      public static function ensureTrialHomeNorthContent(param1:String) : Boolean
+      {
+         if(!AreaItem.isTrialHomeNorthArea(param1) || !GameState.mInstance ||
+            GameState.mInstance.mCurrentMapId != "Home" ||
+            !GameState.mInstance.mPlayerProfile || !GameState.mInstance.mScene)
+         {
+            return false;
+         }
+         var area:AreaItem = ItemManager.getItem(param1,"Area") as AreaItem;
+         if(!area || area.mMapId != "Home" ||
+            GameState.mInstance.mPlayerProfile.mInventory.getNumberOfItems(area) < 1)
+         {
+            return false;
+         }
+         var setupId:String = param1 == "AreaNW" ? "SETUP_NW" :
+            (param1 == "AreaN" ? "SETUP_NC" : "SETUP_NE");
+         var expectedCount:int = param1 == "AreaNW" ? 43 : (param1 == "AreaN" ? 66 : 53);
+         var setup:Mission = getMission(setupId);
+         if(!setup || setup.mMapId != "Home" || setup.getSetupObjectCount() != expectedCount)
+         {
+            Utils.DiagEvent("HOME_NORTH_SETUP_FAIL","area=" + param1 +
+               ";mission=" + setupId + ";expected=" + expectedCount +
+               ";actual=" + (setup ? setup.getSetupObjectCount() : -1));
+            return false;
+         }
+         if(setup.mState != Mission.STATE_INACTIVE)
+         {
+            Utils.DiagEvent("HOME_NORTH_SETUP_ALREADY","area=" + param1 + ";state=" + setup.mState);
+            return false;
+         }
+         setup.activate(true);
+         smFindNewMissionsPending = true;
+         GameState.mInstance.mUpdateMissionButtonsPending = true;
+         Utils.DiagEvent("HOME_NORTH_SETUP_PASS","area=" + param1 +
+            ";mission=" + setupId + ";authored=" + expectedCount +
+            ";source=original_mission_setup;once=true");
+         return true;
+      }
+
+      public static function reconcileTrialHomeNorthContent() : Boolean
+      {
+         if(!Config.OFFLINE_MODE || !GameState.mInstance ||
+            GameState.mInstance.mCurrentMapId != "Home") return false;
+         var changed:Boolean = false;
+         for each(var areaId:String in ["AreaNW","AreaN","AreaNE"])
+         {
+            if(ensureTrialHomeNorthContent(areaId)) changed = true;
+         }
+         return changed;
+      }
+
       public static function getMissionIndexFromID(param1:String) : int
       {
          //var _loc4_:* = null;
