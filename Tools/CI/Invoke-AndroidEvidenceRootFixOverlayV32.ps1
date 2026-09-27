@@ -52,13 +52,18 @@ try {
   # by FFDec replaceAS3: `new Array;` -> PARENT_OPEN expected, SEMICOLON found.
   # Source may already be normalized by a later source revision. Accept only
   # the exact valid constructor once; still fail on missing/ambiguous/malformed.
-  if($manager.Contains('smNodes = new Array;')){
-    $manager=Replace-LiteralOne $manager 'smNodes = new Array;' 'smNodes = new Array();' 'mission_manager_array_constructor_parentheses'
-  } else {
-    $normalized=[regex]::Matches($manager,'smNodes\s*=\s*new\s+Array\(\);')
-    if($normalized.Count -ne 1){throw "ANDROID_EVIDENCE_ROOTFIX_V32=FAIL patch=mission_manager_array_constructor_parentheses normalized_match_count=$($normalized.Count)"}
-    Write-Host 'EVIDENCE_ROOTFIX_V32_HOOK=PASS name=mission_manager_array_constructor_parentheses matches=1 already_normalized=true'
+  # Two real smNodes assignment sites exist: clearAllMissions and treeCheck.
+  # Accept pre-normalized sources and repair only malformed legacy sites.
+  $legacyPattern='(?m)^[ \t]*smNodes[ \t]*=[ \t]*new[ \t]+Array[ \t]*;[ \t]*$'
+  $legacyCount=[regex]::Matches($manager,$legacyPattern).Count
+  if($legacyCount -gt 0){
+    $manager=[regex]::Replace($manager,$legacyPattern,'         smNodes = new Array();')
   }
+  $normalized=[regex]::Matches($manager,'(?m)^[ \t]*smNodes[ \t]*=[ \t]*new[ \t]+Array[ \t]*\(\)[ \t]*;[ \t]*$')
+  if($normalized.Count -ne 2 -or [regex]::IsMatch($manager,$legacyPattern)){
+    throw "ANDROID_EVIDENCE_ROOTFIX_V32=FAIL patch=mission_manager_array_constructor_parentheses normalized_match_count=$($normalized.Count) expected=2 legacy_remaining=$([regex]::IsMatch($manager,$legacyPattern))"
+  }
+  Write-Host "EVIDENCE_ROOTFIX_V32_HOOK=PASS name=mission_manager_array_constructor_parentheses matches=2 legacy_repaired=$legacyCount already_normalized=$($legacyCount -eq 0)"
   $manager=Replace-RegexOne $manager '(?m)^([ \t]*)return null[ \t]*$' '${1}return null;' 'mission_manager_explicit_null_return_semicolon'
   $manager=Replace-LiteralOne $manager 'return false // ducktape fix' 'return false; // legacy missing mission fallback' 'mission_manager_explicit_false_return_semicolon'
 
