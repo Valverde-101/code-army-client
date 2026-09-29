@@ -53,7 +53,7 @@ package game.items
             ((TEST_HOME_NORTH_PURCHASE && this.mMapId == "Home" &&
                (mId == "AreaNW" || mId == "AreaN" || mId == "AreaNE" ||
                 mId == "AreaNorthW2" || mId == "AreaNorthC2" || mId == "AreaNorthE2")) ||
-             (TEST_CAMPAIGN_AREA_PURCHASE && isTrialCampaignMap(this.mMapId))))
+             (TEST_CAMPAIGN_AREA_PURCHASE && isTrialCampaignArea(this.mMapId,mId))))
          {
             mRequiredMission = null;
             mRequiredLevel = 0;
@@ -78,6 +78,18 @@ package game.items
       {
          return Config.OFFLINE_MODE && TEST_CAMPAIGN_AREA_PURCHASE &&
             (param1 == "Desert" || param1 == "Snow");
+      }
+      
+      // Actual authored SHOP regions only; default map territory is never a purchase.
+      public static function isTrialCampaignArea(param1:String, param2:String) : Boolean
+      {
+         return isTrialCampaignMap(param1) &&
+            ((param1 == "Desert" && (param2 == "DesertM" || param2 == "DesertN")) ||
+             (param1 == "Snow" &&
+              (param2 == "AreaSnowLeft1" || param2 == "AreaSnowRight1" ||
+               param2 == "AreaSnowLeft2" || param2 == "AreaSnow2" ||
+               param2 == "AreaSnowRight2" || param2 == "AreaSnowLeft3" ||
+               param2 == "AreaSnow3" || param2 == "AreaSnowRight3")));
       }
       
       public function addAreaLockedIcon(param1:DisplayObjectContainer, param2:int, param3:int) : void

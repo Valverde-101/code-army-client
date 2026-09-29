@@ -334,7 +334,7 @@
       {
          if(!Config.OFFLINE_MODE || !GameState.mInstance ||
             !GameState.mInstance.mScene || !GameState.mInstance.mPlayerProfile ||
-            !AreaItem.isTrialCampaignMap(GameState.mInstance.mCurrentMapId) ||
+            !AreaItem.isTrialCampaignArea(GameState.mInstance.mCurrentMapId,param1) ||
             !GameState.mConfig || !GameState.mConfig.Mission || !GameState.mConfig.MissionSetup)
          {
             return false;
