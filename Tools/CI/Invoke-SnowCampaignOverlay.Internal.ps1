@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 $RepoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 if(-not(Test-Path -LiteralPath $GitPath -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL git_missing=$GitPath"}
 $actual=(& $GitPath -C $RepoRoot rev-parse HEAD).Trim()
@@ -158,6 +159,43 @@ try{
     foreach($entry in $matching){Set-JsonProperty $targetSection ([string]$entry.Name) (Clone-JsonValue $entry.Value);$mergedEntries++}
   }
 
+  # Resolve pinned original Snow defenses and their dependent unit/item records.
+  $snowRefs=@(
+    'EnemyUnit.EliteDroid',
+    'EnemyInstallation.DroidStation_S_4T',
+    'EnemyInstallation.SeaTowerMachineGun',
+    'EnemyInstallation.DroidStation_S_6T',
+    'EnemyInstallation.DroidStation_N_4T',
+    'EnemyInstallation.DroidStation_E_4T',
+    'EnemyInstallation.DroidStation_W_5T',
+    'EnemyInstallation.DroidStation_E_3T',
+    'EnemyInstallation.SeaTowerMissile_4T',
+    'EnemyInstallation.SeaTowerMissile_3T',
+    'EnemyInstallation.SeaTowerMissile_2T',
+    'EnemyInstallation.SeaPlatformFort',
+    'Ingredient.TestTube'
+  )
+  $snowImported=0
+  foreach($snowRef in $snowRefs){
+    $bits=$snowRef.Split('.')
+    $type=[string]$bits[0];$id=[string]$bits[1]
+    $donorTable=$donor.PSObject.Properties[$type]
+    if($null -eq $donorTable -or $null -eq $donorTable.Value.PSObject.Properties[$id]){throw "SNOW_DEPENDENCY_CLOSURE=FAIL missing_donor=$snowRef"}
+    $targetProperty=$target.PSObject.Properties[$type]
+    if($null -eq $targetProperty){$targetTable=[pscustomobject]@{};Set-JsonProperty $target $type $targetTable}else{$targetTable=$targetProperty.Value}
+    if($null -eq $targetTable.PSObject.Properties[$id]){Set-JsonProperty $targetTable $id (Clone-JsonValue $donorTable.Value.PSObject.Properties[$id].Value);$snowImported++}
+  }
+  $snowRows=@($target.MissionSetup.PSObject.Properties|ForEach-Object{$_.Value}|Where-Object{[string]$_.Group -match '^AreaSnow'})
+  if($snowRows.Count -ne 705){throw "SNOW_DEPENDENCY_CLOSURE=FAIL rows_expected=705 actual=$($snowRows.Count)"}
+  foreach($snowRow in $snowRows){
+    $snowItem=[string]$snowRow.Item
+    if($snowItem -notmatch '^#([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)$'){throw "SNOW_DEPENDENCY_CLOSURE=FAIL malformed_item=$snowItem"}
+    $snowType=[string]$Matches[1];$snowId=[string]$Matches[2]
+    $snowTable=$target.PSObject.Properties[$snowType]
+    if($null -eq $snowTable -or $null -eq $snowTable.Value.PSObject.Properties[$snowId]){throw "SNOW_DEPENDENCY_CLOSURE=FAIL unresolved=$snowItem"}
+  }
+  Write-Host "SNOW_DEPENDENCY_CLOSURE=PASS original_rows=$($snowRows.Count) pinned_dependencies=$($snowRefs.Count) imported=$snowImported"
+
   $target|ConvertTo-Json -Depth 100|Set-Content -LiteralPath $targetConfigPath -Encoding UTF8
   Copy-Item -LiteralPath $donorTilePath -Destination $targetTilePath -Force
 
@@ -263,6 +301,8 @@ try{
 
   Write-Host "SNOW_MAP_SETUP=PASS id=Snow type=$($snowVerify.Type) size=$($snowVerify.Width)x$($snowVerify.Height) tilemap=$($snowVerify.TilemapFileName) music=$($snowVerify.MusicFile)"
   Write-Host "SNOW_UNLOCK=PASS level=$($snowVerify.UnlockLevel) mission_gate=none test_access=immediate"
+  & (Join-Path $RepoRoot 'Tools\\CI\\Test-CampaignAreaPurchase.ps1') -RepoRoot $RepoRoot -ConfigPath $targetConfigPath -MapId Snow
+  if(-not $?){throw 'SNOW_CAMPAIGN_AREA_PURCHASE=FAIL source_contract'}
   Write-Host "SNOW_AREAS=PASS count=$($areaVerify.Count)"
   Write-Host "SNOW_TILEMAP=PASS normalized_cells=$tileCells expected=2601"
   Write-Host "SNOW_CONTENT_MERGE=PASS donor_sha=$donorSha merged_entries=$mergedEntries polar_related_entries=$polarEntries"

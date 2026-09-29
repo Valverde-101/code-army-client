@@ -1,6 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$ContextPath)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot '..\..\Tools\CI\Ensure-PortableFileHash.ps1')
 $ctx=Get-Content -LiteralPath $ContextPath -Raw|ConvertFrom-Json
 $repoRoot=[string]$ctx.repo_root
 $root=[string]$ctx.androidbuild_root

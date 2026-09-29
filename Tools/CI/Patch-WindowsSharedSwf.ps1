@@ -9,6 +9,7 @@ param(
 
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $gitCandidates=@()
 if($GitPath){$gitCandidates+=$GitPath}

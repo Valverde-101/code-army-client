@@ -4266,6 +4266,12 @@
 					_loc13_.mAreaLockedIcon = null;
 				}
 				this.mScene.mFog.init();
+				// Populate the original authored enemy/defense group only when this
+				// offline trial area was actually purchased; persist after setup.
+				if ((MissionManager.ensureTrialHomeNorthContent(param1.mId) ||
+					MissionManager.ensureTrialCampaignAreaContent(param1.mId)) && this.mHUD) {
+					this.mHUD.requestImmediateSave();
+				}
 			} else {
 				_loc6_.addItems(param1, 1);
 				ArmySoundManager.getInstance().playSound(ArmySoundManager.SFX_UI_BUY_ITEM);

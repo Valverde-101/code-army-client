@@ -13,6 +13,7 @@
    import game.gui.popups.ToasterWindow;
    import game.gui.popups.TutorialWindow;
    import game.isometric.IsometricScene;
+   import game.isometric.GridCell;
    import game.isometric.elements.Renderable;
    import game.items.*;
    import game.magicBox.FlurryEvents;
@@ -323,7 +324,7 @@
          }
       }
       
-      public function activate() : void
+      public function activate(param1:Boolean = false) : void
       {
          var _loc1_:Objective = null;
          if(this.mState == STATE_INACTIVE)
@@ -334,7 +335,7 @@
             }
             if(this.mMissionSetup)
             {
-               this.createGameObjects();
+               this.createGameObjects(param1);
             }
             for each(_loc1_ in this.mObjectives)
             {
@@ -588,7 +589,12 @@
          return true;
       }
       
-      public function createGameObjects() : void
+      public function getSetupObjectCount() : int
+      {
+         return this.mMissionSetup ? this.mMissionSetup.length : 0;
+      }
+      
+      public function createGameObjects(param1:Boolean = false) : void
       {
          var _loc2_:Object = null;
          var _loc3_:int = 0;
@@ -598,6 +604,9 @@
          var _loc7_:MapItem = null;
          var _loc8_:Renderable = null;
          var _loc9_:String = null;
+         var trialCell:GridCell = null;
+         var trialCreated:int = 0;
+         var trialOccupied:int = 0;
          var _loc1_:IsometricScene = GameState.mInstance.mScene;
          for each(_loc2_ in this.mMissionSetup)
          {
@@ -605,9 +614,24 @@
             _loc4_ = int(_loc2_.AreaY);
             _loc5_ = _loc1_.getCenterPointXAtIJ(_loc3_,_loc4_);
             _loc6_ = _loc1_.getCenterPointYAtIJ(_loc3_,_loc4_);
-            if((_loc7_ = ItemManager.getItem(_loc2_.Item.ID,_loc2_.Item.Type) as MapItem).mType != "HFEPlot")
+            _loc7_ = ItemManager.getItem(_loc2_.Item.ID,_loc2_.Item.Type) as MapItem;
+            if(param1)
+            {
+               // Preserve existing characters and structures independently: a
+               // unit and a defense may occupy different layers of one cell.
+               trialCell = _loc1_.getCellAt(_loc3_,_loc4_);
+               if(!_loc7_ || !trialCell ||
+                  (_loc7_.mType == "EnemyUnit" && trialCell.mCharacter != null) ||
+                  ((_loc7_.mType == "EnemyInstallation" || _loc7_.mType == "PermanentHFE") && trialCell.mObject != null))
+               {
+                  trialOccupied++;
+                  continue;
+               }
+            }
+            if(_loc7_.mType != "HFEPlot")
             {
                (_loc8_ = _loc1_.createObject(_loc7_,new Point(0,0))).setPos(_loc5_,_loc6_,0);
+               if(param1) trialCreated++;
                if((_loc9_ = _loc7_.mType) == "Infantry" || _loc9_ == "Armor" || _loc9_ == "Artillery")
                {
                   if(_loc2_.Health)
@@ -633,6 +657,12 @@
          }
          GameState.mInstance.updateGrid();
          GameState.mInstance.mScene.mFog.init();
+         if(param1)
+         {
+            Utils.DiagEvent("HOME_NORTH_SETUP_OBJECTS","mission=" + this.mId +
+               ";spawned=" + trialCreated + ";occupied=" + trialOccupied +
+               ";authored=" + getSetupObjectCount());
+         }
       }
       
       public function getIconGraphics() : String

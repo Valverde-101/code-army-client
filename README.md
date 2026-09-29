@@ -179,9 +179,28 @@ Telemetría:
 - Producciones originales: 30 unidades por 75 de dinero en 240 s; 45 por 140 en 480 s; 60 por 195 en 960 s. Hay que iniciar y recoger la producción.
 - La disponibilidad se ajusta en la configuración compuesta del build y necesita comprobación en el APK; la verificación estática `offline_desert_water_source` no equivale a una prueba física.
 
+### Prueba acotada: compra y poblamiento de las seis regiones norteñas de Home
+
+Rama `test/home-north-areas-purchase-20260926`, **solo modo offline**. Las áreas `AreaNW`, `AreaN`, `AreaNE`, `AreaNorthW2`, `AreaNorthC2` y `AreaNorthE2` se pueden **comprar**, sin exigir misión/nivel/aliados/edificio/ítem ni Intel como requisito de apertura. Mantienen los precios monetarios, los otros recursos, la adyacencia de la tienda, la confirmación y la apertura de niebla posterior. No concede áreas, dinero, misiones ni recompensas sin efectuar la compra.
+
+Los tres nuevos precios originales son `150000`, `200000` y `300000`. El catálogo fuente almacena referencias literales como `#MapArea.AreaNorthW2`, no objetos con `Item.ID`. Los IDs de los grupos **no son los IDs de las áreas**:
+
+| Área | Misión de preparación | Grupo original | Contenido |
+| --- | --- | --- | --- |
+| AreaNW | SETUP_NW | AreaNW | 30 tropas + 13 defensas |
+| AreaN | SETUP_NC | AreaN | 33 tropas + 33 defensas |
+| AreaNE | SETUP_NE | AreaNE | 28 tropas + 25 defensas |
+| AreaNorthW2 | SETUP_NORTHW2 | AreaNorthW | 27 tropas + 53 defensas |
+| AreaNorthC2 | SETUP_NORTHC2 | AreaNorthC | 44 tropas + 33 defensas |
+| AreaNorthE2 | SETUP_NORTHE2 | AreaNorthE | 45 tropas + 23 defensas + NCTown |
+
+Son **388 objetos fuente**, 226 de las ampliaciones superiores. La compra llama al escenario original una sola vez según su estado de misión persistido. Las partidas anteriores con el área comprada y misión aún inactiva se reconcilian al cargar, respetando las capas ocupadas; no deben revivir enemigos que ya se hayan destruido después de una preparación registrada. No se completan artificialmente las misiones narrativas.
+
+El test de configuración confirma referencias, coordenadas, dimensiones, clases y entrada de tienda. La comprobación estática y una APK compilada **no sustituyen la prueba funcional en ADB físico** de compra, aparición, guardado/reapertura, ausencia de respawn indebido, bloqueo de las otras seis áreas y ausencia de crash/ANR. No fusionar como producción sin dichas pruebas.
+
 ### Mapas de campaña
 
-Los mapas de campaña autorados son:
+La configuración base delimita **12 áreas de Home**, sin una tercera fila más al norte de `AreaNorthW2/AreaNorthC2/AreaNorthE2`. Los mapas de campaña autorados son:
 
 - `Home`
 - `Desert`
@@ -277,3 +296,8 @@ See the GNU General Public License <https://www.gnu.org/licenses/>.
 ## Mejoras individuales de unidades — desarrollo
 
 El catálogo de mejoras vive en `src/config/unit_upgrades.json`, se inserta durante la composición V57 en ambas configuraciones y **no cambia las estadísticas base**. El APC pasa de 10/2/1 a 15/3/1; Special Forces usa la base efectiva 10/3/1 y pasa a 13/4/1 (la captura externa 5/2/1 corresponde a otra configuración). Los materiales se identifican por sus IDs reales: `CinderBlock` (icono visual Cement), `Lumber`, `Rebars`, `Wiring`, `CommandoKnife`. Cada receta consume cinco unidades de cada material. El número 9 con icono de oro de la captura original **no se cobra**: su semántica no está verificada; no hay compra con premium. La mejora es **individual**, nivel 0→1, y se conserva mediante el campo opcional `unit_upgrade_level` en el guardado por mapa; la ausencia del campo en partidas antiguas equivale a nivel 0. No se aplica a PvP, visitantes ni enemigos. En la app distribuida el modelo de UI original está embebido en un SWF raíz, por lo que un SWF externo nuevo no sería cargado sin reestructurar el loader; la ventana visual se integra en ese SWF mediante `GameHUD`.
+
+
+## Prueba offline de compra anticipada de regiones (PR #8)
+
+La rama de prueba permite comprar las seis regiones norteñas de Home y las **dos expansiones de Desierto y ocho de Nieve** que ya existen en sus tiendas (las zonas iniciales son propiedad de inicio, no artículos de compra) sin misión, nivel, aliados, edificio, objeto ni Intel de desbloqueo. Mantiene el precio normal de dinero/materiales/suministros, adyacencia, compra explícita y niebla; no activa un truco global ni completa misiones artificialmente. La región debe estar realmente definida en `MapArea` y `ShopArea`. Para Desierto/Nieve se identifica el grupo de objetos original por su mapa y su huella dentro del rectángulo comprado; solo se activa en una compra nueva si la correspondencia es única y la misión sigue inactiva. Una correspondencia ausente o ambigua se registra como `CAMPAIGN_AREA_SETUP_UNRESOLVED`, sin inventar contenido ni reponer enemigos de partidas antiguas. La validación de compilación no sustituye la prueba física de compra, guardado, recarga, unidades y edificios en ambos mapas.

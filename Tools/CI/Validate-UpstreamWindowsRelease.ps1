@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 
 $releaseTag = 'v23'
 $sourceBaseSha = '324c29b6c9e0e32f61183bf52725662a2bd8aab9'
