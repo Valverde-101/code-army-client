@@ -264,6 +264,8 @@ try{
 
   Write-Host "SNOW_MAP_SETUP=PASS id=Snow type=$($snowVerify.Type) size=$($snowVerify.Width)x$($snowVerify.Height) tilemap=$($snowVerify.TilemapFileName) music=$($snowVerify.MusicFile)"
   Write-Host "SNOW_UNLOCK=PASS level=$($snowVerify.UnlockLevel) mission_gate=none test_access=immediate"
+  & (Join-Path $RepoRoot 'Tools\\CI\\Test-CampaignAreaPurchase.ps1') -RepoRoot $RepoRoot -ConfigPath $targetConfigPath -MapId Snow
+  if(-not $?){throw 'SNOW_CAMPAIGN_AREA_PURCHASE=FAIL source_contract'}
   Write-Host "SNOW_AREAS=PASS count=$($areaVerify.Count)"
   Write-Host "SNOW_TILEMAP=PASS normalized_cells=$tileCells expected=2601"
   Write-Host "SNOW_CONTENT_MERGE=PASS donor_sha=$donorSha merged_entries=$mergedEntries polar_related_entries=$polarEntries"

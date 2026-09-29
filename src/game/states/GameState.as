@@ -4268,7 +4268,8 @@
 				this.mScene.mFog.init();
 				// Populate the original authored enemy/defense group only when this
 				// offline trial area was actually purchased; persist after setup.
-				if (MissionManager.ensureTrialHomeNorthContent(param1.mId) && this.mHUD) {
+				if ((MissionManager.ensureTrialHomeNorthContent(param1.mId) ||
+					MissionManager.ensureTrialCampaignAreaContent(param1.mId)) && this.mHUD) {
 					this.mHUD.requestImmediateSave();
 				}
 			} else {

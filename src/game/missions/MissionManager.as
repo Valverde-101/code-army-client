@@ -327,6 +327,74 @@
          return changed;
       }
 
+      // On a NEW Desert/Snow area purchase, resolve its original setup by
+      // authored coordinates rather than guessing mission names. Do not replay
+      // older saves here: an empty old area may have been cleared legitimately.
+      public static function ensureTrialCampaignAreaContent(param1:String) : Boolean
+      {
+         if(!Config.OFFLINE_MODE || !GameState.mInstance ||
+            !GameState.mInstance.mScene || !GameState.mInstance.mPlayerProfile ||
+            !AreaItem.isTrialCampaignMap(GameState.mInstance.mCurrentMapId) ||
+            !GameState.mConfig || !GameState.mConfig.Mission || !GameState.mConfig.MissionSetup)
+         {
+            return false;
+         }
+         var area:AreaItem = ItemManager.getItem(param1,"Area") as AreaItem;
+         var mapId:String = GameState.mInstance.mCurrentMapId;
+         if(!area || area.mMapId != mapId ||
+            GameState.mInstance.mPlayerProfile.mInventory.getNumberOfItems(area) < 1)
+         {
+            return false;
+         }
+         var matched:Mission = null;
+         var matches:int = 0;
+         var authoredCount:int = 0;
+         for each(var entry:Object in GameState.mConfig.Mission)
+         {
+            if(!entry || entry.MapId != mapId || !entry.SetupGroup || !entry.ID) continue;
+            var mission:Mission = getMission(String(entry.ID));
+            if(!mission || mission.mMapId != mapId || mission.getSetupObjectCount() < 1) continue;
+            var groupCount:int = 0;
+            var inside:Boolean = true;
+            for each(var object:Object in GameState.mConfig.MissionSetup)
+            {
+               if(!object || object.Group != entry.SetupGroup) continue;
+               groupCount++;
+               var x:int = int(object.AreaX);
+               var y:int = int(object.AreaY);
+               var dx:int = object.Item && object.Item.DimX ? int(object.Item.DimX) : 1;
+               var dy:int = object.Item && object.Item.DimY ? int(object.Item.DimY) : 1;
+               if(x < area.mX || y < area.mY || x + dx > area.mRightX ||
+                  y + dy > area.mBottomY) inside = false;
+            }
+            if(inside && groupCount > 0 && groupCount == mission.getSetupObjectCount())
+            {
+               matched = mission;
+               authoredCount = groupCount;
+               matches++;
+            }
+         }
+         if(matches != 1)
+         {
+            Utils.DiagEvent("CAMPAIGN_AREA_SETUP_UNRESOLVED","map=" + mapId +
+               ";area=" + param1 + ";matches=" + matches + ";safe_skip=true");
+            return false;
+         }
+         if(matched.mState != Mission.STATE_INACTIVE)
+         {
+            Utils.DiagEvent("CAMPAIGN_AREA_SETUP_ALREADY","map=" + mapId +
+               ";area=" + param1 + ";mission=" + matched.mId + ";state=" + matched.mState);
+            return false;
+         }
+         matched.activate(true);
+         smFindNewMissionsPending = true;
+         GameState.mInstance.mUpdateMissionButtonsPending = true;
+         Utils.DiagEvent("CAMPAIGN_AREA_SETUP_PASS","map=" + mapId +
+            ";area=" + param1 + ";mission=" + matched.mId +
+            ";authored=" + authoredCount + ";once=true");
+         return true;
+      }
+
       public static function getMissionIndexFromID(param1:String) : int
       {
          //var _loc4_:* = null;

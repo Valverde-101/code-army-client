@@ -13,6 +13,8 @@ package game.items
    {
       // TEST ONLY: dedicated Home purchase trial; does not affect main or other maps.
       private static const TEST_HOME_NORTH_PURCHASE:Boolean = true;
+      // Offline-only extension: allow authored Desert and Snow area purchases.
+      private static const TEST_CAMPAIGN_AREA_PURCHASE:Boolean = true;
        
       
       public var mX:int;
@@ -47,9 +49,11 @@ package game.items
          // Keep normal cash/material/supply prices and the shop's adjacency check,
          // but make ONLY these existing areas purchasable in offline trial builds.
          // Never complete fake missions, grant free land or touch other maps/areas.
-         if(Config.OFFLINE_MODE && TEST_HOME_NORTH_PURCHASE && this.mMapId == "Home" &&
-            (mId == "AreaNW" || mId == "AreaN" || mId == "AreaNE" ||
-             mId == "AreaNorthW2" || mId == "AreaNorthC2" || mId == "AreaNorthE2"))
+         if(Config.OFFLINE_MODE &&
+            ((TEST_HOME_NORTH_PURCHASE && this.mMapId == "Home" &&
+               (mId == "AreaNW" || mId == "AreaN" || mId == "AreaNE" ||
+                mId == "AreaNorthW2" || mId == "AreaNorthC2" || mId == "AreaNorthE2")) ||
+             (TEST_CAMPAIGN_AREA_PURCHASE && isTrialCampaignMap(this.mMapId))))
          {
             mRequiredMission = null;
             mRequiredLevel = 0;
@@ -67,6 +71,13 @@ package game.items
          return Config.OFFLINE_MODE && TEST_HOME_NORTH_PURCHASE &&
             (param1 == "AreaNW" || param1 == "AreaN" || param1 == "AreaNE" ||
              param1 == "AreaNorthW2" || param1 == "AreaNorthC2" || param1 == "AreaNorthE2");
+      }
+      
+      // Map identity, not an area-ID substring: Snow IDs arrive via the pinned donor overlay.
+      public static function isTrialCampaignMap(param1:String) : Boolean
+      {
+         return Config.OFFLINE_MODE && TEST_CAMPAIGN_AREA_PURCHASE &&
+            (param1 == "Desert" || param1 == "Snow");
       }
       
       public function addAreaLockedIcon(param1:DisplayObjectContainer, param2:int, param3:int) : void
