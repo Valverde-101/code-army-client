@@ -41,7 +41,11 @@ $areas=@($cfg.MapArea.PSObject.Properties|ForEach-Object{$_.Value}|Where-Object{
 if($areas.Count -ne ($expected.Count+1)){throw "CAMPAIGN_AREA_CONFIG=FAIL map=$MapId expected_areas=$($expected.Count+1) actual=$($areas.Count)"}
 $purchaseIds=@($areas|Where-Object{[string]$_.ID -cne $defaultId}|ForEach-Object{[string]$_.ID})
 foreach($id in $purchaseIds){if($null -eq $expected[$id]){throw "CAMPAIGN_AREA_SCOPE=FAIL unknown_purchasable=$id"}}
-$allStages=@($cfg.Mission.PSObject.Properties|ForEach-Object{$_.Value}|Where-Object{[string]$_.MapId -ceq $MapId -and -not [string]::IsNullOrWhiteSpace([string]$_.SetupGroup)})
+$allStages=@($cfg.Mission.PSObject.Properties|ForEach-Object{$_.Value}|Where-Object{
+  $groupProperty=$_.PSObject.Properties['SetupGroup']
+  $null -ne $groupProperty -and [string]$_.MapId -ceq $MapId -and
+    -not [string]::IsNullOrWhiteSpace([string]$groupProperty.Value)
+})
 $allSetup=@($cfg.MissionSetup.PSObject.Properties|ForEach-Object{$_.Value})
 $total=0
 foreach($id in $expected.Keys){
