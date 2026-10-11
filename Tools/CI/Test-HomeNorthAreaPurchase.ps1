@@ -47,9 +47,16 @@ foreach($id in @('AreaS','AreaSW','AreaSE','AreaW','AreaC','AreaE')){
 }
 $areaSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\items\AreaItem.as') -Raw
 $manager=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\missions\MissionManager.as') -Raw
+if(-not $manager.Contains('AreaItem.isTrialHomeNorthArea(param1)') -or
+   -not $manager.Contains('mInventory.getNumberOfItems(area) < 1') -or
+   -not $manager.Contains('setup.activate(true)')){
+ throw 'HOME_NORTH_SOURCE=FAIL guarded_original_setup_hook_missing'
+}
 foreach($id in $targets.Keys){
- if(-not $areaSource.Contains('mId == "'+$id+'"') -or -not $areaSource.Contains('param1 == "'+$id+'"') -or
-    -not $manager.Contains('param1 == "'+$id+'"')){throw "HOME_NORTH_SOURCE=FAIL trial_allowlist=$id"}
+ if(-not $areaSource.Contains('param1 == "'+$id+'"') -or
+    -not $manager.Contains('param1 == "'+$id+'"')){
+   throw "HOME_NORTH_SOURCE=FAIL content_mapping=$id"
+ }
 }
 foreach($needle in @('TEST_HOME_NORTH_PURCHASE','TEST_CAMPAIGN_AREA_PURCHASE',
  'mRequiredMission = null;','mRequiredLevel = 0;','mRequiredAllies = 0;',
