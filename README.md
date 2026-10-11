@@ -179,9 +179,11 @@ Telemetría:
 - Producciones originales: 30 unidades por 75 de dinero en 240 s; 45 por 140 en 480 s; 60 por 195 en 960 s. Hay que iniciar y recoger la producción.
 - La disponibilidad se ajusta en la configuración compuesta del build y necesita comprobación en el APK; la verificación estática `offline_desert_water_source` no equivale a una prueba física.
 
-### Prueba acotada: compra y poblamiento de las seis regiones norteñas de Home
+### Requisitos normales de mapas y tienda de tropas
 
-Rama `test/home-north-areas-purchase-20260926`, **solo modo offline**. Las áreas `AreaNW`, `AreaN`, `AreaNE`, `AreaNorthW2`, `AreaNorthC2` y `AreaNorthE2` se pueden **comprar**, sin exigir misión/nivel/aliados/edificio/ítem ni Intel como requisito de apertura. Mantienen los precios monetarios, los otros recursos, la adyacencia de la tienda, la confirmación y la apertura de niebla posterior. No concede áreas, dinero, misiones ni recompensas sin efectuar la compra.
+Home, Desierto y Nieve conservan las áreas originales en la tienda con sus requisitos nativos. La compra sigue pasando por `AreaItem.isUnlocked()`: no se anulan misión, nivel, aliados, edificio, objeto ni Intel en modo offline. Se mantienen los precios y la comprobación de adyacencia. El contenido fuente de cada región se prepara después de que el jugador la compre legítimamente; las pruebas cubren Home, Desierto y Nieve.
+
+La pestaña normal de tropas presenta todas las referencias comprables de `ShopTab.Units`/`ShopUnit` en la configuración original. El catálogo enemigo permanece fuera de la compra normal; el cambio no habilita tropas que el juego no permite comprar.
 
 Los tres nuevos precios originales son `150000`, `200000` y `300000`. El catálogo fuente almacena referencias literales como `#MapArea.AreaNorthW2`, no objetos con `Item.ID`. Los IDs de los grupos **no son los IDs de las áreas**:
 
@@ -194,9 +196,9 @@ Los tres nuevos precios originales son `150000`, `200000` y `300000`. El catálo
 | AreaNorthC2 | SETUP_NORTHC2 | AreaNorthC | 44 tropas + 33 defensas |
 | AreaNorthE2 | SETUP_NORTHE2 | AreaNorthE | 45 tropas + 23 defensas + NCTown |
 
-Son **388 objetos fuente**, 226 de las ampliaciones superiores. La compra llama al escenario original una sola vez según su estado de misión persistido. Las partidas anteriores con el área comprada y misión aún inactiva se reconcilian al cargar, respetando las capas ocupadas; no deben revivir enemigos que ya se hayan destruido después de una preparación registrada. No se completan artificialmente las misiones narrativas.
+Son **388 objetos fuente**, 226 de las ampliaciones superiores. Después de cumplir los requisitos y comprar legítimamente el área, se llama al escenario original una sola vez según su estado de misión persistido. Las partidas anteriores con el área comprada y misión aún inactiva se reconcilian al cargar, respetando las capas ocupadas; no deben revivir enemigos que ya se hayan destruido después de una preparación registrada. No se completan artificialmente las misiones narrativas.
 
-El test de configuración confirma referencias, coordenadas, dimensiones, clases y entrada de tienda. La comprobación estática y una APK compilada **no sustituyen la prueba funcional en ADB físico** de compra, aparición, guardado/reapertura, ausencia de respawn indebido, bloqueo de las otras seis áreas y ausencia de crash/ANR. No fusionar como producción sin dichas pruebas.
+Los gates verifican los requisitos nativos, precios, referencias de tienda, contenido de las regiones y que cada unidad comprable del catálogo normal tenga una referencia válida. La compilación y los checks estáticos **no sustituyen la prueba funcional en ADB físico** de compras tras cumplir requisitos, aparición de contenido, guardado/reapertura y ausencia de crash/ANR. El PR sigue en borrador hasta completar la validación física del APK exacto.
 
 ### Mapas de campaña
 

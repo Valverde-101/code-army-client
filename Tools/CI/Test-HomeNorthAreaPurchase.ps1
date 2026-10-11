@@ -51,10 +51,19 @@ foreach($id in $targets.Keys){
  if(-not $areaSource.Contains('mId == "'+$id+'"') -or -not $areaSource.Contains('param1 == "'+$id+'"') -or
     -not $manager.Contains('param1 == "'+$id+'"')){throw "HOME_NORTH_SOURCE=FAIL trial_allowlist=$id"}
 }
-foreach($needle in @('TEST_HOME_NORTH_PURCHASE:Boolean = true','Config.OFFLINE_MODE','this.mMapId == "Home"',
- 'mRequiredMission = null;','mRequiredLevel = 0;','mRequiredAllies = 0;','mRequiredItem = null;',
- 'mRequiredBuilding = null;','mCostIntel = 0;')){
- if(-not $areaSource.Contains($needle)){throw "HOME_NORTH_SOURCE=FAIL required=$needle"}
+foreach($needle in @('TEST_HOME_NORTH_PURCHASE','TEST_CAMPAIGN_AREA_PURCHASE',
+ 'mRequiredMission = null;','mRequiredLevel = 0;','mRequiredAllies = 0;',
+ 'mRequiredItem = null;','mRequiredBuilding = null;','mCostIntel = 0;')){
+ if($areaSource.Contains($needle)){throw "HOME_NORTH_UNLOCK=FAIL requirement_override=$needle"}
+}
+if(-not $areaSource.Contains('return super.isUnlocked()')){throw 'HOME_NORTH_UNLOCK=FAIL original_isUnlocked_missing'}
+if($null -eq $cfg.Mission){throw 'HOME_NORTH_UNLOCK=FAIL mission_table_missing'}
+foreach($id in $targets.Keys){
+ $requiredMission=[string]$cfg.MapArea.PSObject.Properties[$id].Value.RequiredMission
+ if($requiredMission -match '^#Mission\.([A-Za-z0-9_]+)$'){
+  $requiredMissionId=$Matches[1]
+  if($null -eq $cfg.Mission.PSObject.Properties[$requiredMissionId]){throw "HOME_NORTH_UNLOCK=FAIL required_mission_unresolved id=$id mission=$requiredMission"}
+ }else{throw "HOME_NORTH_UNLOCK=FAIL required_mission_missing id=$id value=$requiredMission"}
 }
 if($areaSource -match 'mCostMoney\s*=|mCostPremium\s*=|smUnlockCheat\s*=|mEarlyUnlockBought\s*='){throw 'HOME_NORTH_SCOPE=FAIL free_purchase_or_global_cheat'}
 if(-not $areaSource.Contains('mId != "AreaNorthW"') -or -not $areaSource.Contains('mId != "AreaNorthC"') -or -not $areaSource.Contains('mId != "AreaNorthE"')){throw 'HOME_NORTH_SCOPE=FAIL alias_guard_changed'}
@@ -62,4 +71,4 @@ $shopSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gui\ShopDial
 if(-not $shopSource.Contains('this.mGame.mScene.isAreaReachable(')){throw 'HOME_NORTH_SCOPE=FAIL adjacency_guard_missing'}
 $patch=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1') -Raw
 if(-not $patch.Contains("Class='game.items.AreaItem';Source='src\game\items\AreaItem.as'")){throw 'HOME_NORTH_SWF=FAIL AreaItem_not_in_swf_patch'}
-Write-Host 'HOME_NORTH_PURCHASE_CONTRACT=PASS scope=six_home_north_regions source_prices=preserved offline_only=true mission_and_intel_bypass=target_only adjacency=preserved non_trial_areas=unchanged'
+Write-Host 'HOME_NORTH_UNLOCK_CONTRACT=PASS scope=six_home_north_regions original_missions_and_prices=preserved shop_entries=present normal_area_checks=enabled'

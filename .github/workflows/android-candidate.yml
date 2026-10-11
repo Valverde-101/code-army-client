@@ -166,16 +166,17 @@ jobs:
         run: |
           & '.\.github\scripts\armyattack-project-precheck.ps1'
 
-      - name: Verify three Home northern areas are actually in the shop
+      - name: Verify Home map unlock requirements and purchasable troop shop
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           & '.\Tools\CI\Test-HomeNorthAreaPurchase.ps1'
-          # PowerShell .ps1 does not set LASTEXITCODE; with no native process it is $null,
-          # and $null -ne 0 is TRUE. Terminating errors propagate via Stop above.
-          if(-not $?){throw 'HOME_NORTH_PURCHASE_CONTRACT=FAIL script_failed'}
-          Write-Host 'HOME_NORTH_PURCHASE_GATE=PASS exit=powershell_success'
+          if(-not $?){throw 'HOME_NORTH_UNLOCK_GATE=FAIL script_failed'}
+          Write-Host 'HOME_NORTH_UNLOCK_GATE=PASS exit=powershell_success'
 
+          & '.\Tools\CI\Test-PlayerUnitShopCatalog.ps1'
+          if(-not $?){throw 'PLAYER_UNIT_SHOP_GATE=FAIL script_failed'}
+          Write-Host 'PLAYER_UNIT_SHOP_GATE=PASS'
       - name: Verify authored Home enemy and defense setup
         shell: powershell
         run: |
@@ -184,14 +185,15 @@ jobs:
           if(-not $?){throw 'HOME_NORTH_CONTENT_GATE=FAIL script_failed'}
           Write-Host 'HOME_NORTH_CONTENT_GATE=PASS'
 
-      - name: Verify Desert and Snow offline area purchase scope
+      - name: Verify Desert and Snow normal unlock requirements and authored setup
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          & '.\\Tools\\CI\\Test-CampaignAreaPurchase.ps1' -MapId Desert
-          if(-not $?){throw 'CAMPAIGN_AREA_PURCHASE_GATE=FAIL script_failed'}
-          Write-Host 'CAMPAIGN_AREA_PURCHASE_GATE=PASS map=Desert snow=checked_during_overlay'
-
+          & '.\Tools\CI\Test-CampaignAreaPurchase.ps1' -MapId Desert
+          if(-not $?){throw 'CAMPAIGN_AREA_UNLOCK_GATE=FAIL map=Desert'}
+          & '.\Tools\CI\Test-CampaignAreaPurchase.ps1' -MapId Snow
+          if(-not $?){throw 'CAMPAIGN_AREA_UNLOCK_GATE=FAIL map=Snow'}
+          Write-Host 'CAMPAIGN_AREA_UNLOCK_GATE=PASS maps=Desert,Snow'
       - name: Build validate and publish Army candidate through Core 3.0.11+
         shell: powershell
         run: |

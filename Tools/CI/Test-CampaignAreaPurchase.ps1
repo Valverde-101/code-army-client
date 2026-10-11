@@ -61,6 +61,27 @@ foreach($id in $expected.Keys){
      [string]$stage.ID -cne [string]$spec.Mission -or [string]$stage.MapId -cne $MapId -or
      [string]$stage.SetupGroup -cne [string]$spec.Group){throw "CAMPAIGN_AREA_CONTENT=FAIL source_identity=$id"}
   if([int]$area.CostMoney -ne [int]$spec.Money -or [int]$area.CostIntel -ne [int]$spec.Intel){throw "CAMPAIGN_AREA_SCOPE=FAIL source_price_changed=$id"}
+  $requiredMissionProperty=$area.PSObject.Properties['RequiredMission']
+  $requiredMission=if($null -ne $requiredMissionProperty){[string]$requiredMissionProperty.Value}else{''}
+  $hasOriginalGate=-not [string]::IsNullOrWhiteSpace($requiredMission)
+  if(-not $hasOriginalGate){
+    foreach($gateName in @('RequiredLevel','RequiredAllies','RequiredItem','RequiredBuilding','CostIntel')){
+      $gateProperty=$area.PSObject.Properties[$gateName]
+      if($null -eq $gateProperty){continue}
+      if($gateName -in @('RequiredLevel','RequiredAllies','CostIntel')){
+        if([int]$gateProperty.Value -gt 0){$hasOriginalGate=$true}
+      }elseif(-not [string]::IsNullOrWhiteSpace([string]$gateProperty.Value)){
+        $hasOriginalGate=$true
+      }
+    }
+  }
+  if(-not $hasOriginalGate){throw "CAMPAIGN_AREA_UNLOCK=FAIL no_original_gate id=$id"}
+  if(-not [string]::IsNullOrWhiteSpace($requiredMission)){
+    if($requiredMission -match '^#Mission\.([A-Za-z0-9_]+)$'){
+      $requiredMissionId=$Matches[1]
+      if($null -eq $cfg.Mission.PSObject.Properties[$requiredMissionId]){throw "CAMPAIGN_AREA_UNLOCK=FAIL unresolved_required_mission id=$id mission=$requiredMission"}
+    }else{throw "CAMPAIGN_AREA_UNLOCK=FAIL malformed_required_mission id=$id value=$requiredMission"}
+  }
   $candidateCount=0;$selectedCount=0
   foreach($candidate in $allStages){
     $rows=@($allSetup|Where-Object{[string]$_.Group -ceq [string]$candidate.SetupGroup})
@@ -90,9 +111,15 @@ $areaSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\items\AreaIt
 $manager=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\missions\MissionManager.as') -Raw
 $state=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\states\GameState.as') -Raw
 $patch=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1') -Raw
-foreach($needle in @('TEST_CAMPAIGN_AREA_PURCHASE:Boolean = true','Config.OFFLINE_MODE','isTrialCampaignArea(this.mMapId,mId)','param1 == "Desert" || param1 == "Snow"','mRequiredMission = null;','mRequiredLevel = 0;','mRequiredAllies = 0;','mRequiredItem = null;','mRequiredBuilding = null;','mCostIntel = 0;')){
-  if(-not $areaSource.Contains($needle)){throw "CAMPAIGN_AREA_SOURCE=FAIL missing=$needle"}
+foreach($needle in @('OFFLINE_CAMPAIGN_CONTENT_SETUP:Boolean = true','Config.OFFLINE_MODE','param1 == "Desert" || param1 == "Snow"')){
+  if(-not $areaSource.Contains($needle)){throw "CAMPAIGN_AREA_SOURCE=FAIL content_setup_missing=$needle"}
 }
+foreach($needle in @('TEST_HOME_NORTH_PURCHASE','TEST_CAMPAIGN_AREA_PURCHASE',
+ 'mRequiredMission = null;','mRequiredLevel = 0;','mRequiredAllies = 0;',
+ 'mRequiredItem = null;','mRequiredBuilding = null;','mCostIntel = 0;')){
+  if($areaSource.Contains($needle)){throw "CAMPAIGN_AREA_UNLOCK=FAIL requirement_override=$needle"}
+}
+if(-not $areaSource.Contains('return super.isUnlocked()')){throw 'CAMPAIGN_AREA_UNLOCK=FAIL original_isUnlocked_missing'}
 foreach($id in $expected.Keys){if(-not $areaSource.Contains('param2 == "'+$id+'"')){throw "CAMPAIGN_AREA_SCOPE=FAIL trial_allowlist=$id"}}
 if($areaSource.Contains('param2 == "DesertS"') -or $areaSource.Contains('param2 == "AreaSnow1"')){throw 'CAMPAIGN_AREA_SCOPE=FAIL default_area_in_allowlist'}
 foreach($needle in @('ensureTrialCampaignAreaContent','AreaItem.isTrialCampaignArea','mission.getSetupObjectCount()','matches != 1','matched.mState != Mission.STATE_INACTIVE','matched.activate(true);','CAMPAIGN_AREA_SETUP_UNRESOLVED')){
@@ -103,4 +130,4 @@ if($areaSource -match 'mCostMoney\s*=|mCostPremium\s*=|smUnlockCheat\s*=|mEarlyU
 foreach($class in @('game.items.AreaItem','game.missions.MissionManager','game.states.GameState')){
   if(-not $patch.Contains("Class='$class'")){throw "CAMPAIGN_AREA_SWF=FAIL missing=$class"}
 }
-Write-Host "CAMPAIGN_AREA_PURCHASE_CONTRACT=PASS map=$MapId purchasable=$($expected.Count) authored_objects=$total default=$defaultId excluded shop=authored offline_only=true costs=preserved adjacency=preserved setup=unique_original_only"
+Write-Host "CAMPAIGN_AREA_UNLOCK_CONTRACT=PASS map=$MapId areas=$($expected.Count) authored_objects=$total default=$defaultId excluded shop_entries=present original_gates_and_costs=preserved setup=original_only"

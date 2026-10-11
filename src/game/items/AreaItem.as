@@ -11,10 +11,10 @@ package game.items
    
    public class AreaItem extends ShopItem
    {
-      // TEST ONLY: dedicated Home purchase trial; does not affect main or other maps.
-      private static const TEST_HOME_NORTH_PURCHASE:Boolean = true;
-      // Offline-only extension: allow authored Desert and Snow area purchases.
-      private static const TEST_CAMPAIGN_AREA_PURCHASE:Boolean = true;
+      // Offline-only content bootstrap after a legitimate area purchase.
+      // These flags never alter the area's original unlock requirements or price.
+      private static const OFFLINE_HOME_NORTH_CONTENT_SETUP:Boolean = true;
+      private static const OFFLINE_CAMPAIGN_CONTENT_SETUP:Boolean = true;
        
       
       public var mX:int;
@@ -45,30 +45,15 @@ package game.items
          this.mWidth = param1.AreaWidth;
          this.mHeight = param1.AreaHeight;
          this.mMapId = param1.MapID;
-         // The authored missions exist; this trial bypasses only the purchase prerequisites.
-         // Keep normal cash/material/supply prices and the shop's adjacency check,
-         // but make ONLY these existing areas purchasable in offline trial builds.
-         // Never complete fake missions, grant free land or touch other maps/areas.
-         if(Config.OFFLINE_MODE &&
-            ((TEST_HOME_NORTH_PURCHASE && this.mMapId == "Home" &&
-               (mId == "AreaNW" || mId == "AreaN" || mId == "AreaNE" ||
-                mId == "AreaNorthW2" || mId == "AreaNorthC2" || mId == "AreaNorthE2")) ||
-             (TEST_CAMPAIGN_AREA_PURCHASE && isTrialCampaignArea(this.mMapId,mId))))
-         {
-            mRequiredMission = null;
-            mRequiredLevel = 0;
-            mRequiredAllies = 0;
-            mRequiredItem = null;
-            mRequiredBuilding = null;
-            mCostIntel = 0;
-         }
          this.mRightX = this.mX + this.mWidth;
          this.mBottomY = this.mY + this.mHeight;
       }
       
+      // These selectors place original mission content after a valid purchase.
+      // They do not make a locked area purchasable.
       public static function isTrialHomeNorthArea(param1:String) : Boolean
       {
-         return Config.OFFLINE_MODE && TEST_HOME_NORTH_PURCHASE &&
+         return Config.OFFLINE_MODE && OFFLINE_HOME_NORTH_CONTENT_SETUP &&
             (param1 == "AreaNW" || param1 == "AreaN" || param1 == "AreaNE" ||
              param1 == "AreaNorthW2" || param1 == "AreaNorthC2" || param1 == "AreaNorthE2");
       }
@@ -76,7 +61,7 @@ package game.items
       // Map identity, not an area-ID substring: Snow IDs arrive via the pinned donor overlay.
       public static function isTrialCampaignMap(param1:String) : Boolean
       {
-         return Config.OFFLINE_MODE && TEST_CAMPAIGN_AREA_PURCHASE &&
+         return Config.OFFLINE_MODE && OFFLINE_CAMPAIGN_CONTENT_SETUP &&
             (param1 == "Desert" || param1 == "Snow");
       }
       
