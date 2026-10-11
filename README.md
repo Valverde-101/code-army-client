@@ -181,7 +181,7 @@ Telemetría:
 
 ### Requisitos normales de mapas y tienda de tropas
 
-Home, Desierto y Nieve conservan las áreas originales en la tienda con sus requisitos nativos. La compra sigue pasando por `AreaItem.isUnlocked()`: no se anulan misión, nivel, aliados, edificio, objeto ni Intel en modo offline. Se mantienen los precios y la comprobación de adyacencia. El contenido fuente de cada región se prepara después de que el jugador la compre legítimamente; las pruebas cubren Home, Desierto y Nieve.
+Home, Desierto y Nieve conservan la evaluación original de requisitos para entrar a cada campaña y comprar sus áreas. El selector del mapa usa `MissionManager.isMapLocked()` también en modo offline; no abre Desert ni Snow por fuerza. La compra de cada área sigue pasando por `AreaItem.isUnlocked()`: no se anulan misión, nivel, aliados, edificio, objeto ni Intel. Se mantienen los precios y la comprobación de adyacencia. El contenido fuente de cada región se prepara después de que el jugador la compre legítimamente; las pruebas cubren Home, Desierto y Nieve.
 
 La pestaña normal de tropas presenta todas las referencias comprables de `ShopTab.Units`/`ShopUnit` en la configuración original. El catálogo enemigo permanece fuera de la compra normal; el cambio no habilita tropas que el juego no permite comprar.
 

@@ -185,15 +185,13 @@ jobs:
           if(-not $?){throw 'HOME_NORTH_CONTENT_GATE=FAIL script_failed'}
           Write-Host 'HOME_NORTH_CONTENT_GATE=PASS'
 
-      - name: Verify Desert and Snow normal unlock requirements and authored setup
+      - name: Verify Desert requirements before the Snow overlay
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           & '.\Tools\CI\Test-CampaignAreaPurchase.ps1' -MapId Desert
           if(-not $?){throw 'CAMPAIGN_AREA_UNLOCK_GATE=FAIL map=Desert'}
-          & '.\Tools\CI\Test-CampaignAreaPurchase.ps1' -MapId Snow
-          if(-not $?){throw 'CAMPAIGN_AREA_UNLOCK_GATE=FAIL map=Snow'}
-          Write-Host 'CAMPAIGN_AREA_UNLOCK_GATE=PASS maps=Desert,Snow'
+          Write-Host 'CAMPAIGN_AREA_UNLOCK_GATE=PASS map=Desert snow=validated_after_overlay'
       - name: Build validate and publish Army candidate through Core 3.0.11+
         shell: powershell
         run: |

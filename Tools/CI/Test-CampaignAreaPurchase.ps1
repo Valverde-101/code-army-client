@@ -110,6 +110,7 @@ foreach($id in $expected.Keys){
 $areaSource=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\items\AreaItem.as') -Raw
 $manager=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\missions\MissionManager.as') -Raw
 $state=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\states\GameState.as') -Raw
+$world=Get-Content -LiteralPath (Join-Path $RepoRoot 'src\game\gui\popups\WorldMapWindow.as') -Raw
 $patch=Get-Content -LiteralPath (Join-Path $RepoRoot 'Tools\CI\Patch-AndroidPerformanceSwf.ps1') -Raw
 foreach($needle in @('OFFLINE_CAMPAIGN_CONTENT_SETUP:Boolean = true','Config.OFFLINE_MODE','param1 == "Desert" || param1 == "Snow"')){
   if(-not $areaSource.Contains($needle)){throw "CAMPAIGN_AREA_SOURCE=FAIL content_setup_missing=$needle"}
@@ -120,6 +121,8 @@ foreach($needle in @('TEST_HOME_NORTH_PURCHASE','TEST_CAMPAIGN_AREA_PURCHASE',
   if($areaSource.Contains($needle)){throw "CAMPAIGN_AREA_UNLOCK=FAIL requirement_override=$needle"}
 }
 if(-not $areaSource.Contains('return super.isUnlocked()')){throw 'CAMPAIGN_AREA_UNLOCK=FAIL original_isUnlocked_missing'}
+if(-not $world.Contains('return !MissionManager.isMapLocked(WORLD_MAP_ID_LIST[param1]);')){throw 'CAMPAIGN_MAP_UNLOCK=FAIL normal_route_missing'}
+if($world -match 'if\s*\(\s*Config\.OFFLINE_MODE\s*&&\s*\(\s*param1\s*==\s*0\s*\|\|\s*param1\s*==\s*1\s*\)\s*\)\s*\{\s*return\s+true\s*;'){throw 'CAMPAIGN_MAP_UNLOCK=FAIL offline_force_open'}
 foreach($id in $expected.Keys){if(-not $areaSource.Contains('param2 == "'+$id+'"')){throw "CAMPAIGN_AREA_SCOPE=FAIL trial_allowlist=$id"}}
 if($areaSource.Contains('param2 == "DesertS"') -or $areaSource.Contains('param2 == "AreaSnow1"')){throw 'CAMPAIGN_AREA_SCOPE=FAIL default_area_in_allowlist'}
 foreach($needle in @('ensureTrialCampaignAreaContent','AreaItem.isTrialCampaignArea','mission.getSetupObjectCount()','matches != 1','matched.mState != Mission.STATE_INACTIVE','matched.activate(true);','CAMPAIGN_AREA_SETUP_UNRESOLVED')){
