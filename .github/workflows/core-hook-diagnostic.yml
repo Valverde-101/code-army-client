@@ -1,4 +1,4 @@
-name: AndroidBuild Core hook diagnostics (read-only)
+name: AndroidBuild Core hook path probe
 
 on:
   push:
@@ -14,9 +14,9 @@ concurrency:
 
 jobs:
   inspect:
-    name: Inspect loaded Core hook on the build PC
+    name: Probe real Core hook with a temporary no-op project
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 45
+    timeout-minutes: 5
     steps:
       - name: Inspect AndroidBuild Core command resolution
         shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
@@ -57,7 +57,13 @@ jobs:
             New-Item -ItemType Directory -Force -Path $probeRepo|Out-Null
             $sourceConfig=Join-Path $root 'Repositories\code-army-client\.androidbuild.json'
             $probeConfig=Get-Content -LiteralPath $sourceConfig -Raw|ConvertFrom-Json
-            $probeConfig.hooks.build=$null
+            $probeConfig.hooks.build='probe.ps1'
+            @'
+            param([Parameter(Mandatory=$true)][string]$ContextPath)
+            $ErrorActionPreference='Stop'
+            if(-not(Test-Path -LiteralPath $ContextPath)){throw 'CORE_DIAGNOSTIC_PROBE=FAIL context_missing'}
+            Write-Host 'CORE_DIAGNOSTIC_PROBE_HOOK=PASS'
+            '@|Set-Content -LiteralPath (Join-Path $probeRepo 'probe.ps1') -Encoding UTF8
             $probeConfig|ConvertTo-Json -Depth 60|Set-Content -LiteralPath (Join-Path $probeRepo '.androidbuild.json') -Encoding UTF8
             $probeContext=@{repo_root=$probeRepo;source_root=$probeRepo;project_root=$probeRepo;androidbuild_root=$root;expected_sha=('f'*40)}
             try{
@@ -74,26 +80,6 @@ jobs:
             $q=Test-AndroidBuildUpdateQuiescence -AndroidBuildRoot $root
             Write-Host "CORE_DIAGNOSTIC_QUIESCENCE quiescent=$($q.quiescent)"
           }
-          $persistent=Join-Path $root 'Repositories\code-army-client'
-          $expectedSha='f7de8152a259340e9140d7ca6c80beb0de6098ba'
-          $gitPath=Get-AndroidBuildGitPath $root
-          $repoHead=(& $gitPath -C $persistent rev-parse HEAD).Trim()
-          if($repoHead -ne $expectedSha){throw "CORE_BUILD_TRACE=BLOCKED expected_sha=$expectedSha actual_sha=$repoHead"}
-          $projectCfg=Get-AndroidBuildProjectConfig $persistent
-          $repoName=[string]$projectCfg.project.repository
-          $leaseWait=[int]$projectCfg.timeouts.build_lease_wait_seconds
-          Write-Host "CORE_BUILD_TRACE_START sha=$repoHead repo=$repoName lease_wait=$leaseWait"
-          try{
-            $build=Trace-Command -Name ParameterBinding -Expression {
-              Invoke-AndroidBuildBuild -RepoRoot $persistent -AndroidBuildRoot $root -ExpectedSha $expectedSha -Repository $repoName -LeaseWaitSeconds $leaseWait -RunId $env:GITHUB_RUN_ID -JobId 'core-hook-diagnostic' -RunnerName $env:RUNNER_NAME
-            } -PSHost
-            Write-Host "CORE_BUILD_TRACE_RESULT status=$($build.status) duration_ms=$($build.duration_ms)"
-          }catch{
-            Write-Host "CORE_BUILD_TRACE_ERROR_ID=$($_.FullyQualifiedErrorId)"
-            Write-Host "CORE_BUILD_TRACE_ERROR_CATEGORY=$($_.CategoryInfo.Category)"
-            Write-Host "CORE_BUILD_TRACE_ERROR_MESSAGE=$($_.Exception.Message)"
-            Write-Host "CORE_BUILD_TRACE_ERROR_STACK=$($_.ScriptStackTrace)"
-            throw
-          }
-          Write-Host 'CORE_DIAGNOSTIC=PASS core_build_trace=completed';
+          Write-Host 'CORE_DIAGNOSTIC=PASS hook_path_probe_completed';
+
 
