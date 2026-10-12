@@ -28,6 +28,13 @@ jobs:
           $manifest=Join-Path $root 'Core\Current\AndroidBuild.psd1'
           Import-Module $manifest -DisableNameChecking -Force
           Write-Host "CORE_DIAGNOSTIC_VERSION=$([string](Get-AndroidBuildCoreVersion))"
+          $coreRollbackPath=Join-Path $root 'Core\.rollback\previous\AndroidBuild.psd1'
+          $coreRollback=if(Test-Path -LiteralPath $coreRollbackPath){[string](Import-PowerShellDataFile -LiteralPath $coreRollbackPath).ModuleVersion}else{'MISSING'}
+          $skillRoot=Join-Path $root 'Skills\androidbuild-physical-ci-orchestrator'
+          $skillCurrent=Get-AndroidBuildLocalSkillVersion -AndroidBuildRoot $root
+          $skillRollbackPath=Join-Path $skillRoot '.rollback\previous\SKILL-PACKAGE.json'
+          $skillRollback=if(Test-Path -LiteralPath $skillRollbackPath){[string](Get-Content -LiteralPath $skillRollbackPath -Raw|ConvertFrom-Json).version}else{'MISSING'}
+          Write-Host "CORE_DIAGNOSTIC_UPDATE_STATE core_current=$([string](Get-AndroidBuildCoreVersion)) core_rollback=$coreRollback skill_current=$skillCurrent skill_rollback=$skillRollback"
           $modules=@(Get-Module|Where-Object{$_.Name -like '*AndroidBuild*'})
           foreach($module in $modules){Write-Host "CORE_DIAGNOSTIC_MODULE name=$($module.Name) version=$($module.Version) path=$($module.Path)"}
           $commands=@(Get-Command Invoke-AndroidBuildProjectHook -All -ErrorAction SilentlyContinue)
@@ -68,10 +75,10 @@ jobs:
           try{
             New-Item -ItemType Directory -Force -Path $probeRepo|Out-Null
             $exactContextPath=Join-Path $probeRepo '.work\state\hook-build-context.json'
-            $exactContextParent=Split-Path -LiteralPath $exactContextPath -Parent
+            $exactContextParent=[IO.Path]::GetDirectoryName($exactContextPath)
             Write-Host "CORE_DIAGNOSTIC_CONTEXT_PATH type=$($exactContextParent.GetType().FullName) value=$exactContextParent"
             try{New-Item -ItemType Directory -Force -Path $exactContextParent|Out-Null;Write-Host 'CORE_DIAGNOSTIC_CONTEXT_NEWITEM scope=global result=PASS'}catch{Write-Host "CORE_DIAGNOSTIC_CONTEXT_NEWITEM scope=global error_id=$($_.FullyQualifiedErrorId) type=$($_.Exception.GetType().FullName) message=$($_.Exception.Message)"}
-            $exactState=Split-Path -LiteralPath $exactContextParent -Parent
+            $exactState=[IO.Path]::GetDirectoryName($exactContextParent)
             if(Test-Path -LiteralPath $exactState){Remove-Item -LiteralPath $exactState -Recurse -Force}
             try{& $module {param($path) New-Item -ItemType Directory -Force -Path $path|Out-Null} $exactContextParent;Write-Host 'CORE_DIAGNOSTIC_CONTEXT_NEWITEM scope=module result=PASS'}catch{Write-Host "CORE_DIAGNOSTIC_CONTEXT_NEWITEM scope=module error_id=$($_.FullyQualifiedErrorId) type=$($_.Exception.GetType().FullName) message=$($_.Exception.Message)"}
             if(Test-Path -LiteralPath $exactState){Remove-Item -LiteralPath $exactState -Recurse -Force}
