@@ -52,6 +52,18 @@ jobs:
             $match=($actual -eq $expected[$relative])
             Write-Host "CORE_DIAGNOSTIC_FILE path=$relative blob=$actual canonical_match=$match"
           }
+          $module=Get-Module AndroidBuild|Select-Object -First 1
+          foreach($scope in @('global','module')){
+            $describe={param($scopeName) foreach($cmd in @(Get-Command New-Item -All)){
+              $sets=@();try{$sets=@($cmd.ParameterSets|ForEach-Object{$n=($_.Parameters|ForEach-Object{$_.Name}) -join ',';"$($_.Name)=$n"})}catch{}
+              Write-Host "CORE_DIAGNOSTIC_NEWITEM scope=$scopeName type=$($cmd.CommandType) name=$($cmd.Name) source=$($cmd.Source) module=$($cmd.ModuleName) sets=$($sets -join '|')"
+            }}
+            if($scope -eq 'module'){& $module $describe $scope}else{& $describe $scope}
+          }
+          $newItemTest=Join-Path $env:TEMP ('army-core-newitem-'+[guid]::NewGuid().ToString('N'))
+          try{New-Item -ItemType Directory -Force -Path $newItemTest|Out-Null;Write-Host 'CORE_DIAGNOSTIC_NEWITEM_TEST scope=global result=PASS'}catch{Write-Host "CORE_DIAGNOSTIC_NEWITEM_TEST scope=global error_id=$($_.FullyQualifiedErrorId) type=$($_.Exception.GetType().FullName) stack=$($_.ScriptStackTrace)"}
+          try{& $module {param($path) New-Item -ItemType Directory -Force -Path $path|Out-Null} $newItemTest;Write-Host 'CORE_DIAGNOSTIC_NEWITEM_TEST scope=module result=PASS'}catch{Write-Host "CORE_DIAGNOSTIC_NEWITEM_TEST scope=module error_id=$($_.FullyQualifiedErrorId) type=$($_.Exception.GetType().FullName) stack=$($_.ScriptStackTrace)"}
+          if(Test-Path -LiteralPath $newItemTest){Remove-Item -LiteralPath $newItemTest -Force}
           $probeRepo=Join-Path $env:TEMP ('army-core-hook-probe-'+[guid]::NewGuid().ToString('N'))
           try{
             New-Item -ItemType Directory -Force -Path $probeRepo|Out-Null
@@ -70,7 +82,7 @@ jobs:
             try{
               $probeResult=Invoke-AndroidBuildProjectHook -RepoRoot $probeRepo -Hook 'build' -Context $probeContext -TimeoutSeconds 1800
               Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=global status=$($probeResult.status) reason=$($probeResult.reason)"
-            }catch{Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=global error_id=$($_.FullyQualifiedErrorId) category=$($_.CategoryInfo.Category) message=$($_.Exception.Message)"}
+            }catch{Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=global error_id=$($_.FullyQualifiedErrorId) category=$($_.CategoryInfo.Category) type=$($_.Exception.GetType().FullName) stack=$($_.ScriptStackTrace) message=$($_.Exception.Message)"}
             try{
               $module=Get-Module AndroidBuild|Select-Object -First 1
               $probeResult=& $module {param($repo,$ctx) Invoke-AndroidBuildProjectHook -RepoRoot $repo -Hook 'build' -Context $ctx -TimeoutSeconds 1800} $probeRepo $probeContext
