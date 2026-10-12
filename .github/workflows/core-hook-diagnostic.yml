@@ -67,6 +67,14 @@ jobs:
           $probeRepo=Join-Path $env:TEMP ('army-core-hook-probe-'+[guid]::NewGuid().ToString('N'))
           try{
             New-Item -ItemType Directory -Force -Path $probeRepo|Out-Null
+            $exactContextPath=Join-Path $probeRepo '.work\state\hook-build-context.json'
+            $exactContextParent=Split-Path -LiteralPath $exactContextPath -Parent
+            Write-Host "CORE_DIAGNOSTIC_CONTEXT_PATH type=$($exactContextParent.GetType().FullName) value=$exactContextParent"
+            try{New-Item -ItemType Directory -Force -Path $exactContextParent|Out-Null;Write-Host 'CORE_DIAGNOSTIC_CONTEXT_NEWITEM scope=global result=PASS'}catch{Write-Host "CORE_DIAGNOSTIC_CONTEXT_NEWITEM scope=global error_id=$($_.FullyQualifiedErrorId) type=$($_.Exception.GetType().FullName) message=$($_.Exception.Message)"}
+            $exactState=Split-Path -LiteralPath $exactContextParent -Parent
+            if(Test-Path -LiteralPath $exactState){Remove-Item -LiteralPath $exactState -Recurse -Force}
+            try{& $module {param($path) New-Item -ItemType Directory -Force -Path $path|Out-Null} $exactContextParent;Write-Host 'CORE_DIAGNOSTIC_CONTEXT_NEWITEM scope=module result=PASS'}catch{Write-Host "CORE_DIAGNOSTIC_CONTEXT_NEWITEM scope=module error_id=$($_.FullyQualifiedErrorId) type=$($_.Exception.GetType().FullName) message=$($_.Exception.Message)"}
+            if(Test-Path -LiteralPath $exactState){Remove-Item -LiteralPath $exactState -Recurse -Force}
             $sourceConfig=Join-Path $root 'Repositories\code-army-client\.androidbuild.json'
             $probeConfig=Get-Content -LiteralPath $sourceConfig -Raw|ConvertFrom-Json
             $probeConfig.hooks.build='probe.ps1'
@@ -82,7 +90,7 @@ jobs:
             try{
               $probeResult=Invoke-AndroidBuildProjectHook -RepoRoot $probeRepo -Hook 'build' -Context $probeContext -TimeoutSeconds 1800
               Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=global status=$($probeResult.status) reason=$($probeResult.reason)"
-            }catch{Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=global error_id=$($_.FullyQualifiedErrorId) category=$($_.CategoryInfo.Category) type=$($_.Exception.GetType().FullName) stack=$($_.ScriptStackTrace) message=$($_.Exception.Message)"}
+            }catch{Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=global error_id=$($_.FullyQualifiedErrorId) category=$($_.CategoryInfo.Category) type=$($_.Exception.GetType().FullName) target=$($_.TargetObject) stack=$($_.ScriptStackTrace) message=$($_.Exception.Message)"}
             try{
               $module=Get-Module AndroidBuild|Select-Object -First 1
               $probeResult=& $module {param($repo,$ctx) Invoke-AndroidBuildProjectHook -RepoRoot $repo -Hook 'build' -Context $ctx -TimeoutSeconds 1800} $probeRepo $probeContext
