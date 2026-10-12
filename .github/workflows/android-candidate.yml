@@ -193,7 +193,7 @@ jobs:
           if(-not $?){throw 'CAMPAIGN_AREA_UNLOCK_GATE=FAIL map=Desert'}
           Write-Host 'CAMPAIGN_AREA_UNLOCK_GATE=PASS map=Desert snow=validated_after_overlay'
       - name: Build validate and publish Army candidate through Core 3.0.11+
-        shell: powershell
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: |
           $ErrorActionPreference='Stop'
           . '.\Tools\CI\Ensure-PortableFileHash.ps1'
