@@ -58,12 +58,13 @@ jobs:
             $sourceConfig=Join-Path $root 'Repositories\code-army-client\.androidbuild.json'
             $probeConfig=Get-Content -LiteralPath $sourceConfig -Raw|ConvertFrom-Json
             $probeConfig.hooks.build='probe.ps1'
-            @'
-            param([Parameter(Mandatory=$true)][string]$ContextPath)
-            $ErrorActionPreference='Stop'
-            if(-not(Test-Path -LiteralPath $ContextPath)){throw 'CORE_DIAGNOSTIC_PROBE=FAIL context_missing'}
-            Write-Host 'CORE_DIAGNOSTIC_PROBE_HOOK=PASS'
-            '@|Set-Content -LiteralPath (Join-Path $probeRepo 'probe.ps1') -Encoding UTF8
+            $probeScript=@(
+              'param([Parameter(Mandatory=$true)][string]$ContextPath)'
+              '$ErrorActionPreference=''Stop'''
+              'if(-not(Test-Path -LiteralPath $ContextPath)){throw ''CORE_DIAGNOSTIC_PROBE=FAIL context_missing''}'
+              'Write-Host ''CORE_DIAGNOSTIC_PROBE_HOOK=PASS'''
+            )
+            $probeScript|Set-Content -LiteralPath (Join-Path $probeRepo 'probe.ps1') -Encoding UTF8
             $probeConfig|ConvertTo-Json -Depth 60|Set-Content -LiteralPath (Join-Path $probeRepo '.androidbuild.json') -Encoding UTF8
             $probeContext=@{repo_root=$probeRepo;source_root=$probeRepo;project_root=$probeRepo;androidbuild_root=$root;expected_sha=('f'*40)}
             try{
