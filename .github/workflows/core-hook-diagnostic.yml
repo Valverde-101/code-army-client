@@ -1,0 +1,59 @@
+name: AndroidBuild Core hook diagnostics (read-only)
+
+on:
+  push:
+    branches:
+      - 'infra-diagnose/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: army-attack-core-build
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Inspect loaded Core hook on the build PC
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect AndroidBuild Core command resolution
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=@($env:ANDROIDBUILD_ROOT,'V:\AndroidBuild','D:\AndroidBuild','C:\AndroidBuild')|Where-Object{$_ -and (Test-Path -LiteralPath $_ -PathType Container)}|Select-Object -First 1
+          if(-not $root){throw 'CORE_DIAGNOSTIC=FAIL root_missing'}
+          $root=(Resolve-Path -LiteralPath $root).Path
+          $manifest=Join-Path $root 'Core\Current\AndroidBuild.psd1'
+          Import-Module $manifest -DisableNameChecking -Force
+          Write-Host "CORE_DIAGNOSTIC_VERSION=$([string](Get-AndroidBuildCoreVersion))"
+          $modules=@(Get-Module|Where-Object{$_.Name -like '*AndroidBuild*'})
+          foreach($module in $modules){Write-Host "CORE_DIAGNOSTIC_MODULE name=$($module.Name) version=$($module.Version) path=$($module.Path)"}
+          $commands=@(Get-Command Invoke-AndroidBuildProjectHook -All -ErrorAction SilentlyContinue)
+          Write-Host "CORE_DIAGNOSTIC_HOOK_COMMAND_COUNT=$($commands.Count)"
+          foreach($command in $commands){
+            $origin=''
+            try{$origin=[string]$command.ScriptBlock.File}catch{}
+            $sets=@()
+            try{$sets=@($command.ParameterSets|ForEach-Object{$parameters=($_.Parameters|ForEach-Object{$_.Name}) -join ',';"$($_.Name)=$parameters"})}catch{}
+            Write-Host "CORE_DIAGNOSTIC_HOOK_COMMAND type=$($command.CommandType) module=$($command.ModuleName) source=$($command.Source) origin=$origin parameter_sets=$($sets -join '|')"
+          }
+          $git=Get-AndroidBuildGitPath $root
+          $expected=@{
+            'Core\Current\Adapters\Invoke-ProjectHook.ps1'='b6532ce0a703f39282f2c0c92d607448e3134ab3'
+            'Core\Current\Adapters\Invoke-Build.ps1'='11247132b0d7ae2d1038583ce98d89d4b74c47d6'
+          }
+          foreach($relative in $expected.Keys){
+            $path=Join-Path $root $relative
+            if(-not(Test-Path -LiteralPath $path -PathType Leaf)){throw "CORE_DIAGNOSTIC=FAIL file_missing=$relative"}
+            $actual=(& $git hash-object $path).Trim()
+            if($LASTEXITCODE -ne 0){throw "CORE_DIAGNOSTIC=FAIL git_hash_object=$relative"}
+            $match=($actual -eq $expected[$relative])
+            Write-Host "CORE_DIAGNOSTIC_FILE path=$relative blob=$actual canonical_match=$match"
+          }
+          if(Get-Command Test-AndroidBuildUpdateQuiescence -ErrorAction SilentlyContinue){
+            $q=Test-AndroidBuildUpdateQuiescence -AndroidBuildRoot $root
+            Write-Host "CORE_DIAGNOSTIC_QUIESCENCE quiescent=$($q.quiescent)"
+          }
+          Write-Host 'CORE_DIAGNOSTIC=PASS read_only=true';
