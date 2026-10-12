@@ -52,6 +52,24 @@ jobs:
             $match=($actual -eq $expected[$relative])
             Write-Host "CORE_DIAGNOSTIC_FILE path=$relative blob=$actual canonical_match=$match"
           }
+          $probeRepo=Join-Path $env:TEMP ('army-core-hook-probe-'+[guid]::NewGuid().ToString('N'))
+          try{
+            New-Item -ItemType Directory -Force -Path $probeRepo|Out-Null
+            $sourceConfig=Join-Path $root 'Repositories\code-army-client\.androidbuild.json'
+            $probeConfig=Get-Content -LiteralPath $sourceConfig -Raw|ConvertFrom-Json
+            $probeConfig.hooks.build=$null
+            $probeConfig|ConvertTo-Json -Depth 60|Set-Content -LiteralPath (Join-Path $probeRepo '.androidbuild.json') -Encoding UTF8
+            $probeContext=@{repo_root=$probeRepo;source_root=$probeRepo;project_root=$probeRepo;androidbuild_root=$root;expected_sha=('f'*40)}
+            try{
+              $probeResult=Invoke-AndroidBuildProjectHook -RepoRoot $probeRepo -Hook 'build' -Context $probeContext -TimeoutSeconds 1800
+              Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=global status=$($probeResult.status) reason=$($probeResult.reason)"
+            }catch{Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=global error_id=$($_.FullyQualifiedErrorId) category=$($_.CategoryInfo.Category) message=$($_.Exception.Message)"}
+            try{
+              $module=Get-Module AndroidBuild|Select-Object -First 1
+              $probeResult=& $module {param($repo,$ctx) Invoke-AndroidBuildProjectHook -RepoRoot $repo -Hook 'build' -Context $ctx -TimeoutSeconds 1800} $probeRepo $probeContext
+              Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=module status=$($probeResult.status) reason=$($probeResult.reason)"
+            }catch{Write-Host "CORE_DIAGNOSTIC_BIND_PROBE scope=module error_id=$($_.FullyQualifiedErrorId) category=$($_.CategoryInfo.Category) message=$($_.Exception.Message)"}
+          }finally{if(Test-Path -LiteralPath $probeRepo){Remove-Item -LiteralPath $probeRepo -Recurse -Force}}
           if(Get-Command Test-AndroidBuildUpdateQuiescence -ErrorAction SilentlyContinue){
             $q=Test-AndroidBuildUpdateQuiescence -AndroidBuildRoot $root
             Write-Host "CORE_DIAGNOSTIC_QUIESCENCE quiescent=$($q.quiescent)"
