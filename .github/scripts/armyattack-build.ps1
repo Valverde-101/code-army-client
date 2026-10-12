@@ -27,6 +27,9 @@ $publishedRoot=Join-Path $repoRoot 'vendor\Test_army_attack'
 $publishedSha=(& $git -C $publishedRoot rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $publishedSha -ne '306bccc7db5b1ce34dd68a3bc80093648c9224bd'){throw "ARMY_PUBLISHED_SOURCE=FAIL expected=306bccc7db5b1ce34dd68a3bc80093648c9224bd actual=$publishedSha"}
 Write-Host "ARMY_PUBLISHED_SOURCE=PASS sha=$publishedSha"
+& (Join-Path $repoRoot 'Tools\CI\Test-PlayerUnitShopCatalog.ps1') -RepoRoot $repoRoot -PublishedContentRoot $publishedRoot
+if(-not $?){throw 'PLAYER_UNIT_SHOP_ASSETS=FAIL published_source_validation'}
+Write-Host 'PLAYER_UNIT_SHOP_ASSETS=PASS published_graphics_and_icons=true'
 
 # Global reusable toolchain remains AndroidBuild-owned.
 $tc=Resolve-AndroidBuildFlashToolchain -AndroidBuildRoot $root -AirVersion '50.2.3.6' -FfdecVersion '26.2.1' -TargetApi '33' -BuildTools '33.0.2' -PinnedToolchainId 'AIR50-API33-BT33.0.2'

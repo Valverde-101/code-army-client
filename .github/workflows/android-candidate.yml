@@ -264,25 +264,9 @@ jobs:
           Write-Host 'MANUAL_PHYSICAL_ZIP=Press ZIP to share a snapshot without stopping the recording'
           Write-Host 'FINAL_VALIDATION=VALIDATION_INCOMPLETE physical_validation_required'
 
-      - name: Dispatch exact-SHA physical validation
+      - name: Keep physical validation manual
         shell: powershell
         run: |
           $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
-          $sha=[string]$env:EXPECTED_SOURCE_SHA
-          if($sha -notmatch '^[a-f0-9]{40}){throw 'PHYSICAL_DISPATCH=FAIL expected_sha_invalid'}
-          if([string]::IsNullOrWhiteSpace($env:SOURCE_BRANCH)){throw 'PHYSICAL_DISPATCH=FAIL source_branch_missing'}
-          if($env:SOURCE_BRANCH -eq 'main'){throw 'PHYSICAL_DISPATCH=FAIL feature_branch_required'}
-          $payload=[ordered]@{ref=$env:SOURCE_BRANCH;inputs=[ordered]@{expected_sha=$sha;source_branch=$env:SOURCE_BRANCH}}|ConvertTo-Json -Depth 6
-          $headers=@{
-            Authorization="Bearer $env:GITHUB_TOKEN"
-            Accept='application/vnd.github+json'
-            'X-GitHub-Api-Version'='2022-11-28'
-          }
-          $uri="https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/android-physical.yml/dispatches"
-          try{
-            Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload -TimeoutSec 30|Out-Null
-          }catch{
-            throw 'PHYSICAL_DISPATCH=FAIL component=GITHUB operation=workflow_dispatch'
-          }
-          Write-Host "PHYSICAL_DISPATCH=PASS tested_sha=$sha branch=$env:SOURCE_BRANCH workflow=android-physical.yml"
-          Write-Host 'PHYSICAL_VALIDATION=DISPATCHED_WITH_EXACT_SHA'
+          Write-Host "PHYSICAL_DISPATCH=SKIPPED_WITH_REASON explicit_manual_user_validation_required tested_sha=$env:EXPECTED_SOURCE_SHA branch=$env:SOURCE_BRANCH workflow=android-physical.yml"
+          Write-Host 'PHYSICAL_VALIDATION=NOT_ACTIVATED'

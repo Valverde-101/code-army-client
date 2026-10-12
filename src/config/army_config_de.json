@@ -11338,7 +11338,7 @@
         },
         "UNIT_RESEARCH_CHOPPER_TITLE": {
             "ID": "UNIT_RESEARCH_CHOPPER_TITLE",
-            "de": "Assault Helicopter"
+            "de": "Kampfhubschrauber"
         },
         "UNIT_RESEARCH_CHOPPER_DESC": {
             "ID": "UNIT_RESEARCH_CHOPPER_DESC",
@@ -12899,6 +12899,26 @@
         "BUILDING_GOLD_FACTORY_DESC": {
             "ID": "BUILDING_GOLD_FACTORY_DESC",
             "de": "Generates 3 Gold every 8 hours"
+        },
+        "UNIT_SOLDIER": {
+            "ID": "UNIT_SOLDIER",
+            "de": "Soldat"
+        },
+        "UNIT_SOLDIER_DESC": {
+            "ID": "UNIT_SOLDIER_DESC",
+            "de": "Basiskampfeinheit"
+        },
+        "UNIT_FLAME_INFANTRY": {
+            "ID": "UNIT_FLAME_INFANTRY",
+            "de": "Flammenwerfertrupp"
+        },
+        "UNIT_FLAME_INFANTRY_DESC": {
+            "ID": "UNIT_FLAME_INFANTRY_DESC",
+            "de": "Spezialeinheit mit Flammenwerfern\nSpezial:\nKann nicht vollständig zerstört werden"
+        },
+        "UNIT_RESEARCH_CHOPPER_DESC_TEMP": {
+            "ID": "UNIT_RESEARCH_CHOPPER_DESC_TEMP",
+            "de": "Eine äußerst vielseitige Einheit und ein Muss für jede Armee.\nSpezial: fliegend\n(überwindet alle Hindernisse)"
         }
     }
 }

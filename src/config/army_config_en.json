@@ -11338,7 +11338,7 @@
         },
         "UNIT_RESEARCH_CHOPPER_TITLE": {
             "ID": "UNIT_RESEARCH_CHOPPER_TITLE",
-            "en": "Assault Helicopter"
+            "en": "Assault Chopper"
         },
         "UNIT_RESEARCH_CHOPPER_DESC": {
             "ID": "UNIT_RESEARCH_CHOPPER_DESC",
@@ -12899,6 +12899,26 @@
         "BUILDING_GOLD_FACTORY_DESC": {
             "ID": "BUILDING_GOLD_FACTORY_DESC",
             "en": "Generates 3 Gold every 8 hours"
+        },
+        "UNIT_SOLDIER": {
+            "ID": "UNIT_SOLDIER",
+            "en": "Soldier"
+        },
+        "UNIT_SOLDIER_DESC": {
+            "ID": "UNIT_SOLDIER_DESC",
+            "en": "Basic combat unit"
+        },
+        "UNIT_FLAME_INFANTRY": {
+            "ID": "UNIT_FLAME_INFANTRY",
+            "en": "Flame Force"
+        },
+        "UNIT_FLAME_INFANTRY_DESC": {
+            "ID": "UNIT_FLAME_INFANTRY_DESC",
+            "en": "Special flame operators\nSpecial:\nCan't be fully destroyed"
+        },
+        "UNIT_RESEARCH_CHOPPER_DESC_TEMP": {
+            "ID": "UNIT_RESEARCH_CHOPPER_DESC_TEMP",
+            "en": "A highly versatile unit and a must-have for any army.\nSpecial: flying\n(moves past all obstacles)"
         }
     }
 }
