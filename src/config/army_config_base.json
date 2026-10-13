@@ -9717,7 +9717,6 @@
       "ObjectClass": "game.characters.PlayerUnit",
       "RequiredLevel": "1",
       "RequiredAllies": "0",
-      "RequiredMission": "#Mission.AREA_RESEARCH_FINISH",
       "CostMoney": "20000",
       "CostSupplies": "0",
       "CostPremium": "0",
