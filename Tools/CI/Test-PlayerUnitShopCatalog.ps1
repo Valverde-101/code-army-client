@@ -53,6 +53,46 @@ $unexpectedPlayerIds=@($playerById.Keys|Where-Object{$expectedUnitIds -cnotconta
 if($unexpectedPlayerIds.Count -gt 0){
   throw "PLAYER_UNIT_SHOP=FAIL unexpected_player_units=$($unexpectedPlayerIds -join ',')"
 }
+$helicopterUnits=@($playerRows|Where-Object{
+  ([string]$_.ID -match '(?i)(heli|chopper)') -or
+  ([string]$_.Graphic_idle -match '(?i)(heli|copter)')
+})
+if($helicopterUnits.Count -eq 0){throw 'HELICOPTER_PURCHASE_RULES=FAIL no_helicopter_in_catalog'}
+foreach($unit in $helicopterUnits){
+  $unitId=[string]$unit.ID
+  foreach($field in @('RequiredLevel','RequiredAllies','CostIntel','CostUnlock','MaxAmount')){
+    $property=$unit.PSObject.Properties[$field]
+    if($null -eq $property){continue}
+    $raw=[string]$property.Value
+    if([string]::IsNullOrWhiteSpace($raw)){continue}
+    $value=0
+    if(-not [int]::TryParse($raw,[ref]$value)){throw "HELICOPTER_PURCHASE_RULES=FAIL nonnumeric unit=$unitId field=$field value=$raw"}
+    if($value -ne 0){throw "HELICOPTER_PURCHASE_RULES=FAIL nonzero unit=$unitId field=$field value=$value"}
+  }
+  foreach($field in @('RequiredMission','RequiredBuilding','RequiredItem','AvailableInMaps')){
+    $property=$unit.PSObject.Properties[$field]
+    if($null -eq $property -or $null -eq $property.Value){continue}
+    if($property.Value -is [array]){
+      if($property.Value.Count -gt 0){throw "HELICOPTER_PURCHASE_RULES=FAIL restricted unit=$unitId field=$field"}
+    }elseif(-not [string]::IsNullOrWhiteSpace([string]$property.Value)){
+      throw "HELICOPTER_PURCHASE_RULES=FAIL restricted unit=$unitId field=$field"
+    }
+  }
+  if($unitId -eq 'AssaultChopper' -and [int]$unit.CostMoney -ne 20000){
+    throw "HELICOPTER_PURCHASE_RULES=FAIL purchase_price_changed unit=$unitId expected=20000 actual=$($unit.CostMoney)"
+  }
+}
+$profilePath=Join-Path $RepoRoot 'src\game\player\GamePlayerProfile.as'
+if(-not(Test-Path -LiteralPath $profilePath -PathType Leaf)){throw 'HELICOPTER_PURCHASE_RULES=FAIL profile_source_missing'}
+$profileSource=Get-Content -LiteralPath $profilePath -Raw
+if($profileSource -notmatch '(?s)public function capAvailable\(param1:String\)\s*:\s*Boolean\s*\{\s*var _loc2_:\*\s*=\s*this\.mUnitCaps\[param1\];\s*if\(_loc2_ === undefined \|\| _loc2_ === null\)\s*\{\s*return true;\s*\}\s*return this\.mUnitCounts\[param1\]\s*<\s*_loc2_;\s*\}'){
+  throw 'HELICOPTER_PURCHASE_RULES=FAIL uncapped_type_contract'
+}
+if($profileSource -notmatch '(?s)this\.mUnitCounts\[_loc3_\.mItem\.mType\] === undefined.*?this\.mUnitCounts\[_loc3_\.mItem\.mType\] = 0;.*?this\.mUnitCounts\[_loc3_\.mItem\.mType\] \+= 1;'){
+  throw 'HELICOPTER_PURCHASE_RULES=FAIL uncapped_type_count_initialization'
+}
+Write-Host "HELICOPTER_PURCHASE_RULES=PASS static_config_and_cap_contract units=$($helicopterUnits.Count) price_preserved=true unlimited=true"
+
 $missionTableProperty=$cfg.PSObject.Properties['Mission']
 if($null -eq $missionTableProperty){throw 'PLAYER_UNIT_SHOP=FAIL Mission_table_missing'}
 $missionTable=$missionTableProperty.Value
