@@ -91,7 +91,16 @@ if($profileSource -notmatch '(?s)public function capAvailable\(param1:String\)\s
 if($profileSource -notmatch '(?s)this\.mUnitCounts\[_loc3_\.mItem\.mType\] === undefined.*?this\.mUnitCounts\[_loc3_\.mItem\.mType\] = 0;.*?this\.mUnitCounts\[_loc3_\.mItem\.mType\] \+= 1;'){
   throw 'HELICOPTER_PURCHASE_RULES=FAIL uncapped_type_count_initialization'
 }
-Write-Host "HELICOPTER_PURCHASE_RULES=PASS static_config_and_cap_contract units=$($helicopterUnits.Count) price_preserved=true unlimited=true"
+$playerUnitPath=Join-Path $RepoRoot 'src\game\items\PlayerUnitItem.as'
+if(-not(Test-Path -LiteralPath $playerUnitPath -PathType Leaf)){throw 'HELICOPTER_PURCHASE_RULES=FAIL player_unit_source_missing'}
+$playerUnitSource=Get-Content -LiteralPath $playerUnitPath -Raw
+if($playerUnitSource -notmatch '(?s)override\s+public function isUnlocked\(\)\s*:\s*Boolean\s*\{\s*if\(mId\s*==\s*"AssaultChopper"\)\s*\{\s*return true;\s*\}\s*return super\.isUnlocked\(\);\s*\}'){
+  throw 'HELICOPTER_PURCHASE_RULES=FAIL runtime_unlock_override'
+}
+if($playerUnitSource -notmatch '(?s)override\s+public function capAvailable\(\)\s*:\s*Boolean\s*\{\s*if\(mId\s*==\s*"AssaultChopper"\)\s*\{\s*return true;\s*\}\s*return GameState\.mInstance\.mPlayerProfile\.capAvailable\(mType\);\s*\}'){
+  throw 'HELICOPTER_PURCHASE_RULES=FAIL runtime_unit_cap_override'
+}
+Write-Host "HELICOPTER_PURCHASE_RULES=PASS static_and_runtime_contract units=$($helicopterUnits.Count) price_preserved=true unlimited=true runtime_unlock=true runtime_cap=true"
 
 $missionTableProperty=$cfg.PSObject.Properties['Mission']
 if($null -eq $missionTableProperty){throw 'PLAYER_UNIT_SHOP=FAIL Mission_table_missing'}

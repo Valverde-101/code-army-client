@@ -122,8 +122,23 @@ package game.items
          return _loc1_;
       }
       
+      // Assault Chopper is intentionally exempt from shop unlock requirements.
+      override public function isUnlocked() : Boolean
+      {
+         if(mId == "AssaultChopper")
+         {
+            return true;
+         }
+         return super.isUnlocked();
+      }
+      
+      // Assault Chopper remains purchasable after any number of prior purchases.
       override public function capAvailable() : Boolean
       {
+         if(mId == "AssaultChopper")
+         {
+            return true;
+         }
          return GameState.mInstance.mPlayerProfile.capAvailable(mType);
       }
       
