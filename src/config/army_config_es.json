@@ -11338,7 +11338,7 @@
         },
         "UNIT_RESEARCH_CHOPPER_TITLE": {
             "ID": "UNIT_RESEARCH_CHOPPER_TITLE",
-            "es": "Assault Helicopter"
+            "es": "Helicóptero de asalto"
         },
         "UNIT_RESEARCH_CHOPPER_DESC": {
             "ID": "UNIT_RESEARCH_CHOPPER_DESC",
@@ -12899,6 +12899,26 @@
         "BUILDING_GOLD_FACTORY_DESC": {
             "ID": "BUILDING_GOLD_FACTORY_DESC",
             "es": "Generates 3 Gold every 8 hours"
+        },
+        "UNIT_SOLDIER": {
+            "ID": "UNIT_SOLDIER",
+            "es": "Soldado"
+        },
+        "UNIT_SOLDIER_DESC": {
+            "ID": "UNIT_SOLDIER_DESC",
+            "es": "Unidad básica de combate"
+        },
+        "UNIT_FLAME_INFANTRY": {
+            "ID": "UNIT_FLAME_INFANTRY",
+            "es": "Tropa lanzallamas"
+        },
+        "UNIT_FLAME_INFANTRY_DESC": {
+            "ID": "UNIT_FLAME_INFANTRY_DESC",
+            "es": "Operadores especiales de lanzallamas\nEspecial:\nNo pueden ser destruidos por completo"
+        },
+        "UNIT_RESEARCH_CHOPPER_DESC_TEMP": {
+            "ID": "UNIT_RESEARCH_CHOPPER_DESC_TEMP",
+            "es": "Una unidad muy versátil e imprescindible para cualquier ejército.\nEspecial: vuela y supera todos los obstáculos."
         }
     }
 }

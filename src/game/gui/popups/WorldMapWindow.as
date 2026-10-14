@@ -94,9 +94,6 @@
 			if (param1 < 0 || param1 >= WORLD_MAP_ID_LIST.length || !WORLD_MAP_ID_LIST[param1] || WORLD_MAP_ID_LIST[param1].length == 0) {
 				return false;
 			}
-			if (Config.OFFLINE_MODE && (param1 == 0 || param1 == 1)) {
-				return true;
-			}
 			return !MissionManager.isMapLocked(WORLD_MAP_ID_LIST[param1]);
 		}
 

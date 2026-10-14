@@ -1,4 +1,5 @@
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot '..\..\Tools\CI\Ensure-PortableFileHash.ps1')
 
 function Remove-ArmyLinkOrTree {
   param([Parameter(Mandatory=$true)][string]$Path)

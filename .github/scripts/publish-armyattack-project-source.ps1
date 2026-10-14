@@ -7,6 +7,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot '..\..\Tools\CI\Ensure-PortableFileHash.ps1')
 
 $repoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 $root=(Resolve-Path -LiteralPath $AndroidBuildRoot).Path

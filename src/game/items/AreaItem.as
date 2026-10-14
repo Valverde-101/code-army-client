@@ -11,6 +11,10 @@ package game.items
    
    public class AreaItem extends ShopItem
    {
+      // Offline-only content bootstrap after a legitimate area purchase.
+      // These flags never alter the area's original unlock requirements or price.
+      private static const OFFLINE_HOME_NORTH_CONTENT_SETUP:Boolean = true;
+      private static const OFFLINE_CAMPAIGN_CONTENT_SETUP:Boolean = true;
        
       
       public var mX:int;
@@ -43,6 +47,34 @@ package game.items
          this.mMapId = param1.MapID;
          this.mRightX = this.mX + this.mWidth;
          this.mBottomY = this.mY + this.mHeight;
+      }
+      
+      // These selectors place original mission content after a valid purchase.
+      // They do not make a locked area purchasable.
+      public static function isTrialHomeNorthArea(param1:String) : Boolean
+      {
+         return Config.OFFLINE_MODE && OFFLINE_HOME_NORTH_CONTENT_SETUP &&
+            (param1 == "AreaNW" || param1 == "AreaN" || param1 == "AreaNE" ||
+             param1 == "AreaNorthW2" || param1 == "AreaNorthC2" || param1 == "AreaNorthE2");
+      }
+      
+      // Map identity, not an area-ID substring: Snow IDs arrive via the pinned donor overlay.
+      public static function isTrialCampaignMap(param1:String) : Boolean
+      {
+         return Config.OFFLINE_MODE && OFFLINE_CAMPAIGN_CONTENT_SETUP &&
+            (param1 == "Desert" || param1 == "Snow");
+      }
+      
+      // Actual authored SHOP regions only; default map territory is never a purchase.
+      public static function isTrialCampaignArea(param1:String, param2:String) : Boolean
+      {
+         return isTrialCampaignMap(param1) &&
+            ((param1 == "Desert" && (param2 == "DesertM" || param2 == "DesertN")) ||
+             (param1 == "Snow" &&
+              (param2 == "AreaSnowLeft1" || param2 == "AreaSnowRight1" ||
+               param2 == "AreaSnowLeft2" || param2 == "AreaSnow2" ||
+               param2 == "AreaSnowRight2" || param2 == "AreaSnowLeft3" ||
+               param2 == "AreaSnow3" || param2 == "AreaSnowRight3")));
       }
       
       public function addAreaLockedIcon(param1:DisplayObjectContainer, param2:int, param3:int) : void

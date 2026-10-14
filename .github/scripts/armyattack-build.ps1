@@ -1,6 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$ContextPath)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot '..\..\Tools\CI\Ensure-PortableFileHash.ps1')
 $ctx=Get-Content -LiteralPath $ContextPath -Raw|ConvertFrom-Json
 $repoRoot=[string]$ctx.repo_root
 $root=[string]$ctx.androidbuild_root
@@ -26,6 +27,9 @@ $publishedRoot=Join-Path $repoRoot 'vendor\Test_army_attack'
 $publishedSha=(& $git -C $publishedRoot rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $publishedSha -ne '306bccc7db5b1ce34dd68a3bc80093648c9224bd'){throw "ARMY_PUBLISHED_SOURCE=FAIL expected=306bccc7db5b1ce34dd68a3bc80093648c9224bd actual=$publishedSha"}
 Write-Host "ARMY_PUBLISHED_SOURCE=PASS sha=$publishedSha"
+& (Join-Path $repoRoot 'Tools\CI\Test-PlayerUnitShopCatalog.ps1') -RepoRoot $repoRoot -PublishedContentRoot $publishedRoot
+if(-not $?){throw 'PLAYER_UNIT_SHOP_ASSETS=FAIL published_source_validation'}
+Write-Host 'PLAYER_UNIT_SHOP_ASSETS=PASS published_graphics_and_icons=true'
 
 # Global reusable toolchain remains AndroidBuild-owned.
 $tc=Resolve-AndroidBuildFlashToolchain -AndroidBuildRoot $root -AirVersion '50.2.3.6' -FfdecVersion '26.2.1' -TargetApi '33' -BuildTools '33.0.2' -PinnedToolchainId 'AIR50-API33-BT33.0.2'
@@ -66,7 +70,7 @@ foreach($overlay in @($perfOverlay,$snowOverlay)){
   [void][System.Management.Automation.Language.Parser]::ParseFile($overlay,[ref]$tokens,[ref]$errors)
   if(@($errors).Count -gt 0){$errors|ForEach-Object{Write-Host "PARSER_ERROR file=$overlay line=$($_.Extent.StartLineNumber) message=$($_.Message)"};throw "ARMY_RUNTIME_OVERLAY=FAIL parser file=$overlay"}
 }
-Write-Host 'ARMY_SNOW_OVERLAY_PRECHECK=PASS source=published_v23_2 unlock_level=0 single_swf=true'
+Write-Host 'ARMY_SNOW_OVERLAY_PRECHECK=PASS source=published_v23_2 map_unlock=original_requirements_preserved single_swf=true'
 
 $projectBuilder=Join-Path $repoRoot 'Tools\CI\Build-Android.ps1'
 Write-Host "ARMY_APPLICATION_BUILD=START adapter=army-project-builder infrastructure=core-$core workspace=repo-work render=gpu perf_overlay=enabled snow_campaign=enabled"
@@ -113,7 +117,7 @@ foreach($legacyRoot in $forbiddenRoots){
 }
 Write-Host 'ARMY_WORKSPACE_ISOLATION=PASS builds=repo-work inputs=repo-cache scratch=repo-work global_tools_only_outside=true'
 
-$manual=[ordered]@{schema='armyattack-manual-physical/v3';repository='Valverde-101/code-army-client';tested_sha=$expected;candidate_apk=$candidate;apk_sha256=$candidateHash;status='PENDING_USER_VALIDATION';adb_used=$false;required=$true;flows=@('cold_launch','home_map_navigation','unit_placement_confirm_cancel','right_hud_open_close','supply_aircraft','world_map_open_close','desert_map','snow_map_open','snow_map_navigation','snow_campaign_entry_unlocked','pvp_match_start','pvp_cancel_action','pvp_firemission','pvp_paratrooper','pvp_loot_debrief','diagnostics_perf','diagnostics_mark_lag','diagnostics_zip','crash_anr_check')}
+$manual=[ordered]@{schema='armyattack-manual-physical/v3';repository='Valverde-101/code-army-client';tested_sha=$expected;candidate_apk=$candidate;apk_sha256=$candidateHash;status='PENDING_USER_VALIDATION';adb_used=$false;required=$true;flows=@('cold_launch','home_map_navigation','unit_placement_confirm_cancel','right_hud_open_close','supply_aircraft','world_map_open_close','desert_map','snow_map_open','snow_map_navigation','snow_campaign_locked_until_requirement','pvp_match_start','pvp_cancel_action','pvp_firemission','pvp_paratrooper','pvp_loot_debrief','diagnostics_perf','diagnostics_mark_lag','diagnostics_zip','crash_anr_check')}
 $manualPath=Join-Path $artifactRoot 'manual-physical-validation.json'
 $manual|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $manualPath -Encoding UTF8
 $metadata=[ordered]@{
@@ -128,7 +132,7 @@ $metadata=[ordered]@{
   android_build_tools=[string]$tc.build_tools
   application_builder='Tools/CI/Build-Android.ps1'
   migration_mode='complete-core-orchestrated'
-  snow_campaign=[ordered]@{enabled=$true;map_id='Snow';donor_sha=$publishedSha;unlock_level=0;physical_swf_model='single-root-swf'}
+  snow_campaign=[ordered]@{enabled=$true;map_id='Snow';donor_sha=$publishedSha;map_unlock='donor_original_requirements';physical_swf_model='single-root-swf'}
   workspace=[ordered]@{work_root=[string]$workspace.work_root;build_root=[string]$workspace.build_root;input_cache_root=[string]$workspace.input_cache_root;scratch_root=[string]$workspace.scratch_root;runtime_root=$runtimeRoot;retention_generations=3}
   candidate_apk=$candidate
   apk_sha256=$candidateHash
@@ -141,7 +145,7 @@ $metadata|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $metaPath -Encoding U
 Write-Host "ARMY_CANDIDATE_APK=PASS path=$candidate sha256=$candidateHash"
 Write-Host "ARMY_BUILD_METADATA=PASS path=$metaPath"
 Write-Host 'ARMY_CORE_MIGRATION=PASS mode=complete-core-orchestrated toolchain=androidbuild-global broker=androidbuild-global repository_sync=androidbuild-core project_state=repo-work'
-Write-Host 'SNOW_CAMPAIGN_BUILD=PASS map=Snow unlock_level=0 physical_swf_model=single-root-swf'
+Write-Host 'SNOW_CAMPAIGN_BUILD=PASS map=Snow map_unlock=original_requirements_preserved physical_swf_model=single-root-swf'
 Write-Host "PHYSICAL_VALIDATION=NOT_ACTIVATED manual=$manualPath"
 Write-Host 'APK_FINAL_DELIVERY=CORE_CANDIDATE_VALIDATION_PENDING'
 Write-Host 'ARMY_BUILD_HOOK=PASS'

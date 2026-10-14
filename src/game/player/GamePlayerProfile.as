@@ -1017,6 +1017,10 @@
             {
                if(_loc3_ is PlayerUnit)
                {
+                  if(this.mUnitCounts[_loc3_.mItem.mType] === undefined || this.mUnitCounts[_loc3_.mItem.mType] === null)
+                  {
+                     this.mUnitCounts[_loc3_.mItem.mType] = 0;
+                  }
                   this.mUnitCounts[_loc3_.mItem.mType] += 1;
                }
             }
@@ -1037,7 +1041,12 @@
       
       public function capAvailable(param1:String) : Boolean
       {
-         return this.mUnitCounts[param1] < this.mUnitCaps[param1];
+         var _loc2_:* = this.mUnitCaps[param1];
+          if(_loc2_ === undefined || _loc2_ === null)
+          {
+             return true;
+          }
+          return this.mUnitCounts[param1] < _loc2_;
       }
       
       public function getUnitCap(param1:String) : int

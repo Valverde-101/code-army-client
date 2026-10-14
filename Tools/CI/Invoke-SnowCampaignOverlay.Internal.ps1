@@ -6,6 +6,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Ensure-PortableFileHash.ps1')
 $RepoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 if(-not(Test-Path -LiteralPath $GitPath -PathType Leaf)){throw "SNOW_CAMPAIGN_OVERLAY=FAIL git_missing=$GitPath"}
 $actual=(& $GitPath -C $RepoRoot rev-parse HEAD).Trim()
@@ -33,7 +34,6 @@ function Set-JsonProperty($Target,[string]$Name,$Value){
   $existing=$Target.PSObject.Properties[$Name]
   if($null -ne $existing){$existing.Value=$Value}else{$Target|Add-Member -MemberType NoteProperty -Name $Name -Value $Value}
 }
-function Remove-JsonProperty($Target,[string]$Name){if($null -ne $Target.PSObject.Properties[$Name]){$Target.PSObject.Properties.Remove($Name)}}
 function Test-SnowEntry([string]$Name,$Value){
   if($Name -match '(?i)(snow|polar|nordur)'){return $true}
   try{$text=$Value|ConvertTo-Json -Depth 40 -Compress}catch{return $false}
@@ -121,11 +121,11 @@ try{
   if($null -eq $donor.MapSetup -or $null -eq $donor.MapSetup.Snow){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL donor_mapsetup_snow_missing'}
   if($null -eq $donor.MapArea){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL donor_maparea_missing'}
 
-  $snow=Clone-JsonValue $donor.MapSetup.Snow
-  Set-JsonProperty $snow 'UnlockLevel' '0'
+  $donorSnow=$donor.MapSetup.Snow
+  $snowUnlockProperties=@($donorSnow.PSObject.Properties|Where-Object{$_.Name -match '^(Unlock|Required|Cost)'})
+  if($snowUnlockProperties.Count -eq 0){throw 'SNOW_MAP_UNLOCK=FAIL donor_requirements_missing'}
+  $snow=Clone-JsonValue $donorSnow
   Set-JsonProperty $snow 'ZoomLevelsMobile' '120, 180'
-  Remove-JsonProperty $snow 'UnlockMission'
-  Remove-JsonProperty $snow 'RequiredMission'
   Set-JsonProperty $target.MapSetup 'Snow' $snow
 
   $pvpZoomMaps=0
@@ -158,6 +158,43 @@ try{
     foreach($entry in $matching){Set-JsonProperty $targetSection ([string]$entry.Name) (Clone-JsonValue $entry.Value);$mergedEntries++}
   }
 
+  # Resolve pinned original Snow defenses and their dependent unit/item records.
+  $snowRefs=@(
+    'EnemyUnit.EliteDroid',
+    'EnemyInstallation.DroidStation_S_4T',
+    'EnemyInstallation.SeaTowerMachineGun',
+    'EnemyInstallation.DroidStation_S_6T',
+    'EnemyInstallation.DroidStation_N_4T',
+    'EnemyInstallation.DroidStation_E_4T',
+    'EnemyInstallation.DroidStation_W_5T',
+    'EnemyInstallation.DroidStation_E_3T',
+    'EnemyInstallation.SeaTowerMissile_4T',
+    'EnemyInstallation.SeaTowerMissile_3T',
+    'EnemyInstallation.SeaTowerMissile_2T',
+    'EnemyInstallation.SeaPlatformFort',
+    'Ingredient.TestTube'
+  )
+  $snowImported=0
+  foreach($snowRef in $snowRefs){
+    $bits=$snowRef.Split('.')
+    $type=[string]$bits[0];$id=[string]$bits[1]
+    $donorTable=$donor.PSObject.Properties[$type]
+    if($null -eq $donorTable -or $null -eq $donorTable.Value.PSObject.Properties[$id]){throw "SNOW_DEPENDENCY_CLOSURE=FAIL missing_donor=$snowRef"}
+    $targetProperty=$target.PSObject.Properties[$type]
+    if($null -eq $targetProperty){$targetTable=[pscustomobject]@{};Set-JsonProperty $target $type $targetTable}else{$targetTable=$targetProperty.Value}
+    if($null -eq $targetTable.PSObject.Properties[$id]){Set-JsonProperty $targetTable $id (Clone-JsonValue $donorTable.Value.PSObject.Properties[$id].Value);$snowImported++}
+  }
+  $snowRows=@($target.MissionSetup.PSObject.Properties|ForEach-Object{$_.Value}|Where-Object{[string]$_.Group -match '^AreaSnow'})
+  if($snowRows.Count -ne 705){throw "SNOW_DEPENDENCY_CLOSURE=FAIL rows_expected=705 actual=$($snowRows.Count)"}
+  foreach($snowRow in $snowRows){
+    $snowItem=[string]$snowRow.Item
+    if($snowItem -notmatch '^#([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)$'){throw "SNOW_DEPENDENCY_CLOSURE=FAIL malformed_item=$snowItem"}
+    $snowType=[string]$Matches[1];$snowId=[string]$Matches[2]
+    $snowTable=$target.PSObject.Properties[$snowType]
+    if($null -eq $snowTable -or $null -eq $snowTable.Value.PSObject.Properties[$snowId]){throw "SNOW_DEPENDENCY_CLOSURE=FAIL unresolved=$snowItem"}
+  }
+  Write-Host "SNOW_DEPENDENCY_CLOSURE=PASS original_rows=$($snowRows.Count) pinned_dependencies=$($snowRefs.Count) imported=$snowImported"
+
   $target|ConvertTo-Json -Depth 100|Set-Content -LiteralPath $targetConfigPath -Encoding UTF8
   Copy-Item -LiteralPath $donorTilePath -Destination $targetTilePath -Force
 
@@ -170,7 +207,7 @@ try{
   $world=[IO.File]::ReadAllText($worldPath)
   $world=Replace-OneRegex $world 'public static const WORLD_MAP_ID_LIST:\s*Array\s*=\s*\["Home",\s*"Desert",\s*""\];' 'public static const WORLD_MAP_ID_LIST: Array = ["Home", "Desert", "Snow"];' 'world_map_registry'
   $world=Replace-OneRegex $world '(?m)^\s*this\.setAreaAvailability\(2,\s*false\);\s*\r?\n?' '' 'world_map_snow_forced_disable'
-  $world=Replace-OneRegex $world 'if \(Config\.OFFLINE_MODE && \(param1 == 0 \|\| param1 == 1\)\) \{' 'if (Config.OFFLINE_MODE) {' 'world_map_offline_availability'
+  if($world -notmatch 'return !MissionManager\.isMapLocked\(WORLD_MAP_ID_LIST\[param1\]\);' -or $world -match 'Config\.OFFLINE_MODE\s*&&\s*\(\s*param1\s*==\s*0\s*\|\|\s*param1\s*==\s*1\s*\)'){throw 'MAP_SYSTEM=FAIL normal_unlock_requirements'}
   $snowTooltipReplacement='this.mCampaignTexts.push("Snow Campaign");'+"`r`n`t`t`t"+'this.mCampaignTexts.push("Enter the polar campaign.");'+"`r`n`t`t`t"+'this.mCampaignTexts.push(GameState.getText("MAP_TOOLTIP_LIBERY_LOCKED"));'
   $world=Replace-OneRegex $world 'this\.mCampaignTexts\.push\(GameState\.getText\("MAP_TOOLTIP_COMING_SOON"\)\);\s*this\.mCampaignTexts\.push\(""\);\s*this\.mCampaignTexts\.push\(""\);' $snowTooltipReplacement 'world_map_snow_tooltip'
   Write-Utf8Bom $worldPath $world
@@ -192,8 +229,16 @@ try{
   if([int]$snowVerify.Width -ne 51 -or [int]$snowVerify.Height -ne 51){throw "SNOW_CAMPAIGN_OVERLAY=FAIL verify_dimensions=$($snowVerify.Width)x$($snowVerify.Height)"}
   if([string]$snowVerify.TilemapFileName -ne 'tile_map_snow.csv'){throw "SNOW_CAMPAIGN_OVERLAY=FAIL verify_tilemap=$($snowVerify.TilemapFileName)"}
   if([string]$snowVerify.MusicFile -ne 'music/army_mus_polarbear.mp3'){throw "SNOW_CAMPAIGN_OVERLAY=FAIL verify_music=$($snowVerify.MusicFile)"}
-  if([string]$snowVerify.UnlockLevel -ne '0'){throw "SNOW_CAMPAIGN_OVERLAY=FAIL verify_unlock_level=$($snowVerify.UnlockLevel)"}
-  if($null -ne $snowVerify.PSObject.Properties['UnlockMission'] -or $null -ne $snowVerify.PSObject.Properties['RequiredMission']){throw 'SNOW_CAMPAIGN_OVERLAY=FAIL verify_entry_mission_gate_present'}
+  $targetUnlockProperties=@($snowVerify.PSObject.Properties|Where-Object{$_.Name -match '^(Unlock|Required|Cost)'})
+  if($targetUnlockProperties.Count -ne $snowUnlockProperties.Count){throw "SNOW_MAP_UNLOCK=FAIL gate_property_count donor=$($snowUnlockProperties.Count) target=$($targetUnlockProperties.Count)"}
+  foreach($sourceGate in $snowUnlockProperties){
+    $targetGate=$snowVerify.PSObject.Properties[$sourceGate.Name]
+    if($null -eq $targetGate){throw "SNOW_MAP_UNLOCK=FAIL gate_missing=$($sourceGate.Name)"}
+    $sourceValue=ConvertTo-Json -InputObject $sourceGate.Value -Depth 20 -Compress
+    $targetValue=ConvertTo-Json -InputObject $targetGate.Value -Depth 20 -Compress
+    if($sourceValue -cne $targetValue){throw "SNOW_MAP_UNLOCK=FAIL gate_changed=$($sourceGate.Name) source=$sourceValue target=$targetValue"}
+  }
+  Write-Host "SNOW_MAP_UNLOCK=PASS original_gate_properties_preserved=$($targetUnlockProperties.Count)"
   if([string]$snowVerify.ZoomLevelsMobile -ne '120, 180'){throw "SNOW_CAMPAIGN_OVERLAY=FAIL verify_mobile_zoom=$($snowVerify.ZoomLevelsMobile)"}
   $logicalSwfs=@($snowVerify.SWFFile)
   if($logicalSwfs.Count -ne 1 -or [string]$logicalSwfs[0] -ne 'swf/new_backgroud_01'){throw "SNOW_CAMPAIGN_OVERLAY=FAIL verify_single_swf_contract actual=$($logicalSwfs -join ',')"}
@@ -251,6 +296,7 @@ try{
   if($gameVerify -notmatch 'GRAPHICS_MAP_ID_LIST\s*:\s*Array\s*=\s*\[\s*"Home"\s*,\s*"Desert"\s*,\s*"Snow"\s*\]'){throw 'MAP_SYSTEM=FAIL graphics_map_registry'}
   if($worldVerify -notmatch 'WORLD_MAP_ID_LIST\s*:\s*Array\s*=\s*\[\s*"Home"\s*,\s*"Desert"\s*,\s*"Snow"\s*\]'){throw 'MAP_SYSTEM=FAIL world_map_registry'}
   if($worldVerify.Contains('this.setAreaAvailability(2, false);') -or $worldVerify.Contains('MAP_TOOLTIP_COMING_SOON')){throw 'MAP_SYSTEM=FAIL world_map_snow_disabled'}
+  if($worldVerify -notmatch 'return !MissionManager\.isMapLocked\(WORLD_MAP_ID_LIST\[param1\]\);' -or $worldVerify -match 'Config\.OFFLINE_MODE\s*&&\s*\(\s*param1\s*==\s*0\s*\|\|\s*param1\s*==\s*1\s*\)'){throw 'MAP_SYSTEM=FAIL campaign_map_unlock_bypass'}
   if($worldVerify -notmatch 'requestWorldMapSwitch\(param1\)'){throw 'MAP_SYSTEM=FAIL world_map_switch_route'}
   if($offlineVerify -notmatch 'savedata\["active_map_id"\]\s*=\s*map_id\.indexOf\("pvp_"\)\s*==\s*-1\s*\?\s*map_id\s*:\s*"Home"'){throw 'MAP_SYSTEM=FAIL offline_active_map_save'}
   if($offlineVerify -notmatch 'executeSwitchMap\(activeMapId,\s*null\)'){throw 'MAP_SYSTEM=FAIL offline_active_map_restore'}
@@ -262,7 +308,9 @@ try{
   Write-Host "MAP_SYSTEM_REGRESSION=PASS campaign_maps=3 pvp_maps=$($pvpEntries.Count)"
 
   Write-Host "SNOW_MAP_SETUP=PASS id=Snow type=$($snowVerify.Type) size=$($snowVerify.Width)x$($snowVerify.Height) tilemap=$($snowVerify.TilemapFileName) music=$($snowVerify.MusicFile)"
-  Write-Host "SNOW_UNLOCK=PASS level=$($snowVerify.UnlockLevel) mission_gate=none test_access=immediate"
+  Write-Host "SNOW_UNLOCK=PASS original_requirements_preserved=true gate_properties=$($targetUnlockProperties.Count) access=MissionManager.isMapLocked"
+  & (Join-Path $RepoRoot 'Tools\\CI\\Test-CampaignAreaPurchase.ps1') -RepoRoot $RepoRoot -ConfigPath $targetConfigPath -MapId Snow
+  if(-not $?){throw 'SNOW_CAMPAIGN_AREA_PURCHASE=FAIL source_contract'}
   Write-Host "SNOW_AREAS=PASS count=$($areaVerify.Count)"
   Write-Host "SNOW_TILEMAP=PASS normalized_cells=$tileCells expected=2601"
   Write-Host "SNOW_CONTENT_MERGE=PASS donor_sha=$donorSha merged_entries=$mergedEntries polar_related_entries=$polarEntries"

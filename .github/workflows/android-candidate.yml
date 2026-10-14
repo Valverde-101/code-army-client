@@ -166,10 +166,37 @@ jobs:
         run: |
           & '.\.github\scripts\armyattack-project-precheck.ps1'
 
-      - name: Build validate and publish Army candidate through Core 3.0.11+
+      - name: Verify Home map unlock requirements and purchasable troop shop
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
+          & '.\Tools\CI\Test-HomeNorthAreaPurchase.ps1'
+          if(-not $?){throw 'HOME_NORTH_UNLOCK_GATE=FAIL script_failed'}
+          Write-Host 'HOME_NORTH_UNLOCK_GATE=PASS exit=powershell_success'
+
+          & '.\Tools\CI\Test-PlayerUnitShopCatalog.ps1'
+          if(-not $?){throw 'PLAYER_UNIT_SHOP_GATE=FAIL script_failed'}
+          Write-Host 'PLAYER_UNIT_SHOP_GATE=PASS'
+      - name: Verify authored Home enemy and defense setup
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & '.\Tools\CI\Test-HomeNorthContent.ps1'
+          if(-not $?){throw 'HOME_NORTH_CONTENT_GATE=FAIL script_failed'}
+          Write-Host 'HOME_NORTH_CONTENT_GATE=PASS'
+
+      - name: Verify Desert requirements before the Snow overlay
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & '.\Tools\CI\Test-CampaignAreaPurchase.ps1' -MapId Desert
+          if(-not $?){throw 'CAMPAIGN_AREA_UNLOCK_GATE=FAIL map=Desert'}
+          Write-Host 'CAMPAIGN_AREA_UNLOCK_GATE=PASS map=Desert snow=validated_after_overlay'
+      - name: Build validate and publish Army candidate through Core 3.0.11+
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $ErrorActionPreference='Stop'
+          . '.\Tools\CI\Ensure-PortableFileHash.ps1'
           $checkout=$PWD.Path
           Import-Module (Join-Path $env:ANDROIDBUILD_ROOT 'Core\Current\AndroidBuild.psd1') -DisableNameChecking -Force
           $git=Get-AndroidBuildGitPath $env:ANDROIDBUILD_ROOT
@@ -222,15 +249,24 @@ jobs:
           Write-Host "APK_CANDIDATE_REMOTE_HEAD=$remote"
           Write-Host 'APK_CANDIDATE_HEAD_RECHECK=PASS'
           Write-Host "APK_FINAL_PUBLICATION=PASS path=$finalPath sha256=$diskFinalSha validation_scope=candidate"
+          $testName='ArmyAttack-23.2-MAP-AREAS-TEST-'+$env:EXPECTED_SOURCE_SHA.Substring(0,8)+'.apk'
+          $testPath=Join-Path (Join-Path $env:ANDROIDBUILD_ROOT 'APK-FINAL') $testName
+          Copy-Item -LiteralPath $finalPath -Destination $testPath -Force
+          $testSha=(Get-FileHash -LiteralPath $testPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          if($testSha -ne $hash){throw "MAP_AREAS_TEST_APK=FAIL copy_hash expected=$hash actual=$testSha"}
+          $testManifest=[ordered]@{schema='armyattack-map-areas-test/v2';repository=$env:GITHUB_REPOSITORY;tested_sha=$env:EXPECTED_SOURCE_SHA;main_baseline='2d10485efba78565b4b11873a7d7279b125f557f';apk_path=$testPath;apk_sha256=$testSha;apk_size=[int64]$result.apk.identity.bytes;package_name=[string]$result.apk.identity.package_name;runner=$env:RUNNER_NAME;run_id=$env:GITHUB_RUN_ID;areas=@('Home:six_northern_areas','Desert:authored_shop_areas','Snow:authored_shop_areas');scope='offline_test_only';physical_validation='NOT_EXECUTED'}
+          $testManifestPath=[IO.Path]::ChangeExtension($testPath,'.json')
+          $testManifest|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $testManifestPath -Encoding UTF8
+          Write-Host "MAP_AREAS_TEST_APK=PASS path=$testPath sha256=$testSha manifest=$testManifestPath"
           Write-Host 'CANDIDATE_VALIDATION=PASS'
           Write-Host 'PHYSICAL_VALIDATION=NOT_ACTIVATED'
           Write-Host 'MANUAL_PHYSICAL_PROFILE=Recording starts automatically; PERF only opens or closes the metrics panel'
           Write-Host 'MANUAL_PHYSICAL_ZIP=Press ZIP to share a snapshot without stopping the recording'
           Write-Host 'FINAL_VALIDATION=VALIDATION_INCOMPLETE physical_validation_required'
 
-      - name: Keep physical validation explicit
+      - name: Keep physical validation manual
         shell: powershell
         run: |
           $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
-          Write-Host "PHYSICAL_DISPATCH=SKIPPED_WITH_REASON explicit_user_authorization_required tested_sha=$env:EXPECTED_SOURCE_SHA branch=$env:SOURCE_BRANCH workflow=android-physical.yml"
+          Write-Host "PHYSICAL_DISPATCH=SKIPPED_WITH_REASON explicit_manual_user_validation_required tested_sha=$env:EXPECTED_SOURCE_SHA branch=$env:SOURCE_BRANCH workflow=android-physical.yml"
           Write-Host 'PHYSICAL_VALIDATION=NOT_ACTIVATED'

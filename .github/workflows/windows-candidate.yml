@@ -190,6 +190,7 @@ jobs:
           $manifest=Join-Path $outRoot 'SWF-WINDOWS-STATIC-PATCH.json'
           & (Join-Path $env:PHYSICAL_REPO_ROOT 'Tools\CI\Patch-WindowsSharedSwf.ps1') -RepoRoot $env:PHYSICAL_REPO_ROOT -InputSwf $seed -OutputSwf $output -ExpectedSha $env:EXPECTED_SOURCE_SHA -GitPath $git -ManifestPath $manifest
           if(-not(Test-Path -LiteralPath $output -PathType Leaf)){throw 'WINDOWS_STATIC_SWF=FAIL output_missing'}
+          . (Join-Path $env:PHYSICAL_REPO_ROOT 'Tools\CI\Ensure-PortableFileHash.ps1')
           $seedHash=(Get-FileHash -LiteralPath $seed -Algorithm SHA256).Hash.ToLowerInvariant()
           $outHash=(Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash.ToLowerInvariant()
           if($seedHash -eq $outHash){throw 'WINDOWS_STATIC_SWF=FAIL patched_equals_seed'}

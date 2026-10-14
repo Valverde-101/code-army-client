@@ -11338,7 +11338,7 @@
         },
         "UNIT_RESEARCH_CHOPPER_TITLE": {
             "ID": "UNIT_RESEARCH_CHOPPER_TITLE",
-            "it": "Assault Helicopter"
+            "it": "Elicottero d'assalto"
         },
         "UNIT_RESEARCH_CHOPPER_DESC": {
             "ID": "UNIT_RESEARCH_CHOPPER_DESC",
@@ -12899,6 +12899,26 @@
         "BUILDING_GOLD_FACTORY_DESC": {
             "ID": "BUILDING_GOLD_FACTORY_DESC",
             "it": "Generates 3 Gold every 8 hours"
+        },
+        "UNIT_SOLDIER": {
+            "ID": "UNIT_SOLDIER",
+            "it": "Soldato"
+        },
+        "UNIT_SOLDIER_DESC": {
+            "ID": "UNIT_SOLDIER_DESC",
+            "it": "Unità di combattimento base"
+        },
+        "UNIT_FLAME_INFANTRY": {
+            "ID": "UNIT_FLAME_INFANTRY",
+            "it": "Unità lanciafiamme"
+        },
+        "UNIT_FLAME_INFANTRY_DESC": {
+            "ID": "UNIT_FLAME_INFANTRY_DESC",
+            "it": "Operatori specializzati con i lanciafiamme\nSpeciale:\nNon possono essere distrutti completamente"
+        },
+        "UNIT_RESEARCH_CHOPPER_DESC_TEMP": {
+            "ID": "UNIT_RESEARCH_CHOPPER_DESC_TEMP",
+            "it": "Un'unità molto versatile, indispensabile per ogni esercito.\nSpeciale: volante\n(supera ogni ostacolo)"
         }
     }
 }
